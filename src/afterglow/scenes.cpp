@@ -210,6 +210,12 @@ bool night_register(const Presentation &state)
 
 IdleCopy idle_copy(const Presentation &state)
 {
+    // Nothing useful on screen for a while (concepts/afterglow.cpp): offer the check.
+    if (state.setup_offer)
+        return {"Ready when you are.",
+                !state.configured ? "Add your Music Assistant server"
+                                  : "Connecting to Music Assistant…",
+                "Something not right? Check my setup in Settings."};
     if (!state.configured)
         return {"Ready when you are.", "Add your Music Assistant server",
                 "Press Options, then Settings, Account, Sign in."};
@@ -848,11 +854,17 @@ using namespace style;
 constexpr float kIdleTile = 88;
 constexpr float kIdleTileGap = 16;
 constexpr float kIdleStripY = 936;
+const char *idle_word(IdleTileKind kind)
+{
+    return kind == IdleTileKind::retry   ? "Try again"
+           : kind == IdleTileKind::setup ? "Check setup"
+                                         : "Browse";
+}
 float idle_tile_width(const Scene &scene, const IdleTile &tile)
 {
     if (tile.kind == IdleTileKind::resume || tile.kind == IdleTileKind::play)
         return kIdleTile;
-    const char *word = tile.kind == IdleTileKind::retry ? "Try again" : "Browse";
+    const char *word = idle_word(tile.kind);
     return std::max(kIdleTile, scene.fonts.semibold.font->measure(word, kTypeMin) + 24);
 }
 void draw_idle_strip(const Scene &scene, const IdleView &idle, Color fill_b)
@@ -887,8 +899,7 @@ void draw_idle_strip(const Scene &scene, const IdleView &idle, Color fill_b)
             const Color colour = focused ? kInk : ink_paper;
             if (!focused)
                 list.line(box.x, box.y + 1, box.x + box.w, box.y + 1, 2, kRule);
-            ui::text(list, scene.fonts.semibold,
-                     tile.kind == IdleTileKind::retry ? "Try again" : "Browse", box.x + 12,
+            ui::text(list, scene.fonts.semibold, idle_word(tile.kind), box.x + 12,
                      box.y + box.h - 16, kTypeMin, colour);
         }
         x += width + kIdleTileGap;

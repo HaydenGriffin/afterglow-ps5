@@ -10,6 +10,7 @@
 #include "afterglow/preset_quality.hpp"
 #include "afterglow/home_model.hpp"
 #include "afterglow/lyrics_lookup.hpp"
+#include "afterglow/setup_check.hpp"
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -180,6 +181,10 @@ struct Presentation
     // itself is in companion.track. lyrics_retry: the UI asks, the pump retries.
     LyricsState lyrics;
     bool lyrics_retry = false;
+    // Check my setup (setup_check.hpp): the UI asks, main.cpp runs it and
+    // fills the rows; setup_offer adds "Something not right?" to an empty screen.
+    bool setup_requested = false, setup_has_run = false, setup_offer = false;
+    std::vector<SetupRow> setup_rows;
 };
 
 // Only the UI thread accesses this model. Audio reaches it through Analyzer.

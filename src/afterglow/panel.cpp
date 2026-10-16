@@ -198,6 +198,9 @@ enum Row : int
     overlay_position,
     overlay_background,
     overlay_size,
+    open_setup,
+    setup_again,
+    setup_row,
 };
 // "Group with" rows carry this plus the speaker's index in players.
 constexpr int kGroupTag = 100000;
@@ -450,6 +453,10 @@ const char *select_label(const SheetRow &row)
     case queue_earlier:
     case queue_later:
         return "Show";
+    case setup_again:
+        return "Check again";
+    case setup_row:
+        return nullptr;
     default:
         break;
     }
@@ -526,7 +533,7 @@ const char *Panel::page_name() const
     constexpr const char *kNames[] = {
         "browse",   "collection", "item_actions", "queue",   "queue_actions", "details", "display",
         "settings", "source",     "visuals",      "presets", "lyrics_timing", "status",  "search",
-        "artist",   "players",    "sync",         "account", "home"};
+        "artist",   "players",    "sync",         "account", "home",          "setup"};
     const auto index = static_cast<std::size_t>(page_);
     return index < std::size(kNames) ? kNames[index] : "";
 }
@@ -571,6 +578,8 @@ std::string Panel::title() const
         return "Account";
     case Page::home:
         return "Home";
+    case Page::setup:
+        return "Check my setup";
     default:
         return search_root_ ? "Search" : "Browse";
     }
@@ -634,6 +643,8 @@ std::string Panel::note() const
         return std::string("Afterglow ") + kVersion + " for PS5.";
     case Page::home:
         return home_.note();
+    case Page::setup:
+        return setup_note(s.setup_rows);
     default:
         return {};
     }
@@ -968,6 +979,19 @@ std::vector<SheetRow> Panel::sheet_rows() const
         rows.row("Sound & sync", open_sync, timing_label(p.trim_ms)).item.chevron = true;
         rows.row("Account", open_account, account_summary(s.account)).item.chevron = true;
         rows.row("Status", open_status, s.connected ? "Connected" : "Offline").item.chevron = true;
+        rows.row("Check my setup", open_setup, setup_summary(s.setup_rows, s.setup_has_run))
+            .item.chevron = true;
+        break;
+    case Page::setup:
+        // A failed or busy check says so in semibold, its next step beneath.
+        for (const auto &check : s.setup_rows)
+        {
+            auto &r = rows.row(check.label, setup_row, check.value);
+            r.item.subtitle = check.next;
+            r.wide_subtitle = true;
+            r.strong = check.state == SetupState::fail || check.state == SetupState::busy;
+        }
+        rows.row("Check again", setup_again);
         break;
     case Page::source:
     {
@@ -1237,6 +1261,9 @@ void Panel::open(Page page)
     navigate(page, page == Page::settings ? settings_focus_ : 0);
     if (page == Page::home)
         home_.open();
+    // Opened from the idle poster's offer: the check runs at once.
+    if (page == Page::setup)
+        presentation().setup_requested = true;
     categories_.set_focus(category_ + 1);
     // Browse opens on the last category, already loading, like the LG app.
     if (page == Page::browse && presentation().companion_configured)
@@ -1277,6 +1304,7 @@ bool Panel::back()
     case Page::status:
     case Page::sync:
     case Page::account:
+    case Page::setup:
         navigate(Page::settings, parent_focus_);
         return true;
     default:
@@ -1691,6 +1719,13 @@ void Panel::confirm(const SheetRow &row)
         break;
     case open_account:
         open_child(Page::account);
+        break;
+    case open_setup:
+        open_child(Page::setup);
+        s.setup_requested = true;
+        break;
+    case setup_again:
+        s.setup_requested = true;
         break;
     case queue_earlier:
     {
@@ -2172,7 +2207,7 @@ void Panel::draw_footer(ui::Canvas &canvas, float x) const
     hints[count++] = {ui::Button::l1, "Sections", ui::Button::r1};
     if (row != nullptr && row->adjustable && !row->item.disabled)
         hints[count++] = {ui::Button::dpad, "Adjust"};
-    if (row != nullptr && !row->item.disabled)
+    if (row != nullptr && !row->item.disabled && select_label(*row) != nullptr)
         hints[count++] = {ui::Button::cross, select_label(*row)};
     if (page_ == Page::home)
         hints[count++] = {ui::Button::cross, "Select"};

@@ -320,6 +320,8 @@ bool Socket::handshake()
                 v = static_cast<char>(std::tolower(static_cast<unsigned char>(v)));
             if (name == "sec-websocket-accept")
                 accept = value == websocket_accept(key);
+            if (name == "date")
+                server_date = value;
             for (char &v : value)
                 v = static_cast<char>(std::tolower(static_cast<unsigned char>(v)));
             if (name == "upgrade")

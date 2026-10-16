@@ -55,7 +55,8 @@ std::string joined(const std::vector<std::string> &parts)
 } // namespace
 
 std::vector<IdleTile> idle_tiles(const CompanionTrack *paused,
-                                 const std::vector<CompanionTrack> &recent, RecentState state)
+                                 const std::vector<CompanionTrack> &recent, RecentState state,
+                                 bool setup)
 {
     std::vector<IdleTile> tiles;
     if (paused != nullptr && !paused->title.empty())
@@ -84,6 +85,14 @@ std::vector<IdleTile> idle_tiles(const CompanionTrack *paused,
         tiles.push_back(std::move(tile));
     }
     tiles.emplace_back();
+    const bool nothing = paused == nullptr || paused->title.empty();
+    if (setup && nothing &&
+        (state == RecentState::error || (state == RecentState::ready && tiles.size() == 1)))
+    {
+        IdleTile tile;
+        tile.kind = IdleTileKind::setup;
+        tiles.push_back(std::move(tile));
+    }
     return tiles;
 }
 
@@ -105,6 +114,8 @@ IdleText idle_text(const IdleTile &tile, RecentState state, bool has_recent)
                 joined(detail_parts(tile.item)), "Play"};
     case IdleTileKind::retry:
         return {"Nothing playing", "Couldn’t load what you played", "Try again"};
+    case IdleTileKind::setup:
+        return {"Nothing playing", "Something not right? Check my setup", "Check your setup"};
     case IdleTileKind::browse:
         break;
     }
@@ -195,6 +206,9 @@ bool IdlePoster::press(IdleKey key, const std::vector<IdleTile> &tiles, IdleAct 
         break;
     case IdleTileKind::browse:
         act = IdleAct::browse;
+        break;
+    case IdleTileKind::setup:
+        act = IdleAct::setup;
         break;
     }
     return true;

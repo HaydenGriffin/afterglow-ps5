@@ -332,11 +332,14 @@ void SheetList::draw_row(ui::Canvas &canvas, const gfx::Rect &row, const SheetRo
             chevron(list, right, cy, 1, arrow);
             right -= 24;
         }
-        const std::string value =
-            fonts.regular.font->fit(item.value, look.value_size, row.w * 0.5f);
-        const float width = fonts.regular.measure(value, look.value_size);
-        ui::text(list, fonts.regular, value, right, cy + look.value_size * 0.34f, look.value_size,
-                 ink, gfx::Align::right);
+        const auto &face = meta.strong ? fonts.semibold : fonts.regular;
+        const std::string value = face.font->fit(item.value, look.value_size, row.w * 0.5f);
+        const float width = face.measure(value, look.value_size);
+        const float value_y = meta.wide_subtitle && !item.subtitle.empty()
+                                  ? cy - (look.label_size + look.subtitle_size * 1.25f) * 0.5f +
+                                        look.label_size * 0.84f
+                                  : cy + look.value_size * 0.34f;
+        ui::text(list, face, value, right, value_y, look.value_size, ink, gfx::Align::right);
         right -= width;
         if (arrows)
         {
@@ -358,8 +361,11 @@ void SheetList::draw_row(ui::Canvas &canvas, const gfx::Rect &row, const SheetRo
     const float first = cy - block * 0.5f + look.label_size * 0.84f;
     ui::text(list, label, label.font->fit(item.title, look.label_size, room), left, first,
              look.label_size, ink);
-    ui::text(list, fonts.regular, fonts.regular.font->fit(item.subtitle, look.subtitle_size, room),
-             left, first + look.subtitle_size * 1.3f, look.subtitle_size, quiet);
+    const float subtitle_room =
+        meta.wide_subtitle ? std::max(row.x + row.w - look.padding - left, 40.0f) : room;
+    ui::text(list, fonts.regular,
+             fonts.regular.font->fit(item.subtitle, look.subtitle_size, subtitle_room), left,
+             first + look.subtitle_size * 1.3f, look.subtitle_size, quiet);
 }
 
 // Rows past the window: the edge row fades into the ground, and "More" with

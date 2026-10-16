@@ -31,6 +31,7 @@ constexpr float kCardSeconds = 9.0f;
 constexpr float kControlsIdleSeconds = 9.0f;
 constexpr float kHintSeconds = 6.0f;
 constexpr float kCloseHoldSeconds = 1.5f;
+constexpr float kSetupOfferSeconds = 20.0f;
 constexpr const char *kNotes[] = {"Live Sendspin audio", "MilkDrop driven by the music you hear",
                                   "Triangle brings the lyrics in"};
 constexpr app::TourStep kTour[] = {
@@ -208,6 +209,7 @@ class Afterglow final : public app::Concept
         transport_.open =
             approach(transport_.open, transport_open_ && !sheet_open_ ? 1.0f : 0.0f, dt, 16.0f);
         update_idle(state, dt);
+        update_setup_offer(state, dt);
         const int mode = p.display_mode;
         const bool visuals = (mode < 2 || p.poster_visuals) && !idle_.showing();
         state.milkdrop_visible = state.scanning || (p.visual_style == 0 && visuals && !sheet_open_);
@@ -401,7 +403,8 @@ class Afterglow final : public app::Concept
             state.idle_artwork.clear();
             return;
         }
-        idle_tiles_ = afterglow::idle_tiles(paused ? &c.track : nullptr, c.recent, c.recent_state);
+        idle_tiles_ =
+            afterglow::idle_tiles(paused ? &c.track : nullptr, c.recent, c.recent_state, true);
         const auto &tile = idle_tiles_[static_cast<std::size_t>(
             std::clamp(idle_.focus(), 0, static_cast<int>(idle_tiles_.size()) - 1))];
         const bool has_recent =
@@ -415,6 +418,16 @@ class Afterglow final : public app::Concept
         idle_view_.note = idle_.note();
         idle_view_.level = idle_.level();
         state.idle_artwork = tile.item.artwork;
+    }
+    // "Something not right? Check my setup" joins the "Ready when you are."
+    // screen once it has shown nothing useful for a while (Music Assistant not
+    // set up or not answering), so a normal start never sees it.
+    void update_setup_offer(afterglow::Presentation &state, float dt)
+    {
+        const bool empty = state.title.empty() && (!state.configured || !state.connected) &&
+                           !idle_.showing() && !sheet_open_ && !transport_open_;
+        offer_quiet_ = empty ? offer_quiet_ + dt : 0;
+        state.setup_offer = offer_quiet_ >= kSetupOfferSeconds;
     }
     // While the idle poster shows it takes Cross, left and right; any key
     // wakes it, and every other key keeps its usual meaning.
@@ -468,6 +481,9 @@ class Afterglow final : public app::Concept
             break;
         case afterglow::IdleAct::retry:
             state.recent_pending = true;
+            break;
+        case afterglow::IdleAct::setup:
+            open_sheet(Panel::Page::setup, 3);
             break;
         case afterglow::IdleAct::none:
             break;
@@ -911,6 +927,7 @@ class Afterglow final : public app::Concept
     float controls_idle_ = 0;
     float hint_age_ = 0;
     float close_hold_ = 0;
+    float offer_quiet_ = 0;
     float volume_wait_ = 0;
     float preset_wait_ = 0;
     int volume_seen_ = -1;

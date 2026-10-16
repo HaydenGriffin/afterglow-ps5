@@ -60,6 +60,7 @@ class Panel
         sync,    // TV output compensation (static delay) with the sync figure
         account, // sign in / log out / settings sync
         home,    // Home Assistant glance, drawn by HomeSheet
+        setup,   // Check my setup: pass/fail rows with next steps, Check again
     };
 
     Panel();

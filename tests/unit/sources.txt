@@ -34,6 +34,7 @@ src/afterglow/presentation.cpp
 src/afterglow/protocol.cpp
 src/afterglow/thumbnails.cpp
 src/afterglow/scenes.cpp
+src/afterglow/setup_check.cpp
 src/afterglow/share_link.cpp
 src/afterglow/speakers.cpp
 src/app/shell.cpp

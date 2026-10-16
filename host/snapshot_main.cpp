@@ -278,6 +278,17 @@ void answer_afterglow_playback(hui::afterglow::Presentation &model)
             }
         set_playing(true);
     }
+    // Check my setup answers at once with fixed results; nothing is asked of a network.
+    if (std::exchange(model.setup_requested, false))
+    {
+        model.setup_has_run = true;
+        model.setup_rows = hui::afterglow::preview_setup_rows();
+    }
+    // AFTERGLOW_SETUP=empty: nothing played yet, so the idle poster offers Check my setup.
+    const char *setup = std::getenv("AFTERGLOW_SETUP");
+    if (setup != nullptr && std::string_view(setup) == "empty" &&
+        std::exchange(model.recent_pending, false))
+        c.recent_state = hui::afterglow::RecentState::ready;
     if (std::exchange(model.recent_pending, false))
     {
         c.recent = {preview_recent("Evening Light", "album", 0),
@@ -487,6 +498,18 @@ int main(int argc, char **argv)
         model.account.source = hui::afterglow::AccountState::Source::config;
         model.account.host = "music.local";
         model.home.configured = true;
+        // AFTERGLOW_SETUP=offline: no song and Music Assistant not answering, for
+        // the "Something not right?" line on "Ready when you are.".
+        if (const char *setup = std::getenv("AFTERGLOW_SETUP");
+            setup != nullptr && std::string_view(setup) == "offline")
+        {
+            model.connected = model.playing = false;
+            model.title.clear();
+            model.status = "Connecting to Music Assistant";
+            model.companion.connected = model.companion.playing = false;
+            model.companion.track = {};
+            model.companion.queue_state = "idle";
+        }
     }
     if (argc < 3)
     {
