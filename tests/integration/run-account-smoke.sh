@@ -24,3 +24,13 @@ python3 "$root/tests/integration/account_mock_server.py" \
     -o "$root/build/tests/companion_account_smoke"
 python3 "$root/tests/integration/companion_account_mock_server.py" \
     "$root/build/tests/companion_account_smoke"
+# Requests left unanswered on a socket kept busy with events (about 35 s).
+"${CXX:-c++}" -std=c++20 -Wall -Wextra -Wpedantic -Werror \
+    -fno-exceptions -fno-rtti -pthread -I"$root/src" \
+    "$root/src/afterglow/companion.cpp" "$root/src/afterglow/speakers.cpp" "$root/src/afterglow/controls.cpp" \
+    "$root/src/afterglow/ma_socket.cpp" \
+    "$root/src/afterglow/protocol.cpp" \
+    "$root/tests/integration/companion_deadline_smoke.cpp" \
+    -o "$root/build/tests/companion_deadline_smoke"
+python3 "$root/tests/integration/companion_deadline_mock.py" \
+    "$root/build/tests/companion_deadline_smoke"

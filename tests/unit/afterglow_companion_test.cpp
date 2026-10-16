@@ -4,7 +4,10 @@
 
 #include "afterglow/companion.hpp"
 #include "afterglow/ma_socket.hpp"
+#include <cstdio>
 #include <gtest/gtest.h>
+#include <limits>
+#include <string>
 
 using namespace hui::afterglow;
 
@@ -206,6 +209,61 @@ TEST(AfterglowCompanion, ReadsNestedMetadataWithoutConfusingRepeatedNames)
     EXPECT_EQ(track.artwork, "/imageproxy/abc?size=512&fmt=png");
     EXPECT_EQ(track.lyrics, "First\nSecond");
     EXPECT_EQ(track.lrc_lyrics, "[00:01.00]First");
+}
+
+TEST(AfterglowCompanion, ReadsLongPlainAndEnhancedLyricsWhole)
+{
+    std::string plain, plain_json, lrc, lrc_json;
+    for (int i = 0; i < 200; ++i)
+    {
+        const auto line = "Line " + std::to_string(i) + " of a long fixture song";
+        plain += line + "\n";
+        plain_json += line + "\\n";
+        char stamp[32];
+        std::snprintf(stamp, sizeof(stamp), "[%02d:%02d.00]", i / 60, i % 60);
+        const auto timed = std::string(stamp) + "<00:00.10> Word <00:00.40> \\u00e9t\\u00e9";
+        lrc += std::string(stamp) + "<00:00.10> Word <00:00.40> été\n";
+        lrc_json += timed + "\\n";
+    }
+    ASSERT_GT(plain.size(), 5000U);
+    ASSERT_GT(lrc.size(), 5000U);
+    const auto track = companion_wire::decode_track(
+        R"({"name":"x","media_item":{"uri":"library://track/9","name":"Long","metadata":{"lyrics":")" +
+        plain_json + R"(","lrc_lyrics":")" + lrc_json + R"("}}})");
+    EXPECT_EQ(track.lyrics, plain);
+    EXPECT_EQ(track.lrc_lyrics, lrc);
+}
+
+TEST(AfterglowCompanion, RelayClockRefusesValuesThatWouldOverflow)
+{
+    constexpr std::int64_t max = std::numeric_limits<std::int64_t>::max();
+    constexpr std::int64_t min = std::numeric_limits<std::int64_t>::min();
+    const std::int64_t now = 5000000000; // 5000 s of uptime
+    companion_wire::RelayClock clock;
+    // A sane reply: sent 40 ms ago, the server 1 s ahead of the midpoint.
+    ASSERT_TRUE(companion_wire::relay_clock(now / 1000 - 40, now - 20000 + 1000000, now, clock));
+    EXPECT_EQ(clock.rtt_us, 40000);
+    EXPECT_EQ(clock.offset_us, 1000000);
+    for (const std::int64_t client : {max, min, max / 1000, std::int64_t{-1}, now / 1000 + 1})
+    {
+        clock = {};
+        EXPECT_FALSE(companion_wire::relay_clock(client, now, now, clock)) << client;
+        EXPECT_EQ(clock.offset_us, 0) << client;
+    }
+    for (const std::int64_t server :
+         {max, min, std::int64_t{0}, std::int64_t{-1}, companion_wire::kMaxRelayClockUs + 1})
+        EXPECT_FALSE(companion_wire::relay_clock(now / 1000, server, now, clock)) << server;
+    for (const std::int64_t at : {min, std::int64_t{-1}, max})
+        EXPECT_FALSE(companion_wire::relay_clock(0, 1, at, clock)) << at;
+    // Stale: answered more than 10 s after it was sent.
+    EXPECT_FALSE(companion_wire::relay_clock(now / 1000 - 10001, now, now, clock));
+    EXPECT_TRUE(companion_wire::relay_clock(now / 1000 - 10000, now, now, clock));
+    // The extremes still accepted give an offset the monotonic clock can take.
+    ASSERT_TRUE(
+        companion_wire::relay_clock(now / 1000, companion_wire::kMaxRelayClockUs, now, clock));
+    EXPECT_LE(clock.offset_us, companion_wire::kMaxRelayClockUs);
+    ASSERT_TRUE(companion_wire::relay_clock(now / 1000, 1, now, clock));
+    EXPECT_GE(clock.offset_us, -now);
 }
 
 TEST(AfterglowCompanion, HandlesRadioAndUnavailableMetadata)

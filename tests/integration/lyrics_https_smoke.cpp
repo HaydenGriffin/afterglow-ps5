@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Afterglow contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// usage: lyrics_https_smoke get HOST PORT PATH ok|fail [STATUS]
+// usage: lyrics_https_smoke get HOST PORT PATH ok|fail [STATUS] [ERROR]
 //        lyrics_https_smoke lyrics HOST PORT
 // The CA list comes from SSL_CERT_FILE, as on any PC.
 
@@ -18,13 +18,14 @@ using namespace hui::afterglow;
 
 namespace
 {
-int get(const std::string &host, int port, const std::string &path, bool expect_ok, int status)
+int get(const std::string &host, int port, const std::string &path, bool expect_ok, int status,
+        const std::string &error)
 {
     const auto result = https_get(
         host, path, lrclib::user_agent(), lrclib::kMaxAnswer, 8000, [] { return false; }, port);
     std::printf("get %s:%d%s -> ok=%d status=%d bytes=%zu error=%s\n", host.c_str(), port,
                 path.c_str(), result.ok, result.status, result.body.size(), result.error.c_str());
-    if (result.ok != expect_ok)
+    if (result.ok != expect_ok || (!error.empty() && result.error != error))
         return 1;
     return expect_ok && status != 0 && result.status != status ? 1 : 0;
 }
@@ -65,10 +66,10 @@ int main(int argc, char **argv)
     const std::string mode = argc > 1 ? argv[1] : "";
     if (mode == "get" && argc >= 6)
         return get(argv[2], std::atoi(argv[3]), argv[4], std::string(argv[5]) == "ok",
-                   argc > 6 ? std::atoi(argv[6]) : 0);
+                   argc > 6 ? std::atoi(argv[6]) : 0, argc > 7 ? argv[7] : "");
     if (mode == "lyrics" && argc >= 4)
         return lyrics(argv[2], std::atoi(argv[3]));
-    std::fprintf(stderr, "usage: lyrics_https_smoke get HOST PORT PATH ok|fail [STATUS]\n"
+    std::fprintf(stderr, "usage: lyrics_https_smoke get HOST PORT PATH ok|fail [STATUS] [ERROR]\n"
                          "       lyrics_https_smoke lyrics HOST PORT\n");
     return 2;
 }

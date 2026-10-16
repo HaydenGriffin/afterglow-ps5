@@ -78,7 +78,8 @@ class SceImeBackend final : public ImeBackend
 
     bool open(const Params &params) override
     {
-        prepare();
+        if (!prepare())
+            return false;
         ImeDialogParam param{};
         param.user_id = user_;
         param.type = params.kind == KeyboardKind::url      ? kTypeUrl
@@ -129,19 +130,22 @@ class SceImeBackend final : public ImeBackend
     }
 
   private:
-    // Once, before the first sceImeDialogInit: the dialog's module is loaded
+    // Before the first sceImeDialogInit: the dialog's module is loaded
     // through the system module table. sceCommonDialogInitialize should follow,
     // but the payload SDK ships no libSceCommonDialog import stub, so it cannot
     // be linked; the log says so in case the dialog misbehaves on hardware.
-    void prepare()
+    // A failed load (a negative SCE error) fails this open rather than calling
+    // into a module that is not there, and is tried again on the next one.
+    bool prepare()
     {
         if (prepared_)
-            return;
-        prepared_ = true;
+            return true;
         const int loaded = sceSysmoduleLoadModule(kSysmoduleImeDialog);
         sys::log("[Afterglow] keyboard module=0x%08x; sceCommonDialogInitialize skipped (no "
                  "libSceCommonDialog stub in the SDK)",
                  static_cast<unsigned>(loaded));
+        prepared_ = loaded >= 0;
+        return prepared_;
     }
 
     int user_;

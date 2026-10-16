@@ -48,7 +48,12 @@ name revoked, the token file removed). The second checks the Companion's
 settings mirroring (`vizman.devices[<device>]` read, a debounced
 merge-before-write that keeps other devices, favourites and unrelated keys) and
 the static delay (found on the universal player under a protocol-prefixed key,
-then saved with `config/players/save`). Neither contacts a real server.
+then saved with `config/players/save`). A third keeps the socket busy with
+events while it leaves the first account read, recent-music read and settings
+save unanswered (and answers that save only late, beside a refused retry): each
+must time out without dropping the connection, the late reply must be ignored
+and the favourite edit kept until a later save is acknowledged. None of them
+contacts a real server.
 
 ## Command target and moving music smoke
 
@@ -64,3 +69,14 @@ volume on a sync leader (`players/cmd/group_volume`), recent music for the idle
 poster (`music/recently_played_items`, artwork made absolute), a transfer to a
 silent speaker (`player_queues/transfer` without `auto_play`) and Play on this
 PS5 (`auto_play: true`). It never contacts a real server.
+
+## Console keyboard backend
+
+```sh
+bash tests/integration/run-ime-backend-smoke.sh
+```
+
+Builds `src/platform/ps5/keyboard_ime.cpp` on the PC against stubbed `sce`
+calls and checks that a failed `libSceImeDialog` module load fails the open
+without calling the dialog, and that the load is tried again (and done once)
+on later opens. It says nothing about the dialog on a console.

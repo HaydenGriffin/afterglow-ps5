@@ -155,10 +155,24 @@ bool authenticated(const account_wire::Reply &reply)
 {
     return reply.ok && field(reply.result, "authenticated") == "true";
 }
-void revoke(const account_wire::Call &call, const std::vector<std::string> &ids)
+// How a set of revocations went. A refusal and a lost reply need different
+// advice: after a lost reply the token may be gone already.
+enum class Revoked
 {
+    all,
+    refused,
+    unconfirmed
+};
+Revoked revoke(const account_wire::Call &call, const std::vector<std::string> &ids)
+{
+    bool refused = false, lost = false;
     for (const auto &id : ids)
-        call("auth/token/revoke", "{\"token_id\":" + json_quote(id) + "}");
+    {
+        const auto reply = call("auth/token/revoke", "{\"token_id\":" + json_quote(id) + "}");
+        refused |= !reply.ok && !reply.lost;
+        lost |= !reply.ok && reply.lost;
+    }
+    return refused ? Revoked::refused : lost ? Revoked::unconfirmed : Revoked::all;
 }
 std::vector<account_wire::Token> list_tokens(const account_wire::Call &call)
 {
@@ -208,6 +222,7 @@ class Session
                                ",\"command\":" + json_quote(command) + ",\"args\":" + args + "}"))
         {
             reply.error = "Connection closed";
+            reply.lost = true;
             return reply;
         }
         const auto deadline = sys::monotonic_us() + 15000000;
@@ -216,6 +231,7 @@ class Session
             if (!socket_.tick())
             {
                 reply.error = "Connection closed";
+                reply.lost = true;
                 return reply;
             }
             while (!inbox_.empty())
@@ -239,6 +255,7 @@ class Session
             poll(nullptr, 0, 10);
         }
         reply.error = "No reply to " + command;
+        reply.lost = true;
         return reply;
     }
 
@@ -609,7 +626,7 @@ Outcome sign_in(const Call &call, const std::string &username, const std::string
     // per console. Failure is harmless: session tokens expire on their own.
     const auto tokens = list_tokens(call);
     outcome.token_id = newest_token(tokens, token_name);
-    revoke(call, session_tokens(tokens, token_name));
+    static_cast<void>(revoke(call, session_tokens(tokens, token_name)));
     // The sign-in this one replaces is retired once the app runs on the new token.
     outcome.retire = superseded;
     if (!replaces.token_id.empty() && replaces.token_id != outcome.token_id)
@@ -627,10 +644,13 @@ Outcome log_out(const Call &call, const std::string &token, const std::string &t
     Outcome outcome;
     // Forgotten here whatever happens; the message says what the account still holds.
     outcome.ok = true;
-    if (!authenticated(call("auth", token_args(token))))
+    const auto session = call("auth", token_args(token));
+    if (!authenticated(session))
     {
-        outcome.message = "Signed out here. Music Assistant refused the token, so remove \"" +
-                          token_name + "\" in its settings if it is still listed.";
+        outcome.message = std::string("Signed out here. Music Assistant ") +
+                          (session.lost ? "did not answer" : "refused the token") +
+                          ", so remove \"" + token_name +
+                          "\" in Music Assistant's Settings if it is still listed.";
         return outcome;
     }
     const auto reply = call("auth/tokens", "{}");
@@ -640,8 +660,19 @@ Outcome log_out(const Call &call, const std::string &token, const std::string &t
                           reply.error + "). Remove it in Music Assistant's settings.";
         return outcome;
     }
-    revoke(call, own_tokens(decode_tokens(reply.result), token_name, token_id));
-    outcome.message = "Signed out. This PS5's token was removed from the account.";
+    const auto own = own_tokens(decode_tokens(reply.result), token_name, token_id);
+    // Nothing listed under our id or name: nothing was removed, so say so.
+    const auto revoked = own.empty() ? Revoked::unconfirmed : revoke(call, own);
+    if (revoked == Revoked::all)
+        outcome.message = "Signed out. This PS5's token was removed from the account.";
+    else if (revoked == Revoked::refused)
+        outcome.message = "Signed out here. Music Assistant refused to remove the token, so "
+                          "remove \"" +
+                          token_name + "\" in Music Assistant's Settings.";
+    else
+        outcome.message = "Signed out here. Music Assistant did not confirm the token was "
+                          "removed, so remove \"" +
+                          token_name + "\" in Music Assistant's Settings if it is still listed.";
     return outcome;
 }
 Outcome renew(const Call &call, const std::string &token, const std::string &token_name,
@@ -695,6 +726,44 @@ Outcome retire(const Call &call, const std::string &token, const std::vector<std
     return outcome;
 }
 } // namespace account_wire
+
+AccountResult account_result(AccountJob job, const StoredAuth &auth, account_wire::Outcome outcome,
+                             const std::string &path)
+{
+    AccountResult result;
+    result.job = job;
+    result.auth = auth;
+    result.ok = outcome.ok;
+    result.token_changed = outcome.token_changed;
+    result.message = std::move(outcome.message);
+    result.retire = std::move(outcome.retire);
+    if (job == AccountJob::log_out)
+    {
+        result.auth = {};
+        const auto error = account_wire::remove_auth(path);
+        if (!error.empty())
+            result.message += " " + error + ".";
+        return result;
+    }
+    if (!outcome.ok || !outcome.token_changed)
+        return result;
+    result.auth.token = outcome.token;
+    result.auth.token_id = outcome.token_id;
+    if (!outcome.username.empty())
+        result.auth.username = outcome.username;
+    result.save_error = account_wire::save_auth(path, result.auth);
+    if (result.save_error.empty())
+        return result;
+    // The file still holds the previous token, so it stays valid on the account
+    // for the next launch; the new one works only until the app closes.
+    result.retire.clear();
+    if (job == AccountJob::renew)
+        result.message = "Token renewed for this session only (" + result.save_error +
+                         "); the previous token is kept for the next launch";
+    else
+        result.message += " (" + result.save_error + "; this sign-in lasts until the app closes)";
+    return result;
+}
 
 Account::Account(std::string path) : path_(std::move(path))
 {
@@ -813,9 +882,6 @@ void Account::run()
         replaces = std::exchange(replaces_, {});
         retiring.swap(retire_);
     }
-    AccountResult result;
-    result.job = job;
-    result.auth = auth;
     Session session(stopping_);
     const bool open = session.open(auth.host, auth.port);
     const account_wire::Call call = [&](const std::string &command, const std::string &args)
@@ -842,27 +908,7 @@ void Account::run()
     else if (job == AccountJob::retire)
         outcome = account_wire::retire(call, auth.token, retiring);
     password.assign(password.size(), '\0');
-    result.ok = outcome.ok;
-    result.token_changed = outcome.token_changed;
-    result.message = outcome.message;
-    result.retire = std::move(outcome.retire);
-    if (job == AccountJob::log_out)
-    {
-        result.auth = {};
-        const auto error = account_wire::remove_auth(path_);
-        if (!error.empty())
-            result.message += " " + error + ".";
-    }
-    else if (outcome.ok && outcome.token_changed)
-    {
-        result.auth.token = outcome.token;
-        result.auth.token_id = outcome.token_id;
-        if (!outcome.username.empty())
-            result.auth.username = outcome.username;
-        const auto error = account_wire::save_auth(path_, result.auth);
-        if (!error.empty())
-            result.message += " (" + error + "; this sign-in lasts until the app closes)";
-    }
+    AccountResult result = account_result(job, auth, std::move(outcome), path_);
     sys::log("[Afterglow] account job=%d ok=%d", static_cast<int>(job), result.ok ? 1 : 0);
     {
         std::lock_guard<std::mutex> lock(mutex_);

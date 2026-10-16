@@ -102,6 +102,9 @@ struct Reply
 {
     bool ok = false;
     std::string result, error;
+    // No answer arrived (closed or timed out): unlike a refusal, the server
+    // may still have done what was asked.
+    bool lost = false;
 };
 // One request on an open, greeted API socket; tests substitute a fake server.
 using Call = std::function<Reply(const std::string &command, const std::string &args)>;
@@ -151,7 +154,14 @@ struct AccountResult
     std::string message;
     // Superseded tokens: hand auth.token to every connection, then retire() these.
     std::vector<std::string> retire;
+    // Why the new token could not be written; "" when it was (or nothing changed).
+    std::string save_error;
 };
+// A finished job's result: writes the new token to path (or removes the file
+// on log out). Superseded tokens are retired only once the new one is saved;
+// otherwise the next launch would read a token that no longer works.
+AccountResult account_result(AccountJob job, const StoredAuth &auth, account_wire::Outcome outcome,
+                             const std::string &path);
 
 // Short-lived API sessions on a worker thread; the UI thread only starts jobs
 // and collects results. The worker also writes or removes the token file.

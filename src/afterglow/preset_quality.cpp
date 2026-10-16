@@ -12,6 +12,10 @@ namespace hui::afterglow
 {
 namespace
 {
+// Matches the preferences file's limit for this value. The packaged library
+// encodes to about 27 KB, so this leaves room for long names and 1000 records.
+constexpr std::size_t kMaxDocument = 262144;
+
 bool valid_name(std::string_view name)
 {
     return !name.empty() && name.size() <= 1024 && name.find_first_of("\r\n\t") == name.npos;
@@ -109,9 +113,9 @@ std::string PresetQuality::encode() const
 PresetQuality PresetQuality::decode(std::string_view text)
 {
     PresetQuality result;
-    if (text.size() > (2u << 20))
+    if (text.size() > kMaxDocument)
         return result;
-    const Json json(text);
+    const Json json(text, kMaxDocument);
     if (!json.valid() || json.integer(json.get(0, "version")) != 1)
         return result;
     const std::string interrupted = json.string(json.get(0, "pending"));

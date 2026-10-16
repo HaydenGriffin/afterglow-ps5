@@ -56,6 +56,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(b"%x\r\n%s\r\n" % (len(piece), piece))
             self.wfile.write(b"0\r\n\r\n")
             return
+        if self.path.startswith("/tiny"):
+            # One byte per chunk, each in its own TLS record: /tiny-ok ends
+            # well within the limit; /tiny-flood never ends and must be cut
+            # off by the wire cap before the 4 MiB body limit is reached.
+            self.send_response(200)
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            if self.path.startswith("/tiny-ok"):
+                for _ in range(20000):
+                    self.wfile.write(b"1\r\nx\r\n")
+                self.wfile.write(b"0\r\n\r\n")
+                return
+            batch = b"1\r\nx\r\n" * 10000
+            try:
+                for _ in range(200):
+                    self.wfile.write(batch)
+            except (BrokenPipeError, ConnectionResetError, ssl.SSLError):
+                pass
+            return
         if self.path.startswith("/limited"):
             self.send_response(429)
             self.send_header("Content-Length", "0")

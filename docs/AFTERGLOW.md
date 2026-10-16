@@ -4,8 +4,9 @@ An unofficial Music Assistant TV companion, built on BlackBearReloaded's
 [ps5-homebrew-ui](https://github.com/blackbearreloaded/ps5-homebrew-ui).
 This is a foreground playback client, not a Music Assistant server fork.
 Version 1.6.0 shares the LG Afterglow poster interface and core music
-controls. Everything added since the parity build is host-tested only; see
-[Not verified on hardware](#not-verified-on-hardware). Setting it up:
+controls. It ran on a PS5 on firmware 7.20 on 16 October 2026; what was
+checked there, and what was not, is under
+[Checked on hardware](#checked-on-hardware). Setting it up:
 [install.md](install.md); history: [CHANGELOG.md](../CHANGELOG.md).
 
 The PS5 connects directly to Music Assistant's Sendspin server on the LAN,
@@ -102,7 +103,7 @@ The current build includes:
   animation, LG 1.5.0), and the night register dims the poster from 22:00 to
   06:00. With nothing playing, an idle poster offers the paused song or recent
   music.
-- A preset browser, favourites shared with Music Assistant and LG viz-man,
+- A preset browser, favourites shared with Music Assistant and LG Afterglow,
   shuffle or sequential order, preset locking, a change timer, beat
   sensitivity (projectM's and the halo/spectrum beat detector's) and album
   colour that recolours each preset's waveform, border and motion-vector slots.
@@ -479,54 +480,53 @@ python3 tools/audit-imports.py build/llvm-pie.elf
 The lyrics smoke makes a throwaway CA and a certificate for `localhost`,
 serves an lrclib.net stand-in on loopback and runs the real HTTPS client
 (BearSSL) and search worker against it: it finds the lyrics, reads chunked
-and rate-limited answers, and refuses an untrusted CA and a host name the
-certificate does not cover. `AFTERGLOW_LRCLIB_LIVE=1` adds one real search on
+and rate-limited answers (and a body sent a byte per chunk), refuses an
+answer whose chunk framing outgrows its wire allowance, and refuses an
+untrusted CA and a host name the certificate does not cover. `AFTERGLOW_LRCLIB_LIVE=1` adds one real search on
 lrclib.net and expired / wrong-host certificates on badssl.com.
 
 Host checks include real Music Assistant metadata/relay reads and disposable
 mock servers that test masked WebSockets, decimal elapsed times, lyrics,
 favourite merging, reconnect after a lost write acknowledgement, bounded
 shutdown, browse/search paging, sign-in/renewal/log out (token ids, the
-hand-over before revoking, a namesake left alone), combined volume/seek/skip
-presses and group volume behind slow answers, a late refusal of a replaced
+hand-over before revoking, a namesake left alone, log out saying when the
+token was not removed), account and recent-music requests left unanswered on
+a busy socket, combined volume/seek/skip presses and group volume behind
+slow answers, a late refusal of a replaced
 token, the relay's stall reconnect and the Home Assistant glance
 (`run-companion-smoke.sh` takes about 95 s). The mocks never change real
 players, accounts or Home Assistant.
 
-### Not verified on hardware
+### Checked on hardware
 
-An earlier build passed hardware audio/title/artwork checks and measured
-59.9–60 fps without audio errors. **Everything new in 1.5.0 and 1.6.0 is
-unverified on the console**, including:
+On 16 October 2026, 1.6.0 ran on one PS5 on firmware 7.20 and these were
+checked there: launch, playback through the console at 59.9–60 fps, artwork,
+online lyrics over HTTPS (so the console's name lookup, CA list and clock for
+certificate dates worked), Browse, the controls, the queue, Display settings
+and the lyric overlays, the Home section, the dev request path and the title's
+place under Media.
 
-- the transport band, sheets and every controller binding with a DualSense
-  in hand;
-- search, artist pages, podcasts/audiobooks, More paging and the 50-song
-  queue window;
+**Not yet verified on a console:**
+
+- the system keyboard (IME): console sign-in and search;
+- the light bar (colour and beat pulse);
+- the 120 Hz option and sustained 120 fps;
+- token renewal (the hand-over before the old token is revoked);
+- timing drift over a long session.
+
+Not checked one by one on the console either, so still host-tested only:
+
 - speaker group editing, TV output compensation and the sync figure;
-- the command target, moving music between speakers (transfers, Play on this
-  PS5) and the idle poster (only the Python mocks have answered these writes);
-- the system keyboard, console sign-in, token renewal (the hand-over before
-  the old token is revoked), log out by token id, the `afterglow.auth` write
-  and settings mirroring;
-- combined volume/seek/skip presses and group volume on real speakers, and
-  the relay's stall reconnect after Music Assistant stops sending frames;
-- the light bar (colour and beat pulse), beat detection and projectM beat
-  sensitivity;
-- album slot recolouring, the night register's local time, word-by-word
-  lyrics and lyric timing on L2/R2;
-- Browse's row details and confirmations, and Play now returning to Now
-  playing;
-- the Home Assistant glance, the dev request path and the quality facts in
-  Details;
-- the online lyrics search on the console: name lookup through
-  `sceNetResolver`, the CA list at `/system/common/cert/CA_LIST.cer` (PEM or
-  DER), BearSSL's RDRAND seeding and the console clock for certificate dates
-  (a wrong clock fails every lookup as "certificate expired or clock wrong");
-  the TLS handshake itself has run only on a PC;
-- the 120 Hz option and sustained 120 fps.
+- moving music between speakers (transfers, Play on this PS5) and the idle
+  poster (only the Python mocks have answered these writes);
+- log out by token id, the `afterglow.auth` write and settings mirroring;
+- group volume on real speakers, and the relay's stall reconnect after Music
+  Assistant stops sending frames;
+- beat detection and projectM beat sensitivity, album slot recolouring and
+  the night register's local time;
+- word-by-word lyrics, lyric timing on L2/R2 and the quality facts in Details.
 
-Host checks and captures do not establish any of these.
+Host checks and captures do not establish any of the unchecked items.
 
 Preview data is explicitly illustrative. A screenshot does not verify PS5 sound,
 frame rate or timing. The network worker and audio output run independently of
@@ -548,7 +548,7 @@ to investigate, not proof that a buffer-size increase alone will fix the issue.
 
 Album colour rewrites each preset's waveform, outer/inner border and
 motion-vector base colours in the preset text before projectM loads it, as LG
-viz-man recolours those slots: the artwork hue at the preset's own brightness,
+Afterglow recolours those slots: the artwork hue at the preset's own brightness,
 wide borders (over 0.05) keep their colour, blended by the 25-100 % strength.
 LG fills the slots from Music Assistant palette roles; the PS5 has two artwork
 colours, so the accent takes the waveform and inner border and the secondary
@@ -618,8 +618,10 @@ projectM with 393 of the same 395 presets enabled; LG uses Butterchurn. PS5
 still reads its server addresses from a private configuration file, and has two
 artwork colours rather than LG's palette roles.
 
-Treat both as unverified until controller/remote, audio, lyric timing and a
-listening-session check pass on their respective hardware. LG
+On the PS5, controls, audio and lyrics passed on the console on 16 October
+2026 ([Checked on hardware](#checked-on-hardware)); treat LG as unverified
+until the same checks pass on its hardware, and both until a long listening
+session has been measured. LG
 also has documented native graphics memory growth (about 3.4 MiB/min in the
 existing constant-preset 30 fps measurement). Timing queries are already
 disabled by default, but remaining growth is unresolved; do not claim

@@ -5,7 +5,8 @@
 #
 # Makes a throwaway CA and a certificate for localhost, serves an lrclib.net
 # stand-in on loopback, and checks that the client finds lyrics through it,
-# reads chunked answers and errors, and refuses an untrusted CA and a name the
+# reads chunked answers (even one byte per chunk) and errors, refuses an answer
+# whose chunk framing outgrows the wire allowance, and refuses an untrusted CA and a name the
 # certificate does not cover. Nothing leaves the machine unless
 # AFTERGLOW_LRCLIB_LIVE=1, which also runs one real search on lrclib.net.
 # Needs openssl, Python 3 and a C++20 compiler (CXX, CC); Linux or macOS.
@@ -59,6 +60,11 @@ for name in other trusted; do
 done | sed 's/$/\r/' >"$out/console-ca-list.cer"
 SSL_CERT_FILE="$out/console-ca-list.cer" "$smoke" get localhost "$port" /chunked ok 200
 SSL_CERT_FILE="$out/trusted-ca.pem" "$smoke" get localhost "$port" /limited ok 429
+# A body trickled one byte per chunk and record is read; one that never ends is
+# refused once its framing exceeds the wire allowance, before the body limit.
+SSL_CERT_FILE="$out/trusted-ca.pem" "$smoke" get localhost "$port" /tiny-ok ok 200
+SSL_CERT_FILE="$out/trusted-ca.pem" "$smoke" get localhost "$port" /tiny-flood fail 0 \
+    "answer too large"
 # Certificate checks are on: another CA, or a name the certificate lacks, fail.
 SSL_CERT_FILE="$out/other-ca.pem" "$smoke" get localhost "$port" /chunked fail
 SSL_CERT_FILE="$out/trusted-ca.pem" "$smoke" get 127.0.0.1 "$port" /chunked fail

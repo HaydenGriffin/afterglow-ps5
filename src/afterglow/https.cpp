@@ -537,6 +537,12 @@ HttpsResult https_get(const std::string &host, const std::string &path,
     }
     std::string wire;
     std::array<unsigned char, 16384> chunk{};
+    // Parsing reads the whole wire. Doing it after every read would be
+    // quadratic for a response trickled in tiny records, so once the header is
+    // in it runs again only when the response could be complete (its
+    // Content-Length reached, a chunked body's last chunk, the close) or the
+    // wire has passed its cap.
+    http::Response response;
     for (;;)
     {
         const int count = br_sslio_read(&session->io, chunk.data(), chunk.size());
@@ -544,7 +550,11 @@ HttpsResult https_get(const std::string &host, const std::string &path,
         if (!closed)
             wire.append(reinterpret_cast<const char *>(chunk.data()),
                         static_cast<std::size_t>(count));
-        const auto response = http::parse_response(wire, closed, max_body);
+        if (!closed && response.status != 0 &&
+            (response.complete_at == 0 || wire.size() < response.complete_at) &&
+            !wire.ends_with("\r\n0\r\n\r\n") && wire.size() <= http::max_wire(max_body))
+            continue;
+        response = http::parse_response(wire, closed, max_body);
         using State = http::Response::State;
         if (response.state == State::complete)
         {

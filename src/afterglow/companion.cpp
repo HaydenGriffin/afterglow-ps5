@@ -138,7 +138,7 @@ std::string string_value(std::string_view s)
     if (s.empty() || s.size() > 65536)
         return {};
     const std::string object = "{\"v\":" + std::string(s) + "}";
-    Json json(object);
+    Json json(object, object.size());
     return json.string(json.get(0, "v"));
 }
 std::string text_field(std::string_view s, std::string_view key)
@@ -1078,6 +1078,24 @@ RelayCheck relay_check(std::int64_t now_us, std::int64_t opened_us, std::int64_t
     return now_us - std::max(last_wave_us, opened_us) > kRelayStallUs ? RelayCheck::skip
                                                                       : RelayCheck::keep;
 }
+bool relay_clock(std::int64_t client_ms, std::int64_t server_us, std::int64_t now_us,
+                 RelayClock &out)
+{
+    // Both numbers come off the network. Range checks come before any
+    // arithmetic, so no value the server sends can overflow (undefined
+    // behaviour): the echo must be a time we could have sent, and the server
+    // clock is bounded the way the Sendspin client bounds its own (client.cpp).
+    if (now_us < 0 || now_us > kMaxRelayClockUs || client_ms < 0 || client_ms > now_us / 1000 ||
+        server_us <= 0 || server_us > kMaxRelayClockUs)
+        return false;
+    const auto sent_us = client_ms * 1000;
+    const auto rtt = now_us - sent_us;
+    if (rtt > kRelayClockRttUs)
+        return false;
+    out.rtt_us = rtt;
+    out.offset_us = server_us - (sent_us + rtt / 2);
+    return true;
+}
 } // namespace companion_wire
 
 struct Companion::Impl
@@ -1112,6 +1130,17 @@ struct Companion::Impl
     // Idle poster: a recently played read asked for by load_recent().
     bool recent_wanted = false;
     std::string recent_inflight;
+    // Requests that hold work until answered (account read and save, recent
+    // music, the static delay read) give up after kReplyUs, so one unanswered
+    // request on a socket that stays busy with events cannot stall them. Each
+    // carries its own id, so a reply after its deadline is ignored.
+    static constexpr std::int64_t kReplyUs = 10000000;
+    // After a failed or unanswered account read or save: a pause, so pending
+    // edits (which skip the regular interval) are not retried back to back.
+    static constexpr std::int64_t kAccountRetryUs = 3000000;
+    std::string account_id, save_id;
+    std::int64_t account_deadline = 0, save_deadline = 0, recent_deadline = 0, delay_deadline = 0;
+    std::int64_t account_hold = 0;
     CompanionTrack enriched_track;
     std::uint64_t enrichment_number = 0;
     // Retry lyrics (UI thread): the worker enriches the playing song again.
@@ -1423,12 +1452,21 @@ struct Companion::Impl
             }
             next_poll = 0;
             account_pending = true;
-            call("account", "auth/me");
+            account_deadline = sys::monotonic_us() + kReplyUs;
+            account_id = "account-" + std::to_string(++sequence);
+            call(account_id, "auth/me");
         }
-        else if (id == "account" && !result.empty())
-            read_account(result);
-        else if (id == "save-favorites")
+        else if (!account_id.empty() && id == account_id)
         {
+            account_id.clear();
+            if (field(raw, "error_code").empty() && !result.empty())
+                read_account(result);
+            else
+                account_failed(sys::monotonic_us(), 60000000);
+        }
+        else if (!save_id.empty() && id == save_id)
+        {
+            save_id.clear();
             if (field(raw, "error_code").empty() && !result.empty())
             {
                 std::lock_guard<std::mutex> lock(mutex);
@@ -1442,6 +1480,7 @@ struct Companion::Impl
             }
             else
             {
+                account_hold = sys::monotonic_us() + kAccountRetryUs;
                 std::lock_guard<std::mutex> lock(mutex);
                 device_saved(false);
             }
@@ -1529,6 +1568,38 @@ struct Companion::Impl
         }
         return true;
     }
+    // An account read that failed or went unanswered: the next one comes
+    // after the regular interval (wait), never sooner than kAccountRetryUs.
+    void account_failed(std::int64_t now, std::int64_t wait)
+    {
+        account_pending = false;
+        account_id.clear();
+        next_account = now + wait;
+        account_hold = now + kAccountRetryUs;
+    }
+    // Unanswered requests stop holding their work; edits stay pending and are
+    // sent again with the next account read.
+    void expire_requests(std::int64_t now)
+    {
+        if (account_pending && now >= account_deadline)
+            account_failed(now, 0);
+        if (!save_id.empty() && now >= save_deadline)
+        {
+            save_id.clear();
+            favorite_inflight.clear();
+            account_hold = now + kAccountRetryUs;
+            std::lock_guard<std::mutex> lock(mutex);
+            device_saved(false);
+        }
+        if (delay_reading && now >= delay_deadline)
+            delay_reading = false;
+        std::lock_guard<std::mutex> lock(mutex);
+        if (!recent_inflight.empty() && now >= recent_deadline)
+        {
+            recent_inflight.clear();
+            state.recent_state = RecentState::error;
+        }
+    }
     void read_account(std::string_view result)
     {
         account_pending = false;
@@ -1570,11 +1641,14 @@ struct Companion::Impl
         }
         if (!save.empty() && !too_large)
         {
-            if (call("save-favorites", "auth/user/update", args))
+            save_id = "save-favorites-" + std::to_string(++sequence);
+            save_deadline = sys::monotonic_us() + kReplyUs;
+            if (call(save_id, "auth/user/update", args))
             {
                 favorite_inflight = changes;
                 return;
             }
+            save_id.clear();
             std::lock_guard<std::mutex> lock(mutex);
             for (const auto &[name, change] : changes)
                 if (!favorite_changes.contains(name))
@@ -1657,6 +1731,7 @@ struct Companion::Impl
     }
     bool call_delay()
     {
+        delay_deadline = sys::monotonic_us() + kReplyUs;
         return call(delay_id(), "config/players/get",
                     "{\"player_id\":" + json_quote(delay_candidates[delay_probe]) + "}");
     }
@@ -1733,19 +1808,19 @@ struct Companion::Impl
         {
             auto payload = field(raw, "payload");
             Json clock(payload);
-            const auto sent_us = clock.integer(clock.get(0, "client_transmitted")) * 1000;
-            const auto server_us = clock.integer(clock.get(0, "server_transmitted"));
-            const auto rtt = now - sent_us;
-            if (rtt < 0 || rtt > 10000000 || server_us <= 0)
+            companion_wire::RelayClock sample;
+            if (!companion_wire::relay_clock(clock.integer(clock.get(0, "client_transmitted"), -1),
+                                             clock.integer(clock.get(0, "server_transmitted"), -1),
+                                             now, sample))
                 return true;
             std::lock_guard<std::mutex> lock(mutex);
-            if (rtt <= best_rtt || now - clock_sample > 60000000)
+            if (sample.rtt_us <= best_rtt || now - clock_sample > 60000000)
             {
-                best_rtt = rtt;
-                offset = server_us - (sent_us + now) / 2;
+                best_rtt = sample.rtt_us;
+                offset = sample.offset_us;
                 clock_sample = now;
                 clock_ready = true;
-                state.clock_rtt_ms = static_cast<double>(rtt) / 1000;
+                state.clock_rtt_ms = static_cast<double>(sample.rtt_us) / 1000;
             }
         }
         return true;
@@ -2043,6 +2118,7 @@ struct Companion::Impl
             state.recent_state = RecentState::loading;
         }
         recent_inflight = "recent-" + std::to_string(++sequence);
+        recent_deadline = sys::monotonic_us() + kReplyUs;
         const auto wire = companion_wire::recent_request();
         return call(recent_inflight, wire.command, wire.args);
     }
@@ -2159,6 +2235,9 @@ struct Companion::Impl
         {
             authenticated = false;
             account_pending = false;
+            account_id.clear();
+            save_id.clear();
+            account_hold = 0;
             {
                 std::lock_guard<std::mutex> lock(mutex);
                 for (const auto &[name, change] : favorite_inflight)
@@ -2210,10 +2289,12 @@ struct Companion::Impl
                         std::lock_guard<std::mutex> lock(mutex);
                         favorites_pending = !favorite_changes.empty() && !state.account_too_large;
                     }
-                    if (!account_pending && favorite_inflight.empty() &&
+                    expire_requests(now);
+                    if (!account_pending && save_id.empty() && now >= account_hold &&
                         (now >= next_account || favorites_pending || device_save_due(now)))
                     {
                         account_pending = true;
+                        account_deadline = now + kReplyUs;
                         okay = okay && send_auth();
                     }
                     // A new own player pre-empts a read in progress (its reply is then ignored).
@@ -2566,6 +2647,7 @@ std::vector<float> Companion::take_pcm(int trim_ms)
     std::vector<float> pcm;
     if (!impl_->clock_ready)
         return pcm;
+    // offset passed companion_wire::relay_clock, so this sum stays in range.
     const auto now = sys::monotonic_us() + impl_->offset -
                      static_cast<std::int64_t>(std::clamp(trim_ms, -5000, 5000)) * 1000;
     while (!impl_->waves.empty() && impl_->waves.front().time <= now)

@@ -4,6 +4,7 @@
 
 #pragma once
 #include "afterglow/client.hpp"
+#include <cstdint>
 #include <memory>
 #include <map>
 
@@ -299,6 +300,19 @@ enum class RelayCheck
 constexpr std::int64_t kRelayStallUs = 10000000;
 RelayCheck relay_check(std::int64_t now_us, std::int64_t opened_us, std::int64_t last_wave_us,
                        bool streaming);
+// The relay's server/time reply: client_ms is the client_transmitted it echoes
+// (milliseconds on this PS5's monotonic clock), server_us the server's clock.
+// A reply older than kRelayClockRttUs, or with either value out of range, is
+// refused. A kept offset is within +-kMaxRelayClockUs, so adding it to the
+// monotonic clock cannot overflow.
+constexpr std::int64_t kRelayClockRttUs = 10000000;
+constexpr std::int64_t kMaxRelayClockUs = INT64_MAX / 4;
+struct RelayClock
+{
+    std::int64_t offset_us = 0, rtt_us = 0;
+};
+bool relay_clock(std::int64_t client_ms, std::int64_t server_us, std::int64_t now_us,
+                 RelayClock &out);
 } // namespace companion_wire
 
 class Companion
