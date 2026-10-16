@@ -20,11 +20,48 @@ Assistant. MilkDrop, halo and spectrum respond to the output samples.
 
 With a Music Assistant token configured, Source also offers **Active speaker**
 and individual speakers. This mode draws the selected speaker's
-music without playing a second copy through the PS5. Playback and volume
-controls operate on the followed source. Sync-group members resolve to their
-active queue. Automatic following retains a playing queue; when it stops, it
-chooses the most recently started queue. A preferred speaker takes priority
+music without playing a second copy through the PS5. Sync-group members resolve
+to their active queue. Automatic following keeps a playing queue and otherwise
+moves to the one that started most recently. A chosen speaker takes priority
 while it plays and falls back to automatic following while silent.
+
+Browse, the idle poster and the transport controls act on one **command
+target** (as LG Afterglow 1.4.3 does): the chosen speaker, even while it is
+silent (its own queue answers Play), else the queue followed, else the last one
+followed, else this PS5 while it is the source, else the first speaker by name
+(real speakers before groups). So Play now works with nothing playing, and
+choosing an idle speaker in Playing on takes effect at once. With nothing
+playing, the poster shows the target. On a group, or a sync leader with
+members, volume sets the group's volume (`players/cmd/group_volume`).
+
+Queue → **Playing on** lists This PS5, Active speaker, sync groups and
+speakers. Picking a speaker with nothing of its own playing moves the target's
+music there (`player_queues/transfer`, keeping its place; the row says "moves
+the music here") and follows it; picking a speaker that plays just follows it.
+Settings → Source only chooses and never moves music. When music elsewhere can
+move, **Play on this PS5** (under Playing on in the Queue sheet, and as the
+first row of Playing on) brings it to the PS5's own player, starts it there
+even if it had stopped, and switches Source to This PS5. **Speakers together**
+lists every speaker with a tick for those sounding the target's music; Cross
+adds or removes one (`players/cmd/set_members` on the target). The leader,
+fixed members and speakers it cannot group with are listed but refuse; the
+section appears only when the target can lead a group.
+
+### Idle poster
+
+With nothing playing for 8 seconds, or 30 seconds after a pause, the screen
+sets what was played as a poster: the paused song, or Music Assistant's
+recently played music, with its cover, title, one field and a strip of covers
+that always ends in **Browse**. Left/right walk the strip. Cross resumes the
+paused song, plays a recent item on the command target (replacing its queue),
+tries again when the list could not load, or opens Browse; the field names the
+button and says so when a start has not taken after ten seconds. Every other
+button keeps its usual meaning, and Options opens the controls over it. Only
+the paused song wears its own colours; any other item sits on the neutral
+fields. After three minutes without a button it dims to 35 %, and the first
+button then only wakes it. It moves with OLED text movement, follows the night
+register, rests MilkDrop while it shows, and with reduce motion the dimming is
+immediate. It needs Music Assistant; without it the poster says how to set up.
 
 The current build includes:
 
@@ -37,14 +74,16 @@ The current build includes:
   podcasts and audiobooks; artist pages (albums, songs), podcast episodes;
   play now, next, add to queue, start radio and show songs. Long lists end in
   **More**, which loads the next page.
-- Queue: **Playing on** (speaker choice and group editing), up next in a
+- Queue: **Playing on** (moving the music to a silent speaker, **Play on this
+  PS5** and **Speakers together**), up next in a
   50-song window with **Earlier songs** / **Later songs** paging, play now,
   play next, move up/down and remove; shuffle, repeat, crossfade, volume,
   sleep timer and **Keep playing when the queue ends**.
 - Visuals only, Visuals + track, Album and Lyrics display modes; a lyrics
   layer (off, one line, stage) over the visuals; plain lyrics stay explicitly
   untimed and are paged manually. Song changes slide a cover off each poster
-  field, and the night register dims the poster from 22:00 to 06:00.
+  field, and the night register dims the poster from 22:00 to 06:00. With
+  nothing playing, an idle poster offers the paused song or recent music.
 - A preset browser, favourites shared with Music Assistant and LG viz-man,
   shuffle or sequential order, preset locking, a change timer, beat
   sensitivity (projectM's and the halo/spectrum beat detector's) and album
@@ -205,9 +244,9 @@ On the poster or visuals, with no controls open:
 
 | Control | Action |
 | --- | --- |
-| Cross | Play/pause |
+| Cross | Play/pause on the command target; on the idle poster, resume or play the chosen item |
 | L1/R1 | Previous/next track |
-| D-pad left/right | Seek back/ahead 10 seconds |
+| D-pad left/right | Seek back/ahead 10 seconds; on the idle poster, move along the strip |
 | D-pad up/down | Volume; pages plain lyrics in Lyrics mode |
 | L2/R2 | Previous/next MilkDrop preset (while MilkDrop is shown); on the timed Lyrics poster, lyric timing −/+100 ms |
 | Square | Cycle Visuals only, Visuals + track, Album and Lyrics |
@@ -307,6 +346,7 @@ tools/host-snapshots.sh build/afterglow-offline afterglow
 CXX=clang++-18 bash tests/integration/run-sendspin-smoke.sh
 CXX=clang++-18 bash tests/integration/run-companion-smoke.sh
 CXX=clang++-18 bash tests/integration/run-companion-library-smoke.sh
+CXX=clang++-18 bash tests/integration/run-companion-playback-smoke.sh
 CXX=clang++-18 bash tests/integration/run-account-smoke.sh
 CXX=clang++-18 bash tests/integration/run-home-assistant-smoke.sh
 ```
@@ -328,6 +368,9 @@ the console**, including:
 - search, artist pages, podcasts/audiobooks, More paging and the 50-song
   queue window;
 - speaker group editing, TV output compensation and the sync figure;
+- the command target, moving music between speakers (transfers, Play on this
+  PS5), group volume and the idle poster (only the Python mocks have answered
+  these writes);
 - the system keyboard, console sign-in, token renewal, log out, the
   `afterglow.auth` write and settings mirroring;
 - the light bar (colour and beat pulse), beat detection and projectM beat
