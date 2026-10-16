@@ -69,3 +69,14 @@ volume on a sync leader (`players/cmd/group_volume`), recent music for the idle
 poster (`music/recently_played_items`, artwork made absolute), a transfer to a
 silent speaker (`player_queues/transfer` without `auto_play`) and Play on this
 PS5 (`auto_play: true`). It never contacts a real server.
+
+## Console keyboard backend
+
+```sh
+bash tests/integration/run-ime-backend-smoke.sh
+```
+
+Builds `src/platform/ps5/keyboard_ime.cpp` on the PC against stubbed `sce`
+calls and checks that a failed `libSceImeDialog` module load fails the open
+without calling the dialog, and that the load is tried again (and done once)
+on later opens. It says nothing about the dialog on a console.
