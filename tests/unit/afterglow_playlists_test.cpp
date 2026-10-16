@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "afterglow/playlists.hpp"
+#include <ctime>
 #include <gtest/gtest.h>
 
 namespace
@@ -15,6 +16,26 @@ LocalTime evening()
     // 16 October 2026, 21:30 (local = utc here).
     const std::int64_t at = 1792186200;
     return local_time_at(at, at);
+}
+
+// The console has no gmtime_r; the date arithmetic must agree with it.
+TEST(AfterglowPlaylists, LocalTimeMatchesTheHostCalendar)
+{
+    for (std::int64_t at = -86400LL * 800; at < 86400LL * 25000; at += 86400LL * 7 + 3671)
+    {
+        const auto mine = local_time_at(at, at);
+        const auto seconds = static_cast<time_t>(at);
+        std::tm parts{};
+        ASSERT_NE(gmtime_r(&seconds, &parts), nullptr);
+        ASSERT_EQ(mine.year, parts.tm_year + 1900) << at;
+        ASSERT_EQ(mine.month, parts.tm_mon + 1) << at;
+        ASSERT_EQ(mine.day, parts.tm_mday) << at;
+        ASSERT_EQ(mine.hour, parts.tm_hour) << at;
+        ASSERT_EQ(mine.minute, parts.tm_min) << at;
+    }
+    const auto leap = local_time_at(1709164800, 1709164800); // 29 Feb 2024, 00:00
+    EXPECT_EQ(leap.month, 2);
+    EXPECT_EQ(leap.day, 29);
 }
 
 // A fake Music Assistant: each frame answers the calls sent the frame before.
