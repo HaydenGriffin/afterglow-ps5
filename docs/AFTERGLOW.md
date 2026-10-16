@@ -26,25 +26,41 @@ active queue. Automatic following retains a playing queue; when it stops, it
 chooses the most recently started queue. A preferred speaker takes priority
 while it plays and falls back to automatic following while silent.
 
+The picture comes back when Music Assistant stops sending the waveform without
+ending the stream: after 10 s with no frame while the followed queue still
+plays, the MilkDrop relay reconnects (LG 1.4.4). A socket that then streams
+nothing for 10 s is skipped for 15 s instead of reconnecting again, and a
+followed or chosen speaker that pauses closes its relay, so a paused speaker
+never causes a reconnect every 10 s.
+
 The current build includes:
 
-- Album artwork, track/artist/album information, a quality badge (for example
-  "Lossless · FLAC 44.1 kHz / 16-bit") when Music Assistant supplies one,
-  plain, timed or word-by-word lyrics, and the next two songs in the poster's
-  Next field.
+- Album artwork, track/artist/album information, plain, timed or
+  word-by-word lyrics, and the next two songs in the poster's **Up next**
+  field. Details (the back of the poster) names the stream's quality and
+  format (for example "Lossless" and "FLAC 44.1 kHz / 16-bit") when Music
+  Assistant supplies them; the poster itself shows no badge (LG 1.5.0).
 - Browse: Search (system keyboard), recently played, favourite
   playlists/albums/songs/artists, radio stations, all playlists and albums,
   podcasts and audiobooks; artist pages (albums, songs), podcast episodes;
-  play now, next, add to queue, start radio and show songs. Long lists end in
-  **More**, which loads the next page.
+  play now, next, add to queue, start radio and show songs. Rows read as on
+  LG: the kind, who made it, then an album's year or a song's length
+  ("Album · Lightkeeper · 2024", "Song · Lightkeeper · 3:34"). **Play now**
+  and **Start radio** return to Now playing with a notice once Music
+  Assistant accepts them; **Play next** and **Add to the queue** go back to
+  the list, where the item's own row reads "Plays next" / "Added to the
+  queue" with a drawn tick for 2.5 s. A refused action stays on the item and
+  says so on the row pressed. Long lists end in **More**, which loads the
+  next page.
 - Queue: **Playing on** (speaker choice and group editing), up next in a
   50-song window with **Earlier songs** / **Later songs** paging, play now,
   play next, move up/down and remove; shuffle, repeat, crossfade, volume,
   sleep timer and **Keep playing when the queue ends**.
 - Visuals only, Visuals + track, Album and Lyrics display modes; a lyrics
   layer (off, one line, stage) over the visuals; plain lyrics stay explicitly
-  untimed and are paged manually. Song changes slide a cover off each poster
-  field, and the night register dims the poster from 22:00 to 06:00.
+  untimed and are paged manually. A new song simply appears (no track-change
+  animation, LG 1.5.0), and the night register dims the poster from 22:00 to
+  06:00.
 - A preset browser, favourites shared with Music Assistant and LG viz-man,
   shuffle or sequential order, preset locking, a change timer, beat
   sensitivity (projectM's and the halo/spectrum beat detector's) and album
@@ -104,13 +120,22 @@ shared favourites and speaker selection use Music Assistant's API on `ma_port`
 The simplest route is Settings → Account → **Sign in**: the system keyboard
 asks for the Music Assistant address (numeric IPv4, optionally `:port`;
 empty uses `host`), user name and password. Afterglow creates a long-lived
-token named for this console (one name per `client_id`), revokes the login's
-session token, and stores the result in `/download0/hui/afterglow.auth`
-(`/app0` is read-only). A signed-in token wins over `ma_token`. About eight
-seconds after launch Afterglow checks the token's expiry and renews it when it
-ends within 30 days, revoking the superseded one. **Log out** revokes every
-token in this console's name and deletes the file. Sign-in, renewal and log out
-swap the token without restarting the app.
+token named `Afterglow on PS5 (<client_id>)` (LG's "Afterglow on <model>
+(<device id>)"), revokes the login's session token, and stores the token and
+its id in `/download0/hui/afterglow.auth` (`/app0` is read-only). A signed-in
+token wins over `ma_token`. About eight seconds after launch Afterglow checks
+its own token's expiry (by id, so a namesake's does not count) and renews it
+when it ends within 30 days. The fresh token is handed to every open
+connection first; only then is the old one revoked, by id (LG 1.4.3/1.5.1).
+Signing in again retires the token it replaces the same way. If Music
+Assistant refuses a token that has been replaced since, Afterglow logs in
+again with the current one rather than giving up; a refusal of the current
+token still stops it until you sign in again. **Log out** revokes only this
+console's own token, by id, and deletes the file, so another device showing
+the same name keeps its token. A sign-in saved before ids were kept falls
+back to the name: its renewal retires the older tokens in that name and its
+log out revokes every token in it. Sign-in, renewal and log out swap the
+token without restarting the app.
 
 Alternatively, create a separate long-lived token named **Afterglow PS5**
 (`auth/token/create` with `{"name":"Afterglow PS5"}` from an authenticated
@@ -207,8 +232,8 @@ On the poster or visuals, with no controls open:
 | --- | --- |
 | Cross | Play/pause |
 | L1/R1 | Previous/next track |
-| D-pad left/right | Seek back/ahead 10 seconds |
-| D-pad up/down | Volume; pages plain lyrics in Lyrics mode |
+| D-pad left/right | Seek back/ahead 10 seconds (quick presses add up) |
+| D-pad up/down | Volume (held steps add up); pages plain lyrics in Lyrics mode |
 | L2/R2 | Previous/next MilkDrop preset (while MilkDrop is shown); on the timed Lyrics poster, lyric timing −/+100 ms |
 | Square | Cycle Visuals only, Visuals + track, Album and Lyrics |
 | Triangle | Lyrics layer off/one line/stage over visuals; Album ↔ Lyrics on the poster |
@@ -229,11 +254,22 @@ music favourite, start radio); Display holds the four modes, the lyrics layer,
 **MilkDrop behind album and lyrics**, the track card, visual style (MilkDrop,
 halo, spectrum), **Reduce motion** and **Word-by-word lyrics**.
 
+Presses are combined rather than dropped (LG 1.4.3/1.5.1): while one command
+waits for Music Assistant, further volume steps and seeks add up into one
+waiting command that starts from the value just sent, and skips collapse into
+one waiting skip per direction, so a burst of presses never queues a burst of
+skips. A second Play/Pause before Music Assistant reports the first undoes it.
+Volume on a group player or a sync leader with members uses Music
+Assistant's group volume command (`players/cmd/group_volume`) and shows the
+group's level. With This PS5 as the source, held volume steps on the Sendspin
+connection build on the level last sent in the same way.
+
 Browse, Queue, Settings and Home open as sheets. Browse covers the screen;
 the others sit beside the artwork slab. Up/down move through rows, left/right
 adjust values (the focused row shows chevrons when it can be adjusted), Cross
 selects or toggles, Circle goes back one level and then returns to the
-transport band, and Options closes everything. Queue holds **Playing on**, up
+transport band, and Options closes everything. Settings opens on the row it
+was left at. Queue holds **Playing on**, up
 next and the playback rows (shuffle, repeat, crossfade, volume, sleep timer,
 keep playing when the queue ends). Settings contains Source, Visuals &
 presets, Lyrics timing, Presets, Sound & sync, Account and Status. On Presets,
@@ -265,8 +301,7 @@ MilkDrop keeps running behind the Album and Lyrics posters by default (turn
 off **MilkDrop behind album and lyrics** to give them a plain ground); the
 transport band does not pause it, sheets do. **Reduce motion** freezes MilkDrop
 on its current frame (it redraws only on a preset change), stops the OLED
-drift and halo drift where they are, and skips beat lifts and the song-change
-slide. **Hold visuals when
+drift and halo drift where they are, and skips beat lifts and lyric motion. **Hold visuals when
 idle** freezes it while nothing plays.
 
 Visuals & presets sets a 15–600 second preset duration; **Lock this preset**
@@ -279,7 +314,10 @@ from the artwork; **Pulse on the beat** (off by default) makes it pulse.
 Settings → **Sound & sync** holds **TV output compensation**: this PS5's
 Music Assistant static delay (0–5000 ms, 10 ms steps, 100 ms when held), saved
 to Music Assistant 0.6 s after the last step. It applies only while the source
-is This PS5 and needs Music Assistant. **Picture & lyrics timing** adjusts only
+is This PS5 and needs Music Assistant. The value belongs to the player it was
+set for: if this PS5's Music Assistant player changes, a step still waiting
+is saved on the old player and the new one's own delay is read afresh, so one
+player's delay is never carried onto another (LG 1.4.3). **Picture & lyrics timing** adjusts only
 the follow-relay picture timing in 25 ms steps, up to ±2000 ms; positive values
 show the picture later. A sync figure draws both against the music on a
 ±600 ms scale.
@@ -314,8 +352,12 @@ CXX=clang++-18 bash tests/integration/run-home-assistant-smoke.sh
 Host checks include real Music Assistant metadata/relay reads and disposable
 mock servers that test masked WebSockets, decimal elapsed times, lyrics,
 favourite merging, reconnect after a lost write acknowledgement, bounded
-shutdown, browse/search paging, sign-in/renewal/log out and the Home Assistant
-glance. The mocks never change real players, accounts or Home Assistant.
+shutdown, browse/search paging, sign-in/renewal/log out (token ids, the
+hand-over before revoking, a namesake left alone), combined volume/seek/skip
+presses and group volume behind slow answers, a late refusal of a replaced
+token, the relay's stall reconnect and the Home Assistant glance
+(`run-companion-smoke.sh` takes about 95 s). The mocks never change real
+players, accounts or Home Assistant.
 
 ### Not verified on hardware
 
@@ -328,13 +370,19 @@ the console**, including:
 - search, artist pages, podcasts/audiobooks, More paging and the 50-song
   queue window;
 - speaker group editing, TV output compensation and the sync figure;
-- the system keyboard, console sign-in, token renewal, log out, the
-  `afterglow.auth` write and settings mirroring;
+- the system keyboard, console sign-in, token renewal (the hand-over before
+  the old token is revoked), log out by token id, the `afterglow.auth` write
+  and settings mirroring;
+- combined volume/seek/skip presses and group volume on real speakers, and
+  the relay's stall reconnect after Music Assistant stops sending frames;
 - the light bar (colour and beat pulse), beat detection and projectM beat
   sensitivity;
-- album slot recolouring, the night register's local time, the song-change
-  slide, word-by-word lyrics and lyric timing on L2/R2;
-- the Home Assistant glance, the dev request path and the quality badge;
+- album slot recolouring, the night register's local time, word-by-word
+  lyrics and lyric timing on L2/R2;
+- Browse's row details and confirmations, and Play now returning to Now
+  playing;
+- the Home Assistant glance, the dev request path and the quality facts in
+  Details;
 - the 120 Hz option and sustained 120 fps.
 
 Host checks and captures do not establish any of these.
