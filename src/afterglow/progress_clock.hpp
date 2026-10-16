@@ -16,7 +16,8 @@ namespace hui::afterglow
 //   of a second, never by moving backwards: a clock that is ahead slows down;
 // - a difference of kSnapSeconds or more (a seek), a new song or the first
 //   report is taken at once;
-// - paused, the position holds still and only a seek moves it;
+// - paused, the position holds still and a new report (any seek, however
+//   short) moves it there at once;
 // - reduced motion follows the target directly, without the easing.
 class ProgressClock
 {

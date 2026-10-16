@@ -45,6 +45,9 @@ double ProgressClock::update(double reported, bool playing, const std::string &t
         {
             last_reported_ = reported;
             target_ = reported;
+            // Paused, nothing eases it there: a short seek must show at once.
+            if (!playing)
+                snap(target_);
         }
         else if (playing)
         {

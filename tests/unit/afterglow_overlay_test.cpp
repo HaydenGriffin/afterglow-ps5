@@ -146,6 +146,16 @@ TEST(AfterglowProgressClock, SeeksSnapAndPausedHoldsStill)
     EXPECT_DOUBLE_EQ(clock.update(90, false, "a", 240, kFrame, false), 90) << "seek while paused";
 }
 
+TEST(AfterglowProgressClock, AShortSeekWhilePausedShowsAtOnce)
+{
+    ProgressClock clock;
+    clock.update(60, false, "a", 240, kFrame, false);
+    EXPECT_DOUBLE_EQ(clock.update(61, false, "a", 240, kFrame, false), 61) << "ahead one second";
+    EXPECT_DOUBLE_EQ(clock.update(60.5, false, "a", 240, kFrame, false), 60.5) << "back half";
+    for (int i = 0; i < 30; ++i)
+        EXPECT_DOUBLE_EQ(clock.update(60.5, false, "a", 240, kFrame, false), 60.5);
+}
+
 TEST(AfterglowProgressClock, ReducedMotionFollowsWithoutEasingAndStopsAtTheEnd)
 {
     ProgressClock clock;
