@@ -219,8 +219,11 @@ void pump_keyboard(hui::ps5::Keyboard &keyboard, hui::afterglow::Presentation &m
 
 // The light bar follows the artwork (and the beat); off hands it back to the system.
 void drive_lightbar(hui::ps5::Pad &pad, hui::afterglow::LightbarLimiter &limiter,
-                    const hui::afterglow::Presentation &model, std::int64_t now, bool &lit)
+                    const hui::afterglow::Presentation &model, bool connected, std::int64_t now,
+                    bool &lit)
 {
+    if (limiter.reconnected(connected))
+        pad.forget_light_bar();
     if (!model.preferences.lightbar)
     {
         if (lit)
@@ -467,6 +470,35 @@ void sync_home(hui::afterglow::HomeAssistant &home, hui::afterglow::Presentation
         home.send(command);
     model.home_commands.clear();
 }
+// The preferences file, or false when there is none to read: a fresh install,
+// which restores them from the account. A file that cannot be read is moved
+// aside, never written over, and the log says so.
+bool load_preferences(hui::afterglow::Preferences &preferences)
+{
+    constexpr const char *kPath = "/download0/hui/afterglow.prefs";
+    const std::string aside = std::string(kPath) + ".unreadable";
+    std::string saved;
+    if (!hui::save::read_file(kPath, &saved, hui::afterglow::kMaxPreferencesFile))
+    {
+        if (std::rename(kPath, aside.c_str()) == 0)
+            hui::sys::log("[Afterglow] PREFERENCES NOT READ: unreadable or over %zu bytes; "
+                          "kept as %s",
+                          hui::afterglow::kMaxPreferencesFile, aside.c_str());
+        return false;
+    }
+    const auto decoded = hui::save::decode(hui::save::Kind::prefs, saved);
+    if (decoded.ok && decoded.version == 1)
+    {
+        preferences = hui::afterglow::Preferences::decode(decoded.payload);
+        return true;
+    }
+    const bool kept = std::rename(kPath, aside.c_str()) == 0;
+    hui::sys::log("[Afterglow] PREFERENCES NOT READ: %s (version %u); %s %s",
+                  decoded.ok ? "unknown version" : decoded.error.c_str(),
+                  static_cast<unsigned>(decoded.version), kept ? "kept as" : "could not move to",
+                  aside.c_str());
+    return false;
+}
 } // namespace
 
 int main()
@@ -474,16 +506,8 @@ int main()
     using namespace hui;
     sys::log("[Afterglow] starting %s", afterglow::kVersion);
     auto &model = afterglow::presentation();
-    std::string saved;
     // No local preferences (a fresh install): restore them from the account.
-    const bool restore_preferences =
-        !save::read_file("/download0/hui/afterglow.prefs", &saved, 1u << 20);
-    if (!restore_preferences)
-    {
-        const auto decoded = save::decode(save::Kind::prefs, saved);
-        if (decoded.ok && decoded.version == 1)
-            model.preferences = afterglow::Preferences::decode(decoded.payload);
-    }
+    const bool restore_preferences = !load_preferences(model.preferences);
     model.requested_refresh_hz = model.preferences.fps == 120 ? 120 : 60;
     ps5::Display display;
     if (!display.open(1920, 1080, model.requested_refresh_hz))
@@ -523,8 +547,18 @@ int main()
     const std::string account_device = "ps5-" + config.client_id;
     std::string audio_host = config.host.empty() ? credentials.host : config.host;
     model.configured = !audio_host.empty();
-    model.quality = afterglow::PresetQuality::decode(model.preferences.quality);
-    model.preferences.quality = model.quality.encode();
+    bool quality_read = false;
+    model.quality = afterglow::PresetQuality::decode(model.preferences.quality, &quality_read);
+    // Ratings that cannot be read stay as saved until a scan or Keep replaces them.
+    std::optional<std::string> unread_quality;
+    if (quality_read)
+        model.preferences.quality = model.quality.encode();
+    else
+    {
+        sys::log("[Afterglow] PRESET RATINGS NOT READ (%zu bytes); kept as saved",
+                 model.preferences.quality.size());
+        unread_quality = model.preferences.quality;
+    }
     milkdrop->configure(model.preferences);
     if (!milkdrop->init(1280, 720, "/app0/assets/presets"))
         milkdrop->release();
@@ -542,7 +576,8 @@ int main()
         companion->start(credentials.host.c_str(), credentials.port, credentials.token.c_str());
     auto home = std::make_unique<afterglow::HomeAssistant>();
     start_home(*home, model);
-    auto artwork = std::make_unique<afterglow::Artwork>();
+    auto artwork =
+        std::make_unique<afterglow::Artwork>(afterglow::fetch_image, afterglow::decode_image);
     artwork->start();
     afterglow::OnlineLyrics online_lyrics(afterglow::lrclib_fetch(), afterglow::https_abort);
     online_lyrics.start();
@@ -569,6 +604,7 @@ int main()
     { return renderer.batch().create_texture(w, h, rgba); };
     const auto thumb_release = [](std::uint32_t texture) { glDeleteTextures(1, &texture); };
     std::string applied_preferences, applied_player = "\x01", artwork_url;
+    std::string submitted_quality = model.preferences.quality;
     std::uint64_t artwork_generation = 0, favorite_revision = 0;
     bool favorites_received = false;
     std::vector<std::string> synced_favorites = model.preferences.favorites;
@@ -830,8 +866,10 @@ int main()
             if (model.artwork_texture)
                 glDeleteTextures(1, &model.artwork_texture);
             model.artwork_texture = 0;
-            model.artwork_color = image.accent;
-            model.artwork_secondary = image.secondary;
+            // A cover that did not load keeps the neutral colours, not white.
+            const afterglow::Presentation neutral;
+            model.artwork_color = image.ok ? image.accent : neutral.artwork_color;
+            model.artwork_secondary = image.ok ? image.secondary : neutral.artwork_secondary;
             milkdrop->set_cover(std::move(image.cover));
             if (!image.rgba.empty())
                 model.artwork_texture =
@@ -853,7 +891,7 @@ int main()
             blocked.focus_lost = true;
             input = blocked;
         }
-        drive_lightbar(pad, lightbar_limiter, model, now, lightbar_lit);
+        drive_lightbar(pad, lightbar_limiter, model, input.connected, now, lightbar_lit);
         if (const auto request = poll_dev(dev, now))
             handle_dev_request(dev, *request, model, display);
         pump_dev_presses(dev, input);
@@ -1019,7 +1057,15 @@ int main()
             milkdrop->set_scanning(model.scanning);
             client->set_output_enabled(!model.preferences.follow);
             companion->set_relay_enabled(model.preferences.follow);
-            preference_store.submit(preferences);
+            // A scan checkpoint (begin, measured, paused) skips the debounce:
+            // until it is on disk, a kill would quarantine a preset that was fine.
+            if (model.preferences.quality != submitted_quality)
+            {
+                submitted_quality = model.preferences.quality;
+                preference_store.submit_now(preferences);
+            }
+            else
+                preference_store.submit(preferences);
         }
         std::string desired_player =
             model.preferences.follow ? model.preferences.player : config.ma_player_id;
@@ -1132,8 +1178,11 @@ int main()
                      blocks, failures);
         }
     }
-    model.quality.cancel();
-    model.preferences.quality = model.quality.encode();
+    if (model.preferences.quality != unread_quality)
+    {
+        model.quality.cancel();
+        model.preferences.quality = model.quality.encode();
+    }
     model.preferences.favorite_pending = companion->pending_favorites();
     preference_store.submit(model.preferences.encode());
     preference_store.stop();

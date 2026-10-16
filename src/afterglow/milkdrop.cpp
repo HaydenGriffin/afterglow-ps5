@@ -455,15 +455,19 @@ void Milkdrop::load(std::size_t index, bool smooth)
     selection_blocked_ = false;
     switch_pending_ = false;
     const Preset &preset = presets_[index];
-    name_ = preset.name;
     std::string data;
     if (!save::read_file(preset.path, &data, 1u << 20))
     {
         sys::log("[Afterglow] milkdrop preset unreadable file=%s", preset.path.c_str());
         ++failures_in_row_;
         switch_pending_ = true;
+        // The preset still drawing keeps its name. With none loaded yet the
+        // name marks the view ready, so render() runs and moves on to the next.
+        if (name_.empty())
+            name_ = preset.name;
         return;
     }
+    name_ = preset.name;
     // A recolour reloads the same preset; only another one starts the gaps of
     // Each song and On big moments.
     if (index != current_)

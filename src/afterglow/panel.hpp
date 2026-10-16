@@ -93,6 +93,14 @@ class Panel
     {
         return sheet_.rows();
     }
+    // What the footer says Cross does on the focused row, or null for no Cross hint.
+    const char *select_hint() const;
+    // How many times the rows have been built: a focus move builds none, so
+    // holding a direction through 2000 Browse rows stays cheap.
+    int rebuilds() const
+    {
+        return rebuilds_;
+    }
     // True once when Play now or Start radio has started the music: the
     // screen closes the controls and returns to Now playing, as on LG.
     bool take_leave();
@@ -165,6 +173,7 @@ class Panel
     void draw_home(ui::Canvas &canvas) const;
     void draw_sync_figure(ui::Canvas &canvas, float top) const;
     void draw_footer(ui::Canvas &canvas, float x) const;
+    const SheetRow *footer_row() const;
     gfx::Rect home_area() const;
 
     // The right column: every sheet's rows, or Browse's collection and actions.
@@ -199,6 +208,9 @@ class Panel
     int selected_queue_index_ = 0;
     int sleep_minutes_ = 30;
     float refresh_ = 0;
+    int rebuilds_ = 0;
+    // The Browse answer the rows were built from: a new one shows at once.
+    std::uint64_t built_browse_ = 0;
     // Keyboard round trip and the sign-in fields collected so far.
     KeyboardPurpose keyboard_wait_ = KeyboardPurpose::none;
     std::string sign_in_host_, sign_in_username_;

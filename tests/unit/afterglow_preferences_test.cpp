@@ -168,6 +168,58 @@ TEST(AfterglowPreferences, OversizedValuesCannotReplaceValidChoices)
     EXPECT_EQ(Preferences::decode(p.encode()).brightness, 100);
 }
 
+TEST(AfterglowPreferences, FavouritesAreBoundedWhenAddedNotOnlyWhenRead)
+{
+    Preferences p;
+    for (std::size_t i = 0; i < hui::afterglow::kMaxFavorites; ++i)
+        ASSERT_TRUE(p.toggle_favorite("Preset " + std::to_string(i)));
+    EXPECT_FALSE(p.toggle_favorite("One too many")) << "the next start would not read it";
+    EXPECT_FALSE(p.favorite("One too many"));
+    EXPECT_TRUE(p.toggle_favorite("Preset 0")) << "removing always works";
+    EXPECT_FALSE(p.toggle_favorite(std::string(hui::afterglow::kMaxFavoriteName + 1, 'x')));
+    // Favourites set some other way are written only as far as they read back.
+    p.favorites.push_back(std::string(hui::afterglow::kMaxFavoriteName + 1, 'x'));
+    for (int i = 0; i < 5; ++i)
+        p.favorites.push_back("Extra " + std::to_string(i));
+    const auto restored = Preferences::decode(p.encode());
+    EXPECT_EQ(restored.favorites.size(), hui::afterglow::kMaxFavorites);
+    EXPECT_EQ(Preferences::decode(restored.encode()).favorites, restored.favorites);
+}
+
+TEST(AfterglowPreferences, TheLargestFileStillReadsBack)
+{
+    using hui::afterglow::kMaxPreferenceDocument;
+    Preferences p;
+    p.quality = std::string(kMaxPreferenceDocument, 'q');
+    p.favorite_pending = std::string(kMaxPreferenceDocument, 'f');
+    p.player = std::string(256, 'p');
+    for (std::size_t i = 0; i < hui::afterglow::kMaxFavorites; ++i)
+    {
+        auto name = std::to_string(i) + " ";
+        name.resize(hui::afterglow::kMaxFavoriteName, 'n');
+        p.favorites.push_back(name);
+    }
+    for (std::size_t i = 0; i < hui::afterglow::kSongLimit; ++i)
+    {
+        hui::afterglow::SongEntry song;
+        song.id = std::to_string(i) + ":";
+        song.id.resize(hui::afterglow::kSongIdMax, 'i');
+        song.sum = "0123abcd";
+        song.ms = -10000;
+        song.lrclib = 9000000000000000000;
+        song.at = 9000000000000000000;
+        p.songs.push_back(song);
+    }
+    const auto file = hui::save::encode(hui::save::Kind::prefs, 1, p.encode());
+    EXPECT_LE(file.size(), hui::afterglow::kMaxPreferencesFile);
+    const auto restored =
+        Preferences::decode(hui::save::decode(hui::save::Kind::prefs, file).payload);
+    EXPECT_EQ(restored.encode(), p.encode());
+    // One byte more and the value is not written at all, rather than lost on reading.
+    p.quality += "q";
+    EXPECT_EQ(p.encode().find("quality="), std::string::npos);
+}
+
 TEST(AfterglowPreferenceStore, StopFlushesLatestPayloadInCheckedContainer)
 {
     char path[] = "/tmp/afterglow-preferences-XXXXXX";
@@ -189,6 +241,40 @@ TEST(AfterglowPreferenceStore, StopFlushesLatestPayloadInCheckedContainer)
     EXPECT_EQ(decoded.version, 1);
     EXPECT_EQ(decoded.payload, "brightness=50\nplayer=kitchen\n");
     EXPECT_EQ(store.status(), "Preferences saved");
+}
+
+TEST(AfterglowPreferenceStore, ACheckpointIsWrittenAtOnceAndOrdinaryChangesWait)
+{
+    char path[] = "/tmp/afterglow-preferences-XXXXXX";
+    const int fd = mkstemp(path);
+    ASSERT_GE(fd, 0);
+    close(fd);
+    // A clock that never moves: the half-second debounce never passes.
+    hui::afterglow::PreferenceStore store([] { return std::int64_t{1}; });
+    ASSERT_TRUE(store.start(path));
+    const auto saved_within = [&](int milliseconds)
+    {
+        for (int waited = 0; waited < milliseconds; waited += 10)
+        {
+            if (store.status() == "Preferences saved")
+                return true;
+            usleep(10000);
+        }
+        return store.status() == "Preferences saved";
+    };
+    store.submit("brightness=50\n");
+    EXPECT_FALSE(saved_within(300)) << "an ordinary change waits for the debounce";
+    store.submit_now("brightness=50\nquality={\"pending\":\"P\"}\n");
+    EXPECT_TRUE(saved_within(5000)) << "a checkpoint does not";
+    std::string bytes;
+    ASSERT_TRUE(hui::save::read_file(path, &bytes));
+    EXPECT_EQ(hui::save::decode(hui::save::Kind::prefs, bytes).payload,
+              "brightness=50\nquality={\"pending\":\"P\"}\n");
+    store.submit("brightness=60\n");
+    EXPECT_FALSE(saved_within(300)) << "the next ordinary change waits again";
+    store.stop();
+    store.join();
+    unlink(path);
 }
 
 TEST(AfterglowPreferenceStore, FailedWriteIsReportedAndShutdownCompletes)

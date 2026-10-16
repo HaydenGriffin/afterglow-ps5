@@ -24,6 +24,14 @@ struct OverlayLook
 inline constexpr OverlayLook kLineLookDefault{2, 0, 1};
 inline constexpr OverlayLook kStageLookDefault{1, 0, 1};
 
+// What the preferences file keeps. Each is enforced when writing as well as
+// when reading, so a value never grows past what the next start can read.
+constexpr std::size_t kMaxFavorites = 1000, kMaxFavoriteName = 512;
+// quality (preset_quality.hpp kMaxQualityDocument) and favorite_pending.
+constexpr std::size_t kMaxPreferenceDocument = 262144;
+// The whole file: room for every value above at its largest.
+constexpr std::size_t kMaxPreferencesFile = 2u << 20;
+
 struct Preferences
 {
     bool follow = false, hold_idle = true, auto_level = false, oled_drift = true;
@@ -70,7 +78,8 @@ struct Preferences
     std::string player, quality, favorite_pending;
     std::vector<std::string> favorites;
     bool favorite(std::string_view name) const;
-    void toggle_favorite(const std::string &name);
+    // Refuses (false) a name the file could not keep, or a favourite past kMaxFavorites.
+    bool toggle_favorite(const std::string &name);
     std::string encode() const;
     static Preferences decode(std::string_view text);
     // Kept timings and chosen lyrics, song by song (song_store.hpp): local

@@ -32,7 +32,10 @@ enum class HomeLink
     connecting,
     connected,
     offline,
-    auth_failed
+    auth_failed,
+    // Home Assistant refused the entity subscription (status says why); like a
+    // refused token it is not retried until Afterglow reopens.
+    refused
 };
 // One answered press. id counts up per press so the sheet sees each once.
 struct HomeResult

@@ -60,4 +60,13 @@ void LightbarLimiter::forget()
 {
     written_ = false;
 }
+
+bool LightbarLimiter::reconnected(bool connected)
+{
+    const bool back = connected && !connected_;
+    connected_ = connected;
+    if (back)
+        forget();
+    return back;
+}
 } // namespace hui::afterglow

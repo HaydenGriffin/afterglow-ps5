@@ -7,7 +7,12 @@
 #include "afterglow/presentation.hpp"
 #include "concept_fixture.hpp"
 
+#include <arpa/inet.h>
 #include <cmath>
+#include <netinet/in.h>
+#include <poll.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 namespace
 {
@@ -276,7 +281,7 @@ constexpr const char *kAdded = R"({"a":{
  "sensor.living_room_climate_temperature":{"s":"19.46","a":{"state_class":"measurement","unit_of_measurement":"°C","device_class":"temperature","friendly_name":"Living Room Climate Temperature"},"c":"01J","lc":1789655097.36},
  "light.living_room_lights":{"s":"off","a":{"supported_color_modes":["color_temp","xy"],"friendly_name":"Living Room Lights","entity_id":["light.a","light.b"]},"c":"01K","lc":1789655097.1},
  "weather.forecast_home":{"s":"rainy","a":{"temperature":17.3,"temperature_unit":"°C","humidity":94,"friendly_name":"Forecast Home"},"c":"01L","lc":1789655000},
- "person.ewa":{"s":"not_home","a":{"friendly_name":"Ewa","latitude":1.5,"source":"device_tracker.x"},"c":"01M","lc":1},
+ "person.alex":{"s":"not_home","a":{"friendly_name":"Alex","latitude":1.5,"source":"device_tracker.x"},"c":"01M","lc":1},
  "media_player.home_speakers":{"s":"playing","a":{"media_title":"Café \"Live\"","media_artist":"Artist","friendly_name":"Home speakers","group_members":["a","b"]},"c":"01N","lc":2},
  "switch.fan":{"s":"unavailable","a":{"friendly_name":"Fan"},"c":"01O","lc":3}
 }})";
@@ -295,7 +300,7 @@ HomeConfig fixture_config()
     HomeGroupSpec other;
     other.title = "Elsewhere";
     other.entities = {{"weather.forecast_home", "Weather"},
-                      {"person.ewa", ""},
+                      {"person.alex", ""},
                       {"media_player.home_speakers", "Music"}};
     config.groups = {room, other};
     return config;
@@ -327,7 +332,7 @@ TEST(AfterglowHomeSnapshot, BuildsFromAddedStates)
     const auto &other = groups[1].entities;
     EXPECT_EQ(other[0].state, "Rain · 17.3 °C");
     EXPECT_TRUE(other[0].unit.empty());
-    EXPECT_EQ(other[1].name, "Ewa");
+    EXPECT_EQ(other[1].name, "Alex");
     EXPECT_EQ(other[1].state, "Away");
     EXPECT_EQ(other[2].state, "Café \"Live\" · Artist");
 }
@@ -352,8 +357,8 @@ TEST(AfterglowHomeSnapshot, AppliesChangesAndRemovals)
 
     EXPECT_FALSE(table.apply(R"({"c":{"light.unknown":{"+":{"s":"on"}}}})"))
         << "changes for entities never added are ignored";
-    EXPECT_TRUE(table.apply(R"({"r":["person.ewa"]})"));
-    EXPECT_EQ(table.find("person.ewa"), nullptr);
+    EXPECT_TRUE(table.apply(R"({"r":["person.alex"]})"));
+    EXPECT_EQ(table.find("person.alex"), nullptr);
     EXPECT_FALSE(table.apply("garbage"));
     EXPECT_FALSE(table.apply(R"({"a":{"bad id":{"s":"on"}}})"));
 }
@@ -458,6 +463,8 @@ TEST_F(AfterglowHomeSheet, NotesFollowTheLink)
     EXPECT_EQ(sheet_.note(), "Connecting…");
     home.link = HomeLink::auth_failed;
     EXPECT_EQ(sheet_.note(), "Token refused");
+    home.link = HomeLink::refused;
+    EXPECT_EQ(sheet_.note(), "Entities refused");
     home.link = HomeLink::offline;
     home.status = "Home Assistant is offline · retrying in 4 s";
     EXPECT_EQ(sheet_.note(), home.status);
@@ -588,4 +595,204 @@ TEST(AfterglowHomeWire, WebSocketKeyIsSixteenBytesOfBase64)
     EXPECT_EQ(hui::afterglow::home_wire::websocket_key(nonce), "AAECAwQFBgcICQoLDA0ODw==");
     nonce.fill(0xff);
     EXPECT_EQ(hui::afterglow::home_wire::websocket_key(nonce).size(), 24u);
+}
+
+// ---- the client against a scripted loopback server ----
+
+namespace
+{
+// One Home Assistant connection at a time on 127.0.0.1: the upgrade, then
+// whole frames either way. Never a real house.
+class LoopbackHome
+{
+  public:
+    LoopbackHome()
+    {
+        listener_ = ::socket(AF_INET, SOCK_STREAM, 0);
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        socklen_t size = sizeof(address);
+        if (bind(listener_, reinterpret_cast<sockaddr *>(&address), size) == 0 &&
+            listen(listener_, 4) == 0 &&
+            getsockname(listener_, reinterpret_cast<sockaddr *>(&address), &size) == 0)
+            port_ = ntohs(address.sin_port);
+    }
+    ~LoopbackHome()
+    {
+        if (client_ >= 0)
+            ::close(client_);
+        ::close(listener_);
+    }
+    std::uint16_t port() const
+    {
+        return port_;
+    }
+    // Accepts within timeout_ms and answers the upgrade; false when nobody came.
+    bool accept(int timeout_ms)
+    {
+        pollfd p{listener_, POLLIN, 0};
+        if (poll(&p, 1, timeout_ms) <= 0)
+            return false;
+        client_ = ::accept(listener_, nullptr, nullptr);
+        std::string request;
+        char c = 0;
+        while (!request.ends_with("\r\n\r\n") && recv(client_, &c, 1, 0) == 1)
+            request += c;
+        send_raw("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n"
+                 "Connection: Upgrade\r\nSec-WebSocket-Accept: x\r\n\r\n");
+        return true;
+    }
+    // A server frame (never masked).
+    static std::string frame(int opcode, const std::string &payload, bool fin = true)
+    {
+        std::string out(1, static_cast<char>((fin ? 0x80 : 0) | opcode));
+        if (payload.size() < 126)
+            out += static_cast<char>(payload.size());
+        else
+        {
+            out += static_cast<char>(126);
+            out += static_cast<char>(payload.size() >> 8);
+            out += static_cast<char>(payload.size() & 0xff);
+        }
+        return out + payload;
+    }
+    void send_raw(const std::string &bytes)
+    {
+        ASSERT_EQ(::send(client_, bytes.data(), bytes.size(), 0),
+                  static_cast<ssize_t>(bytes.size()));
+    }
+    void send_text(const std::string &text)
+    {
+        send_raw(frame(1, text));
+    }
+    // The client's next text message, unmasked.
+    std::string receive()
+    {
+        unsigned char head[2];
+        if (!exact(head, 2))
+            return {};
+        std::size_t length = head[1] & 127;
+        if (length == 126)
+        {
+            unsigned char extended[2];
+            exact(extended, 2);
+            length = (static_cast<std::size_t>(extended[0]) << 8) | extended[1];
+        }
+        unsigned char mask[4];
+        exact(mask, 4);
+        std::string payload(length, '\0');
+        exact(reinterpret_cast<unsigned char *>(payload.data()), length);
+        for (std::size_t i = 0; i < length; ++i)
+            payload[i] = static_cast<char>(payload[i] ^ mask[i % 4]);
+        return payload;
+    }
+    // auth_required, the token, auth_ok, then the subscription (id 1).
+    void authenticate()
+    {
+        send_text(R"({"type":"auth_required","ha_version":"2026.10.0"})");
+        EXPECT_NE(receive().find("\"access_token\""), std::string::npos);
+        send_text(R"({"type":"auth_ok","ha_version":"2026.10.0"})");
+        EXPECT_NE(receive().find("subscribe_entities"), std::string::npos);
+    }
+
+  private:
+    bool exact(unsigned char *out, std::size_t count)
+    {
+        std::size_t got = 0;
+        while (got < count)
+        {
+            pollfd p{client_, POLLIN, 0};
+            if (poll(&p, 1, 3000) <= 0)
+                return false;
+            const auto n = recv(client_, out + got, count - got, 0);
+            if (n <= 0)
+                return false;
+            got += static_cast<std::size_t>(n);
+        }
+        return true;
+    }
+    int listener_ = -1, client_ = -1;
+    std::uint16_t port_ = 0;
+};
+
+template <typename Predicate> bool eventually(Predicate predicate)
+{
+    for (int i = 0; i < 300 && !predicate(); ++i)
+        usleep(10000);
+    return predicate();
+}
+
+const hui::afterglow::HomeEntity *find_entity(const hui::afterglow::HomeSnapshot &snapshot,
+                                              const std::string &entity_id)
+{
+    for (const auto &group : snapshot.groups)
+        for (const auto &entity : group.entities)
+            if (entity.entity_id == entity_id)
+                return &entity;
+    return nullptr;
+}
+} // namespace
+
+TEST(AfterglowHomeClient, AFragmentedBinaryMessageIsNeverReadAsJson)
+{
+    LoopbackHome server;
+    ASSERT_NE(server.port(), 0);
+    hui::afterglow::HomeAssistant client;
+    auto config = fixture_config();
+    config.port = server.port();
+    ASSERT_TRUE(client.start(config));
+    ASSERT_TRUE(server.accept(3000));
+    server.authenticate();
+    server.send_text(R"({"id":1,"type":"result","success":true,"result":null})");
+    // Binary, in two fragments: an event that would switch the light on.
+    const std::string binary =
+        R"({"id":1,"type":"event","event":{"a":{"light.living_room_lights":{"s":"on","a":{}}}}})";
+    const auto half = binary.size() / 2;
+    server.send_raw(LoopbackHome::frame(2, binary.substr(0, half), false) +
+                    LoopbackHome::frame(0, binary.substr(half)));
+    // Then text, also fragmented, that the client must read.
+    const std::string text =
+        R"({"id":1,"type":"event","event":{"a":{"switch.fan":{"s":"on","a":{}}}}})";
+    server.send_raw(LoopbackHome::frame(1, text.substr(0, 10), false) +
+                    LoopbackHome::frame(0, text.substr(10)));
+    ASSERT_TRUE(eventually(
+        [&]
+        {
+            const auto snapshot = client.snapshot();
+            const auto *fan = find_entity(snapshot, "switch.fan");
+            return fan != nullptr && fan->on;
+        }))
+        << "fragmented text is still read";
+    const auto snapshot = client.snapshot();
+    EXPECT_EQ(snapshot.link, HomeLink::connected) << "the binary message did not break the link";
+    const auto *light = find_entity(snapshot, "light.living_room_lights");
+    ASSERT_NE(light, nullptr);
+    EXPECT_FALSE(light->on) << "the binary message was not taken for an event";
+    client.stop();
+    client.join();
+}
+
+TEST(AfterglowHomeClient, ARefusedSubscriptionSaysWhyAndIsNotAskedAgain)
+{
+    LoopbackHome server;
+    ASSERT_NE(server.port(), 0);
+    hui::afterglow::HomeAssistant client;
+    auto config = fixture_config();
+    config.port = server.port();
+    ASSERT_TRUE(client.start(config));
+    ASSERT_TRUE(server.accept(3000));
+    server.authenticate();
+    server.send_text(R"({"id":1,"type":"result","success":false,)"
+                     R"("error":{"code":"unknown_command","message":"Unknown command."}})");
+    ASSERT_TRUE(eventually([&] { return client.snapshot().link == HomeLink::refused; }));
+    EXPECT_EQ(client.snapshot().status,
+              "Home Assistant refused the entity subscription: Unknown command.");
+    EXPECT_FALSE(server.accept(2500)) << "no reconnect a second later, or ever";
+    client.send({"light.living_room_lights", "toggle"});
+    ASSERT_TRUE(eventually([&] { return !client.snapshot().results.empty(); }));
+    EXPECT_FALSE(client.snapshot().results.back().ok);
+    EXPECT_EQ(client.snapshot().results.back().message, client.snapshot().status);
+    client.stop();
+    client.join();
 }

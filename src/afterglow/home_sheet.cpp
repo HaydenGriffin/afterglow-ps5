@@ -79,6 +79,8 @@ std::string HomeSheet::note() const
     }
     case HomeLink::auth_failed:
         return "Token refused";
+    case HomeLink::refused:
+        return "Entities refused";
     case HomeLink::offline:
         return has_states(home) ? "Offline · last known states" : home.status;
     default:
@@ -99,7 +101,7 @@ bool HomeSheet::showing_rows() const
 {
     const auto &home = presentation().home;
     return home.configured && home.link != HomeLink::auth_failed &&
-           (home.link == HomeLink::connected || has_states(home));
+           home.link != HomeLink::refused && (home.link == HomeLink::connected || has_states(home));
 }
 
 void HomeSheet::rebuild()
@@ -256,6 +258,12 @@ void HomeSheet::draw(ui::Canvas &canvas, float x, float y, float width, float he
             headline = "Home Assistant refused the token";
             body = "Make a long-lived access token in your Home Assistant profile, put it in "
                    "ha_token, then reopen Afterglow.";
+        }
+        else if (home.link == HomeLink::refused)
+        {
+            headline = "Home Assistant refused the glance";
+            body = home.status + ". Check the ha_group lines in afterglow.conf, then reopen "
+                                 "Afterglow.";
         }
         else if (home.link == HomeLink::offline)
         {

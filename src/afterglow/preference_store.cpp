@@ -9,6 +9,11 @@
 
 namespace hui::afterglow
 {
+PreferenceStore::PreferenceStore(std::function<std::int64_t()> clock) : clock_(std::move(clock))
+{
+    if (!clock_)
+        clock_ = [] { return sys::monotonic_us(); };
+}
 PreferenceStore::~PreferenceStore()
 {
     stop();
@@ -40,12 +45,24 @@ bool PreferenceStore::start(std::string path)
 }
 void PreferenceStore::submit(std::string preferences)
 {
+    queue(std::move(preferences), false);
+}
+void PreferenceStore::submit_now(std::string preferences)
+{
+    queue(std::move(preferences), true);
+}
+void PreferenceStore::queue(std::string preferences, bool urgent)
+{
     std::lock_guard<std::mutex> lock(mutex_);
-    if (preferences == pending_ || stopping_)
+    if (stopping_)
+        return;
+    // Stays set until a write takes it, so a plain submit after it cannot delay it.
+    urgent_ = urgent_ || urgent;
+    if (preferences == pending_)
         return;
     pending_ = std::move(preferences);
     ++generation_;
-    changed_at_ = sys::monotonic_us();
+    changed_at_ = clock_();
     status_ = "Preferences pending";
 }
 std::string PreferenceStore::status() const
@@ -81,10 +98,13 @@ void PreferenceStore::run()
             std::lock_guard<std::mutex> lock(mutex_);
             if (saved == generation_ && stopping_)
                 return;
-            if (saved != generation_ && (stopping_ || sys::monotonic_us() - changed_at_ >= 500000))
+            if (saved == generation_)
+                urgent_ = false;
+            if (saved != generation_ && (stopping_ || urgent_ || clock_() - changed_at_ >= 500000))
             {
                 text = pending_;
                 generation = generation_;
+                urgent_ = false;
             }
         }
         if (generation == 0)

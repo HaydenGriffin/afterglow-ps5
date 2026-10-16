@@ -218,6 +218,8 @@ constexpr int kVolumeTag = -100000;
 // Details' Go to rows carry this plus their index in details_rows(); the song
 // lyrics rows (song_lyrics.hpp) start above them at 300000.
 constexpr int kGoToTag = 200000;
+// Headings: apart from every row tag and from 0, which is also a list's first item.
+constexpr int kHeadingTag = -300;
 
 // The look the Display rows under "Lyrics over visuals" change: the chosen
 // overlay's; null while lyrics are off.
@@ -411,6 +413,7 @@ struct Rows
     {
         SheetRow row;
         row.item.title = std::move(title);
+        row.item.tag = kHeadingTag;
         row.item.header = true;
         list.push_back(std::move(row));
     }
@@ -500,8 +503,9 @@ const char *select_label(const SheetRow &row)
     }
     if (song_lyrics_tag(row.item.tag))
         return row.item.tag == try_again_row ? "Try again" : "Select";
+    // A speaker in the group is ticked (chosen); Cross takes it out.
     if (row.item.tag >= kGroupTag && row.item.tag < kGoToTag)
-        return row.item.value == "Grouped" ? "Ungroup" : "Group";
+        return row.chosen ? "Ungroup" : "Group";
     return "Select";
 }
 } // namespace
@@ -1339,6 +1343,8 @@ void Panel::rebuild_browse()
 
 void Panel::rebuild()
 {
+    ++rebuilds_;
+    built_browse_ = presentation().companion.browse_revision;
     if (browse_page())
     {
         rebuild_browse();
@@ -2385,9 +2391,10 @@ void Panel::preset_input(const InputFrame &input)
     const std::string name = s.presets[static_cast<std::size_t>(row->item.tag)];
     if (input.is_pressed(Action::r3))
     {
-        s.preferences.toggle_favorite(name);
-        s.show_toast(s.preferences.favorite(name) ? "Added to favourite presets"
-                                                  : "Removed from favourite presets");
+        const bool done = s.preferences.toggle_favorite(name);
+        s.show_toast(!done                          ? "Favourite presets are full"
+                     : s.preferences.favorite(name) ? "Added to favourite presets"
+                                                    : "Removed from favourite presets");
     }
     if (input.is_pressed(Action::west))
     {
@@ -2415,11 +2422,15 @@ void Panel::update(const InputFrame &input, float dt, ui::Feedback &feedback, bo
         home_.update(input, dt, feedback, reduced_motion);
         return;
     }
-    const bool acted = input.pressed != 0 || input.nav != Direction::none;
-    if (input.nav == Direction::left || input.nav == Direction::right)
+    // Up and down only move the focus, which needs no new rows; a button acts
+    // on what the rows say now, and left or right adjusts what they show.
+    const bool sideways = input.nav == Direction::left || input.nav == Direction::right;
+    const bool changes = input.pressed != 0 || sideways;
+    if (sideways)
         held_steps_ = input.nav_repeat ? held_steps_ + 1 : 0;
     refresh_ -= dt;
-    if (refresh_ <= 0 || acted || playlists_moved())
+    const bool arrived = presentation().companion.browse_revision != built_browse_;
+    if (refresh_ <= 0 || input.pressed != 0 || arrived || playlists_moved())
     {
         rebuild();
         refresh_ = 0.5f;
@@ -2445,7 +2456,7 @@ void Panel::update(const InputFrame &input, float dt, ui::Feedback &feedback, bo
             preset_input(input);
     }
     // Show what the press changed on the next frame, not half a second later.
-    if (acted)
+    if (changes)
         refresh_ = 0;
     if (page_ == Page::settings && root_ == Page::settings)
         settings_focus_ = sheet_.focus();
@@ -2453,20 +2464,32 @@ void Panel::update(const InputFrame &input, float dt, ui::Feedback &feedback, bo
     categories_.update(dt);
 }
 
+const SheetRow *Panel::footer_row() const
+{
+    const bool browse = browse_page();
+    const SheetList &column = browse && !browse_right_ ? categories_ : sheet_;
+    return page_ == Page::home || (browse && !presentation().companion_configured)
+               ? nullptr
+               : column.focused();
+}
+
+const char *Panel::select_hint() const
+{
+    const SheetRow *row = footer_row();
+    return row != nullptr && !row->item.disabled ? select_label(*row) : nullptr;
+}
+
 void Panel::draw_footer(ui::Canvas &canvas, float x) const
 {
     const auto &s = presentation();
-    const bool browse = browse_page();
-    const SheetList &column = browse && !browse_right_ ? categories_ : sheet_;
-    const SheetRow *row =
-        page_ == Page::home || (browse && !s.companion_configured) ? nullptr : column.focused();
+    const SheetRow *row = footer_row();
     ui::Hint hints[7];
     int count = 0;
     hints[count++] = {ui::Button::l1, "Sections", ui::Button::r1};
     if (row != nullptr && row->adjustable && !row->item.disabled)
         hints[count++] = {ui::Button::dpad, "Adjust"};
-    if (row != nullptr && !row->item.disabled && select_label(*row) != nullptr)
-        hints[count++] = {ui::Button::cross, select_label(*row)};
+    if (const char *label = select_hint())
+        hints[count++] = {ui::Button::cross, label};
     if (page_ == Page::home)
         hints[count++] = {ui::Button::cross, "Select"};
     if (page_ == Page::search && s.companion_configured)

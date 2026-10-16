@@ -5,6 +5,7 @@
 #include "afterglow/idle.hpp"
 #include <algorithm>
 #include <cmath>
+#include <string_view>
 
 namespace hui::afterglow
 {
@@ -54,6 +55,79 @@ std::string joined(const std::vector<std::string> &parts)
 }
 } // namespace
 
+namespace
+{
+// poster_item() copies these and idle_tiles_key() hashes them: one list, so
+// the key always changes when something a tile keeps does.
+constexpr std::string CompanionTrack::*kPosterText[] = {
+    &CompanionTrack::title,      &CompanionTrack::artist, &CompanionTrack::year,
+    &CompanionTrack::media_type, &CompanionTrack::uri,    &CompanionTrack::artwork};
+
+// FNV-1a, 64 bits; every value is preceded by its length so fields cannot run together.
+struct KeyHash
+{
+    std::uint64_t value = 14695981039346656037ULL;
+    void byte(unsigned char c)
+    {
+        value = (value ^ c) * 1099511628211ULL;
+    }
+    void number(std::uint64_t n)
+    {
+        for (int i = 0; i < 8; ++i)
+            byte(static_cast<unsigned char>(n >> (8 * i)));
+    }
+    void text(std::string_view s)
+    {
+        number(s.size());
+        for (const char c : s)
+            byte(static_cast<unsigned char>(c));
+    }
+    void item(const CompanionTrack &track)
+    {
+        for (const auto field : kPosterText)
+            text(track.*field);
+        number(static_cast<std::uint64_t>(track.duration));
+    }
+    void items(const std::vector<CompanionTrack> &list)
+    {
+        number(list.size());
+        for (const auto &track : list)
+            item(track);
+    }
+};
+} // namespace
+
+CompanionTrack poster_item(const CompanionTrack &item)
+{
+    CompanionTrack kept;
+    for (const auto field : kPosterText)
+        kept.*field = item.*field;
+    kept.duration = item.duration;
+    return kept;
+}
+
+std::uint64_t idle_tiles_key(const CompanionTrack *paused,
+                             const std::vector<CompanionTrack> &recent, RecentState state,
+                             const std::vector<CompanionTrack> &in_progress, bool setup,
+                             const IdleOffer *offer)
+{
+    KeyHash hash;
+    hash.number(paused != nullptr);
+    if (paused != nullptr)
+        hash.item(*paused);
+    hash.items(recent);
+    hash.number(static_cast<std::uint64_t>(state));
+    hash.items(in_progress);
+    hash.number(setup);
+    hash.number(offer != nullptr);
+    if (offer != nullptr)
+    {
+        hash.text(offer->word);
+        hash.text(offer->detail);
+    }
+    return hash.value;
+}
+
 std::vector<IdleTile> idle_tiles(const CompanionTrack *paused,
                                  const std::vector<CompanionTrack> &recent, RecentState state,
                                  const std::vector<CompanionTrack> &in_progress, bool setup,
@@ -64,7 +138,7 @@ std::vector<IdleTile> idle_tiles(const CompanionTrack *paused,
     {
         IdleTile tile;
         tile.kind = IdleTileKind::resume;
-        tile.item = *paused;
+        tile.item = poster_item(*paused);
         tiles.push_back(std::move(tile));
     }
     const auto shown = [&tiles](const std::string &uri)
@@ -79,7 +153,7 @@ std::vector<IdleTile> idle_tiles(const CompanionTrack *paused,
             continue;
         IdleTile tile;
         tile.kind = IdleTileKind::carry;
-        tile.item = item;
+        tile.item = poster_item(item);
         tiles.push_back(std::move(tile));
         ++carried;
     }
@@ -101,7 +175,7 @@ std::vector<IdleTile> idle_tiles(const CompanionTrack *paused,
             break;
         IdleTile tile;
         tile.kind = IdleTileKind::play;
-        tile.item = item;
+        tile.item = poster_item(item);
         tiles.push_back(std::move(tile));
     }
     if (offer != nullptr)
