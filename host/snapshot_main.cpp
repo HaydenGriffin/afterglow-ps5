@@ -461,6 +461,31 @@ int main(int argc, char **argv)
         model.artwork_color = {0.16f, 0.25f, 0.72f};
         model.artwork_secondary = {0.07f, 0.11f, 0.32f};
         model.companion.track.quality_badge = "Lossless · FLAC 44.1 kHz / 16-bit";
+        model.lyrics.status = hui::afterglow::LyricsStatus::timed;
+        model.song_lyrics.source = hui::afterglow::LyricsSource::music_assistant;
+        // Choose other lyrics: invented versions as LRCLIB might list them.
+        const auto version =
+            [](std::int64_t id, const char *title, const char *album, double duration, bool timed)
+        {
+            hui::afterglow::lrclib::Candidate c;
+            c.id = id;
+            c.title = title;
+            c.artist = "Afterglow preview";
+            c.album = album;
+            c.duration = duration;
+            c.timed = timed;
+            // Distinct words per version, as the list keeps one per lyric text.
+            const std::string words = std::string(title) + " (" + album + ")";
+            c.lrc = timed ? "[00:00]" + words : std::string();
+            c.plain = timed ? std::string() : words;
+            c.sum = hui::afterglow::lyrics_fingerprint(timed ? c.lrc : c.plain);
+            return c;
+        };
+        model.song_lyrics.candidates = {
+            version(9001, "Slow Current", "Illustrative track", 240, true),
+            version(9002, "Slow Current", "Illustrative track (demo edition)", 241, true),
+            version(9003, "Slow Current", "Short evenings", 238, false),
+            version(9004, "Slow Current (live)", "Live at the demo hall", 312, true)};
         if (const char *lyrics = std::getenv("AFTERGLOW_LYRICS"))
         {
             // karaoke: enhanced LRC word timings on the current line.

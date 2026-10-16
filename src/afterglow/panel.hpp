@@ -61,6 +61,9 @@ class Panel
         account, // sign in / log out / settings sync
         home,    // Home Assistant glance, drawn by HomeSheet
         setup,   // Check my setup: pass/fail rows with next steps, Check again
+        // Added by round 2 (lyrics lane, song_lyrics.hpp):
+        lyrics_choice, // Choose other lyrics: LRCLIB's versions of the song
+        lyrics_lines,  // Go to a line: the timed lines, picking one seeks
     };
 
     Panel();
@@ -120,6 +123,8 @@ class Panel
     void navigate(Page page, int focus = 0);
     void confirm(const SheetRow &row);
     bool confirm_list(const SheetRow &row);
+    // The song lyrics rows (song_lyrics.hpp); false for any other row.
+    bool confirm_song_lyrics_row(int tag);
     void confirm_browse(const SheetRow &row);
     void confirm_group(int tag);
     void choose_speaker(const CompanionPlayer &player);

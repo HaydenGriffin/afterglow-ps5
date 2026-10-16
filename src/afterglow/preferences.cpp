@@ -7,6 +7,7 @@
 #include <array>
 #include <cctype>
 #include <charconv>
+#include <optional>
 
 namespace hui::afterglow
 {
@@ -83,6 +84,8 @@ std::string Preferences::encode() const
     for (const auto &name : favorites)
         if (name.find_first_of("\r\n") == std::string::npos)
             out += "favorite=" + name + "\n";
+    for (const auto &song : songs)
+        out += "lyrics_song=" + encode_song_line(song) + "\n";
     return out;
 }
 Preferences Preferences::decode(std::string_view text)
@@ -108,6 +111,12 @@ Preferences Preferences::decode(std::string_view text)
         if (key == "favorite" && !value.empty() && value.find('\r') == value.npos &&
             value.size() <= 512 && p.favorites.size() < 1000 && !p.favorite(value))
             p.favorites.emplace_back(value);
+        if (key == "lyrics_song" && p.songs.size() < kSongLimit * 2)
+        {
+            SongEntry song;
+            if (decode_song_line(value, song))
+                p.songs.push_back(std::move(song));
+        }
         int n = 0;
         const auto result = std::from_chars(value.data(), value.data() + value.size(), n);
         if (result.ec != std::errc{} || result.ptr != value.data() + value.size())
@@ -191,6 +200,7 @@ Preferences Preferences::decode(std::string_view text)
         if (key == "preset_change")
             p.preset_change = choice(n, 0);
     }
+    trim_songs(p.songs);
     return p;
 }
 namespace
@@ -213,11 +223,48 @@ void skip_space(std::string_view s, std::size_t &at)
     while (at < s.size() && std::isspace(static_cast<unsigned char>(s[at])))
         ++at;
 }
-// One "key": value pair of the flat object written by encode_synced. Keys are
-// plain snake_case; values are integers or booleans. Anything else stops the
-// scan, keeping what was read before it.
-bool next_pair(std::string_view s, std::size_t &at, std::string_view &key, std::string &value)
+// The end of a string, array or object value starting at s[at], or npos.
+std::size_t composite_end(std::string_view s, std::size_t at)
 {
+    bool quoted = false, escape = false;
+    int depth = 0;
+    for (std::size_t i = at; i < s.size(); ++i)
+    {
+        const char c = s[i];
+        if (quoted)
+        {
+            if (escape)
+                escape = false;
+            else if (c == '\\')
+                escape = true;
+            else if (c == '"')
+            {
+                quoted = false;
+                if (depth == 0)
+                    return i + 1;
+            }
+        }
+        else if (c == '"')
+            quoted = true;
+        else if (c == '[' || c == '{')
+        {
+            if (++depth > 16)
+                return std::string_view::npos;
+        }
+        else if ((c == ']' || c == '}') && --depth == 0)
+            return i + 1;
+    }
+    return std::string_view::npos;
+}
+// One "key": value pair of the flat object written by encode_synced. Keys are
+// plain snake_case; values are integers or booleans; a string, array or
+// object (lyrics_songs, or a key from a later version) comes back raw in
+// value with composite set. Anything else stops the scan, keeping what was
+// read before it.
+bool next_pair(std::string_view s, std::size_t &at, std::string_view &key, std::string &value,
+               bool &composite)
+{
+    composite = false;
     skip_space(s, at);
     if (at >= s.size() || s[at] != '"')
         return false;
@@ -233,7 +280,16 @@ bool next_pair(std::string_view s, std::size_t &at, std::string_view &key, std::
     if (at >= s.size() || s[at++] != ':')
         return false;
     skip_space(s, at);
-    if (s.substr(at, 4) == "true" || s.substr(at, 5) == "false")
+    if (at < s.size() && (s[at] == '"' || s[at] == '[' || s[at] == '{'))
+    {
+        const auto end = composite_end(s, at);
+        if (end == std::string_view::npos)
+            return false;
+        value = std::string(s.substr(at, end - at));
+        composite = true;
+        at = end;
+    }
+    else if (s.substr(at, 4) == "true" || s.substr(at, 5) == "false")
     {
         value = s[at] == 't' ? "1" : "0";
         at += s[at] == 't' ? 4 : 5;
@@ -279,6 +335,9 @@ std::string Preferences::encode_synced() const
         out += "\":";
         out += line.substr(eq + 1);
     }
+    if (!songs.empty())
+        out += (out.size() > 1 ? ",\"lyrics_songs\":" : "\"lyrics_songs\":") +
+               encode_songs_json(songs);
     return out + '}';
 }
 Preferences Preferences::with_synced(std::string_view json) const
@@ -287,13 +346,26 @@ Preferences Preferences::with_synced(std::string_view json) const
     std::string text = encode();
     std::size_t at = 0;
     skip_space(json, at);
-    if (json.size() > 16384 || at >= json.size() || json[at++] != '{')
+    // 100 songs' lyrics entries run to about 12 KB on their own.
+    if (json.size() > 65536 || at >= json.size() || json[at++] != '{')
         return *this;
     std::string_view key;
     std::string value;
-    for (std::size_t pairs = 0; pairs < 64 && next_pair(json, at, key, value); ++pairs)
-        if (synced_key(key))
+    bool composite = false;
+    std::optional<SongStore> songs_seen;
+    for (std::size_t pairs = 0; pairs < 64 && next_pair(json, at, key, value, composite); ++pairs)
+    {
+        if (composite && synced_key(key))
+            break; // a number's key with another kind of value: malformed
+        if (composite && key == "lyrics_songs")
+            songs_seen = decode_songs_json(value);
+        else if (!composite && synced_key(key))
             text += std::string(key) + "=" + value + "\n";
-    return decode(text);
+    }
+    auto out = decode(text);
+    // A copy written before songs were kept leaves this device's alone.
+    if (songs_seen)
+        out.songs = std::move(*songs_seen);
+    return out;
 }
 } // namespace hui::afterglow

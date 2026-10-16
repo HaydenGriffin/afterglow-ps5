@@ -308,7 +308,7 @@ bottom, the playing song with eight tiles: Previous, Play/Pause, Next, Back
 up/down switch between the strip and the tiles, Cross activates, L1/R1 step
 through the sections (wrapping), and Circle or Options closes it; it also
 closes after nine idle seconds. Details is the back of the poster (facts,
-music favourite, start radio, and [Scan to save](#scan-to-save)); Display holds the four modes, the lyrics layer,
+music favourite, start radio, Go to a line, and [Scan to save](#scan-to-save)); Display holds the four modes, the lyrics layer,
 **MilkDrop behind album and lyrics**, the track card, visual style (MilkDrop,
 halo, spectrum), **Reduce motion** and **Word-by-word lyrics**.
 
@@ -433,7 +433,18 @@ Settings → **Lyrics** holds, as LG's Display → Lyrics does:
   100 ms steps ("With the music" at zero; positive is later). The sound,
   MilkDrop, the progress bar and seeking stay where they are. On the timed
   Lyrics poster L2/R2 take the same steps.
-- **Reset lyrics timing**, while the timing is not zero.
+- **Keep this timing for this song?** (Keep / Not now): offered once when
+  the timing changes during a song with timed lyrics, by the row or by L2/R2
+  on the Lyrics poster (then it waits here; it is never a popup). **Keep**
+  gives this song, these lyrics of it, the new timing and puts the device
+  timing back for every other song ("Other songs: ..." says to what); **Not
+  now** leaves the change for every song. Changing the timing back hides the
+  offer; an answer holds until the next song.
+- **Forget timing for this song** ("Timing: kept for this song"), while the
+  song has a kept timing. Lyrics timing (and L2/R2) then change the song's
+  kept timing, not the device's.
+- **Reset lyrics timing**, while the timing is not zero and the song has no
+  kept timing.
 - **Online lyrics** (on by default): off keeps lyrics to what Music Assistant
   provides and sends nothing to lrclib.net; switching it back on looks up a
   song that had no lyrics again. It is saved with the other synced settings
@@ -442,6 +453,42 @@ Settings → **Lyrics** holds, as LG's Display → Lyrics does:
   are not one shared switch).
 - **Retry lyrics**, when the lookup failed or found nothing: asks Music
   Assistant and LRCLIB again and forgets a remembered "no lyrics".
+- **Choose other lyrics** (Online lyrics on, a song with a Music Assistant
+  uri, lyrics not loading), for wrong lyrics. The detail says "Chosen for this
+  song", "From Music Assistant" or "From lrclib.net". Its page, **Choose
+  lyrics**, searches lrclib.net once as it opens (the same search as above;
+  no automatic retry; **Try again** after a failure) and lists **Automatic**
+  (Music Assistant, else the best match) and up to six versions: one per
+  distinct lyric text, instrumental ones left out, the same title and artist
+  first, then the closest length, timed before plain. Each row reads
+  "<length>[ · <gap> longer|shorter] · Timed|Plain · <album>"; the gap shows
+  when the length differs from the song's by more than 10 s. A pick shows at
+  once, is kept for the song ("Lyrics chosen for this song") and drops the
+  song's kept timing (it was set for other words); later plays fetch it with
+  `GET https://lrclib.net/api/get/<id>` instead of Music Assistant and the
+  search. If LRCLIB no longer has it (404) the choice is forgotten and the
+  usual lookup runs; other failures are a lyrics error, retried once after
+  30 s. With Online lyrics off the choice is kept but not used.
+  **Automatic** forgets the choice and looks the lyrics up again. Nothing is
+  ever picked from the list without you: a longer or live version is used
+  only when chosen.
+
+Kept timings and chosen lyrics are kept per song (its Music Assistant uri)
+for the 100 most recently changed songs (the oldest goes first), in the local
+preferences (`lyrics_song=` lines) and synced in this PS5's entry of the
+account's Afterglow preferences (key `lyrics_songs`, entries
+`{"id", "sum", "ms", "lrclib", "at"}` as LG's `lyricsSongs`). `sum` is a
+fingerprint of the lyrics the timing was kept for: when the lyrics change, the
+kept timing stops applying. Playing music never changes them, so it never
+saves the account. Radio, podcasts and songs without a uri have none of
+this.
+
+**Go to a line**, in Details after its actions while the lyrics are timed
+and the song has a length (unavailable while Music Assistant is not
+connected), lists the timed lines with the time each plays at, the line on
+screen focused and ticked. Picking one seeks there (`player_queues/seek`),
+allowing for the lyrics timing so that line is the one on screen, and closes
+the sheets.
 
 The page shows the current and next timed line live as the timing changes,
 and says when lyrics are being found, could not load, or do not exist.
@@ -458,8 +505,11 @@ HTTPS request, `GET https://lrclib.net/api/search?track_name=<title>&artist_name
 bracketed versions or " - Remaster" tails), `artist_name` the first credited
 artist, and the `User-Agent` header is
 `Afterglow PS5/<version> (https://github.com/HaydenGriffin/afterglow-ps5)`.
-Nothing else is sent (no account, token, player or device id); the album and
-length are only used on the console to pick the best match. LRCLIB sees the
+**Choose other lyrics** sends the same search (only from its page), and a
+song whose lyrics you chose is fetched by that LRCLIB record's id,
+`GET https://lrclib.net/api/get/<id>`. Nothing else is sent (no account,
+token, player or device id); the album and length are only used on the
+console to pick the best match. LRCLIB sees the
 request coming from your network's address. Turn **Online lyrics** off
 (Options → Settings → Lyrics) to stop it. **Check my setup** asks
 lrclib.net for one fixed record (`GET https://lrclib.net/api/get/1`, no song)

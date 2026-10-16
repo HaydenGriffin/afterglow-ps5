@@ -66,3 +66,5 @@ src/ui/glyphs.cpp
 src/ui/pixel_font.cpp
 src/ui/theme.cpp
 src/ui/widgets.cpp
+src/afterglow/song_store.cpp
+src/afterglow/song_lyrics.cpp

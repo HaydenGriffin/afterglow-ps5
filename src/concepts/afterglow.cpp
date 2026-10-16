@@ -9,6 +9,7 @@
 #include "afterglow/progress_clock.hpp"
 #include "afterglow/presentation.hpp"
 #include "afterglow/scenes.hpp"
+#include "afterglow/song_lyrics.hpp"
 #include "afterglow/style.hpp"
 #include "ui/glyphs.hpp"
 #include <algorithm>
@@ -61,12 +62,40 @@ constexpr app::TourStep kTour[] = {
     {0.1f, action_bit(Action::confirm)},
     {0.1f, 0, Direction::right},
     {0.8f, 0, Direction::none, "lyrics-settings"},
-    {0.1f, 0, Direction::left},
+    // The change is offered to this song: Keep, then Choose other lyrics,
+    // then Forget timing for this song puts everything back.
+    {0.1f, 0, Direction::right},
+    {0.1f, 0, Direction::down},
+    {0.1f, action_bit(Action::confirm)},
+    {0.8f, 0, Direction::none, "lyrics-kept"},
+    {0.1f, 0, Direction::down},
+    {0.1f, action_bit(Action::confirm)},
+    {0.8f, 0, Direction::none, "lyrics-choose"},
+    {0.1f, action_bit(Action::back)},
+    {0.1f, 0, Direction::up},
+    {0.1f, 0, Direction::up},
+    {0.1f, action_bit(Action::confirm)},
     {0.1f, action_bit(Action::back)},
     {0.1f, action_bit(Action::page_prev)},
     {0.1f, action_bit(Action::page_prev)},
     {0.1f, action_bit(Action::page_prev)},
     {0.8f, 0, Direction::none, "browse"},
+    // Details → Go to a line, then back out to the controls.
+    {0.1f, action_bit(Action::menu)},
+    {0.1f, action_bit(Action::menu)},
+    {0.1f, 0, Direction::right},
+    {0.1f, 0, Direction::right},
+    {0.1f, 0, Direction::right},
+    {0.1f, 0, Direction::right},
+    {0.1f, 0, Direction::right},
+    {0.1f, action_bit(Action::confirm)},
+    {0.1f, 0, Direction::down},
+    {0.1f, 0, Direction::down},
+    {0.8f, 0, Direction::none, "details-go-to-line"},
+    {0.1f, action_bit(Action::confirm)},
+    {0.8f, 0, Direction::none, "go-to-a-line"},
+    {0.1f, action_bit(Action::back)},
+    {0.1f, action_bit(Action::back)},
     {0.1f, action_bit(Action::menu)},
     {0.1f, action_bit(Action::menu)},
     {0.1f, 0, Direction::right},
@@ -337,7 +366,8 @@ class Afterglow final : public app::Concept
         }
         view_.lines = &lyrics_;
         view_.karaoke = state.preferences.karaoke;
-        view_.now = clock_.position - state.preferences.lyrics_offset_ms / 1000.0;
+        afterglow::follow_song_lyrics(state);
+        view_.now = clock_.position - afterglow::lyrics_offset_ms(state) / 1000.0;
         const int active = timed ? afterglow::current_lyric(lyrics_, view_.now) : -1;
         if (active != view_.active)
         {
@@ -601,11 +631,10 @@ class Afterglow final : public app::Concept
             {
                 // On the lyric poster L2/R2 nudge the timing while the words are
                 // in view, in the Lyrics timing row's steps.
-                p.lyrics_offset_ms = afterglow::step_lyrics_offset(p.lyrics_offset_ms, step);
-                state.show_toast(p.lyrics_offset_ms == 0
-                                     ? "Lyrics with the music"
-                                     : "Lyrics " +
-                                           afterglow::lyrics_timing_label(p.lyrics_offset_ms));
+                afterglow::step_lyrics_timing(state, step);
+                const int offset = afterglow::lyrics_offset_ms(state);
+                state.show_toast(offset == 0 ? "Lyrics with the music"
+                                             : "Lyrics " + afterglow::lyrics_timing_label(offset));
             }
             else if (p.visual_style == 0 && state.milkdrop_texture != 0 && !lyric_poster)
             {

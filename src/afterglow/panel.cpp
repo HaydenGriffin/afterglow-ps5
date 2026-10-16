@@ -6,6 +6,7 @@
 #include "afterglow/lyric_overlay.hpp"
 #include "afterglow/preset_change.hpp"
 #include "afterglow/share_link.hpp"
+#include "afterglow/song_lyrics.hpp"
 #include "afterglow/speaker_group.hpp"
 #include "afterglow/speakers.hpp"
 #include "afterglow/style.hpp"
@@ -490,6 +491,8 @@ const char *select_label(const SheetRow &row)
     default:
         break;
     }
+    if (song_lyrics_tag(row.item.tag))
+        return row.item.tag == try_again_row ? "Try again" : "Select";
     if (row.item.tag >= kGroupTag)
         return row.item.value == "Grouped" ? "Ungroup" : "Group";
     return "Select";
@@ -561,9 +564,10 @@ bool Panel::browse_page() const
 const char *Panel::page_name() const
 {
     constexpr const char *kNames[] = {
-        "browse",   "collection", "item_actions", "queue",   "queue_actions", "details", "display",
-        "settings", "source",     "visuals",      "presets", "lyrics_timing", "status",  "search",
-        "artist",   "players",    "sync",         "account", "home",          "setup"};
+        "browse",  "collection", "item_actions",  "queue",       "queue_actions", "details",
+        "display", "settings",   "source",        "visuals",     "presets",       "lyrics_timing",
+        "status",  "search",     "artist",        "players",     "sync",          "account",
+        "home",    "setup",      "lyrics_choice", "lyrics_lines"};
     const auto index = static_cast<std::size_t>(page_);
     return index < std::size(kNames) ? kNames[index] : "";
 }
@@ -610,6 +614,10 @@ std::string Panel::title() const
         return "Home";
     case Page::setup:
         return "Check my setup";
+    case Page::lyrics_choice:
+        return "Choose lyrics";
+    case Page::lyrics_lines:
+        return "Go to a line";
     default:
         return search_root_ ? "Search" : "Browse";
     }
@@ -675,6 +683,10 @@ std::string Panel::note() const
         return home_.note();
     case Page::setup:
         return setup_note(s.setup_rows);
+    case Page::lyrics_choice:
+        return lyrics_choice_note(s);
+    case Page::lyrics_lines:
+        return lyrics_lines_note(s);
     default:
         return {};
     }
@@ -973,6 +985,7 @@ std::vector<SheetRow> Panel::sheet_rows() const
                  favourite)
             .item.disabled = !ready;
         rows.row("Start radio from this song", radio, "Replaces the queue").item.disabled = !ready;
+        add_line_row(s, rows.list);
         break;
     }
     case Page::display:
@@ -1084,15 +1097,24 @@ std::vector<SheetRow> Panel::sheet_rows() const
     case Page::lyrics_timing:
     {
         // LG Display → Lyrics: timing, its reset, the online search and a retry.
-        rows.row("Lyrics timing", lyrics_offset, lyrics_timing_label(p.lyrics_offset_ms))
+        rows.row("Lyrics timing", lyrics_offset, lyrics_timing_label(lyrics_offset_ms(s)))
             .adjustable = true;
-        if (p.lyrics_offset_ms != 0)
+        add_timing_rows(s, rows.list);
+        if (p.lyrics_offset_ms != 0 && !kept_lyrics_timing(s))
             rows.row("Reset lyrics timing", lyrics_reset);
         rows.row("Online lyrics", online_lyrics, on_off(p.online_lyrics)).item.subtitle =
             "When Music Assistant has none, ask lrclib.net";
+        add_choose_row(s, rows.list);
         if (s.lyrics.status == LyricsStatus::error || s.lyrics.status == LyricsStatus::missing)
             rows.row("Retry lyrics", retry_lyrics);
         break;
+    }
+    case Page::lyrics_choice:
+        return lyrics_choice_rows(s);
+    case Page::lyrics_lines:
+    {
+        int focus = 0;
+        return lyrics_line_rows(s, focus);
     }
     default:
         break;
@@ -1335,6 +1357,12 @@ bool Panel::back()
     case Page::queue_actions:
     case Page::players:
         navigate(Page::queue, parent_focus_);
+        return true;
+    case Page::lyrics_choice:
+        navigate(Page::lyrics_timing, parent_focus_);
+        return true;
+    case Page::lyrics_lines:
+        navigate(Page::details, parent_focus_);
         return true;
     case Page::source:
     case Page::visuals:
@@ -1708,6 +1736,8 @@ void Panel::confirm(const SheetRow &row)
         parent_focus_ = sheet_.focus();
         navigate(page);
     };
+    if (confirm_song_lyrics_row(tag))
+        return;
     if (tag >= kGroupTag)
     {
         confirm_group(tag);
@@ -1988,6 +2018,39 @@ void Panel::confirm(const SheetRow &row)
     }
 }
 
+bool Panel::confirm_song_lyrics_row(int tag)
+{
+    if (!song_lyrics_tag(tag))
+        return false;
+    auto &s = presentation();
+    switch (confirm_song_lyrics(s, tag))
+    {
+    case SongLyricsStep::open_choice:
+        parent_focus_ = sheet_.focus();
+        navigate(Page::lyrics_choice);
+        break;
+    case SongLyricsStep::open_lines:
+    {
+        parent_focus_ = sheet_.focus();
+        navigate(Page::lyrics_lines);
+        int focus = 0;
+        lyrics_line_rows(s, focus);
+        sheet_.set_focus(focus);
+        break;
+    }
+    case SongLyricsStep::back:
+        back();
+        break;
+    case SongLyricsStep::leave:
+        leave_ = true;
+        break;
+    case SongLyricsStep::stay:
+        rebuild();
+        break;
+    }
+    return true;
+}
+
 int Panel::shown_delay() const
 {
     const auto &c = presentation().companion;
@@ -2125,12 +2188,8 @@ void Panel::adjust(const SheetRow &row, int direction, ui::Feedback &feedback)
         break;
     }
     case lyrics_offset:
-    {
-        const int before = p.lyrics_offset_ms;
-        p.lyrics_offset_ms = step_lyrics_offset(before, direction);
-        changed = p.lyrics_offset_ms != before;
+        changed = step_lyrics_timing(s, direction);
         break;
-    }
     default:
         changed = false;
         break;
@@ -2396,7 +2455,7 @@ void Panel::draw_sheet(ui::Canvas &canvas) const
     else if (page_ == Page::lyrics_timing)
     {
         // Positive offsets show lines later: read the lyrics at an earlier time.
-        const double at = s.companion.elapsed - s.preferences.lyrics_offset_ms / 1000.0;
+        const double at = s.companion.elapsed - lyrics_offset_ms(s) / 1000.0;
         const int index = current_lyric(lyric_lines_, at);
         if (lyric_lines_.empty())
             // The note above says why (finding, failed, none).

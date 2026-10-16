@@ -49,7 +49,7 @@ void LyricsLookup::update(const LyricsSong &song, bool wanted, bool online, std:
         {
             if (song.ma == MaLyrics::answered && (!song.ma_plain.empty() || !song.ma_lrc.empty()))
             {
-                finish(song.ma_plain, song.ma_lrc, false);
+                finish(song.ma_plain, song.ma_lrc, false, LyricsSource::music_assistant);
                 return;
             }
             ma_failed_ = song.ma == MaLyrics::failed;
@@ -65,8 +65,18 @@ void LyricsLookup::update(const LyricsSong &song, bool wanted, bool online, std:
     }
     if (phase_ == Phase::to_search)
     {
-        if (!online || lrclib::search_path(query_).empty())
-            finish({}, {}, ma_failed_);
+        if (getting_ && !online)
+        {
+            // Online lyrics went off: the usual lookup, Music Assistant only.
+            getting_ = false;
+            query_.record = 0;
+            phase_ = Phase::waiting;
+            since_ms_ = now_ms;
+            ma_after_ = 0;
+            return;
+        }
+        if (!getting_ && (!online || lrclib::search_path(query_).empty()))
+            finish({}, {}, ma_failed_, LyricsSource::none);
         else if (wanted)
         {
             phase_ = Phase::searching;
@@ -106,13 +116,43 @@ void LyricsLookup::search_done(std::uint64_t ticket, SearchOutcome outcome,
 {
     if (phase_ != Phase::searching || ticket != ticket_)
         return;
+    if (getting_ && outcome == SearchOutcome::none)
+    {
+        // The chosen record is gone: forget it and look the song up as usual,
+        // Music Assistant's answer (already asked for) first.
+        getting_ = false;
+        choice_gone_ = true;
+        query_.record = 0;
+        phase_ = Phase::waiting;
+        since_ms_ = now_ms_;
+        ma_after_ = 0;
+        return;
+    }
     if (outcome == SearchOutcome::found)
-        finish(plain, lrc, false);
+        finish(plain, lrc, false, getting_ ? LyricsSource::chosen : LyricsSource::lrclib);
     else if (outcome == SearchOutcome::none)
         // Only a clean answer from both sources is "missing".
-        finish({}, {}, ma_failed_);
+        finish({}, {}, ma_failed_, LyricsSource::none);
     else
         fail();
+}
+
+void LyricsLookup::use(const std::string &plain, const std::string &lrc)
+{
+    if (key_.empty())
+        return;
+    // Whatever was still being asked for no longer counts.
+    ticket_ = 0;
+    search_due_ = false;
+    getting_ = false;
+    finish(plain, lrc, false, LyricsSource::chosen);
+}
+
+bool LyricsLookup::take_choice_gone()
+{
+    const bool gone = choice_gone_;
+    choice_gone_ = false;
+    return gone;
 }
 
 LyricsState LyricsLookup::state() const
@@ -133,6 +173,8 @@ void LyricsLookup::start(const LyricsSong &song, std::int64_t now_ms, bool again
     search_due_ = false;
     retry_at_ms_ = 0;
     ma_failed_ = false;
+    getting_ = false;
+    source_ = LyricsSource::none;
     if (!song.track)
     {
         phase_ = Phase::done;
@@ -145,10 +187,23 @@ void LyricsLookup::start(const LyricsSong &song, std::int64_t now_ms, bool again
     {
         phase_ = Phase::done;
         status_ = cached->status;
+        source_ = cached->source;
         plain_ = cached->plain;
         lrc_ = cached->lrc;
         return;
     }
+    if (song.chosen > 0)
+    {
+        // Straight to LRCLIB for the record chosen for this song.
+        query_.record = song.chosen;
+        getting_ = true;
+        phase_ = Phase::to_search;
+        status_ = LyricsStatus::loading;
+        since_ms_ = now_ms;
+        ma_after_ = again ? song.ma_request : 0;
+        return;
+    }
+    query_.record = 0;
     phase_ = Phase::waiting;
     status_ = LyricsStatus::loading;
     since_ms_ = now_ms;
@@ -157,7 +212,7 @@ void LyricsLookup::start(const LyricsSong &song, std::int64_t now_ms, bool again
     ask_ma_ = again;
 }
 
-void LyricsLookup::finish(std::string plain, std::string lrc, bool failed)
+void LyricsLookup::finish(std::string plain, std::string lrc, bool failed, LyricsSource source)
 {
     if (failed && plain.empty() && lrc.empty())
     {
@@ -172,7 +227,9 @@ void LyricsLookup::finish(std::string plain, std::string lrc, bool failed)
                                : LyricsStatus::missing;
     plain_ = std::move(plain);
     lrc_ = std::move(lrc);
+    source_ = status_ == LyricsStatus::missing ? LyricsSource::none : source;
     phase_ = Phase::done;
+    getting_ = false;
     retry_at_ms_ = 0;
     cache_.erase(std::remove_if(cache_.begin(), cache_.end(),
                                 [&](const Cached &c) { return c.uri == uri_; }),
@@ -184,6 +241,7 @@ void LyricsLookup::finish(std::string plain, std::string lrc, bool failed)
     entry.plain = plain_;
     entry.lrc = lrc_;
     entry.status = status_;
+    entry.source = source_;
     cache_.push_back(std::move(entry));
     while (cache_.size() > 3)
         cache_.pop_front();
@@ -192,6 +250,8 @@ void LyricsLookup::finish(std::string plain, std::string lrc, bool failed)
 void LyricsLookup::fail()
 {
     phase_ = Phase::done;
+    getting_ = false;
+    source_ = LyricsSource::none;
     status_ = LyricsStatus::error;
     plain_.clear();
     lrc_.clear();

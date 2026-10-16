@@ -11,6 +11,7 @@
 #include <mutex>
 #include <pthread.h>
 #include <string>
+#include <vector>
 
 namespace hui::afterglow
 {
@@ -36,6 +37,11 @@ class OnlineLyrics
     void search(std::uint64_t ticket, const lrclib::Query &query);
     bool take_result(std::uint64_t &ticket, LyricsLookup::SearchOutcome &outcome,
                      std::string &plain, std::string &lrc);
+    // Choose other lyrics: the versions LRCLIB has for a song, asked after
+    // any lookup waiting. failed: LRCLIB did not answer usefully (busy).
+    void find_candidates(std::uint64_t ticket, const lrclib::Query &query);
+    bool take_candidates(std::uint64_t &ticket, bool &failed,
+                         std::vector<lrclib::Candidate> &candidates);
     // The last search's outcome, for the log and Status.
     std::string status() const;
     void stop();
@@ -45,6 +51,7 @@ class OnlineLyrics
     static void *entry(void *self);
     void run();
     void answer(std::uint64_t ticket, const lrclib::Query &query);
+    void answer_candidates(std::uint64_t ticket, const lrclib::Query &query);
     LyricsFetch fetch_;
     std::function<void()> abort_;
     mutable std::mutex mutex_;
@@ -56,6 +63,11 @@ class OnlineLyrics
     lrclib::Query request_;
     LyricsLookup::SearchOutcome outcome_ = LyricsLookup::SearchOutcome::none;
     std::string plain_, lrc_, status_ = "No online lyrics asked";
+    bool has_candidates_request_ = false, has_candidates_ = false, candidates_failed_ = false;
+    std::atomic<std::uint64_t> candidates_wanted_{0};
+    std::uint64_t candidates_ticket_ = 0, candidates_result_ticket_ = 0;
+    lrclib::Query candidates_request_;
+    std::vector<lrclib::Candidate> candidates_;
 };
 
 // Once per status tick on the UI thread, after model.companion is refreshed:

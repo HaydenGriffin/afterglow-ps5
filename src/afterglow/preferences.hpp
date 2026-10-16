@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
+#include "afterglow/song_store.hpp"
 #include <string>
 #include <string_view>
 #include <vector>
@@ -72,6 +73,9 @@ struct Preferences
     void toggle_favorite(const std::string &name);
     std::string encode() const;
     static Preferences decode(std::string_view text);
+    // Kept timings and chosen lyrics, song by song (song_store.hpp): local
+    // lines "lyrics_song=", and "lyrics_songs" in the account copy.
+    SongStore songs;
     // Account mirroring: the settings worth restoring on another install, as a
     // flat JSON object of integers (booleans are 0/1). Not the scan cursor,
     // preset ratings, favourite journal, followed player or favourites, which

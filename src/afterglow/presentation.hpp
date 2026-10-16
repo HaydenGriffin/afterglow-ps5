@@ -185,6 +185,8 @@ struct Presentation
     // fills the rows; setup_offer adds "Something not right?" to an empty screen.
     bool setup_requested = false, setup_has_run = false, setup_offer = false;
     std::vector<SetupRow> setup_rows;
+    // Kept timings, chosen lyrics and Go to a line (song_lyrics.hpp).
+    SongLyricsState song_lyrics;
 };
 
 // Only the UI thread accesses this model. Audio reaches it through Analyzer.

@@ -31,6 +31,14 @@ checked on a PC only (unit tests, mock servers and the off-screen preview).
   every preset measured, each failure with one next step. Runs only when asked. An idle poster with nothing to offer
   ends its strip in **Check setup**, and "Ready when you are." adds "Something not right? Check my setup in
   Settings." after 20 seconds without Music Assistant.
+- **Keep a lyrics timing for one song.** Changing **Lyrics timing** during a song (in Settings → Lyrics, or with
+  L2/R2 on the Lyrics poster) offers once, in Settings → Lyrics, **Keep this timing for this song?** (Keep / Not
+  now). A kept timing applies to that song's lyrics only, the other songs keep theirs, and **Forget timing for this
+  song** drops it. Kept for the 100 most recently changed songs, synced with this PS5's account settings (as LG's).
+- **Choose other lyrics.** Settings → Lyrics → **Choose other lyrics** swaps wrong lyrics for another version from
+  lrclib.net (up to six, with length, Timed or Plain and album; a much longer one says so). The pick is kept for the
+  song and fetched by its LRCLIB id on later plays; **Automatic** goes back.
+- **Go to a line.** Details → **Go to a line**: with timed lyrics, pick a line and the song plays from it.
 
 # 1.6.0 — First public release (unreleased)
 
