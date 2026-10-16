@@ -26,7 +26,7 @@ using afterglow::Panel;
 using afterglow::Tile;
 using gfx::Color;
 using namespace afterglow::style;
-const auto kAmber = Color::rgb(0xeeb875);
+constexpr auto kAmber = Color::rgb(0xeeb875);
 constexpr const char *kModes[] = {"Visuals only", "Visuals + track", "Album", "Lyrics"};
 constexpr const char *kLayers[] = {"Lyrics off", "Lyrics: one line", "Lyrics: stage"};
 // LG shows the track card for nine seconds and hides its controls after nine.
