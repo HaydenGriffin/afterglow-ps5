@@ -14,6 +14,7 @@ in the app folder's `licenses/` directory.
 | `eboot.bin` (linked in) | [projectM](https://github.com/projectM-visualizer/projectm) and its bundled dependencies | LGPL-2.1-or-later; MIT, public domain and others (below) | `projectm/` |
 | `eboot.bin` (linked in) | [ps5-opengl](https://github.com/blackbearreloaded/ps5-opengl) 1.0.2 with Mesa and OpenGNM PSBC | GPL-3.0-or-later; Mesa mostly MIT, per file; OpenGNM MIT | `ps5-opengl/` |
 | `eboot.bin` (linked in) | [jsmn](https://github.com/zserge/jsmn) | MIT | `jsmn/` |
+| `eboot.bin` (linked in) | [QR Code generator](https://github.com/nayuki/QR-Code-generator) 1.8.0, C version (Scan to save in Details) | MIT | `qrcodegen/` |
 | `eboot.bin` (linked in) | [BearSSL](https://www.bearssl.org/) (HTTPS for online lyrics) | MIT | `bearssl/` |
 | `eboot.bin` (linked in) | [stb_vorbis](https://github.com/nothings/stb) | MIT or public domain | `stb/` |
 | `eboot.bin` (linked in) | Parts of LLVM libc++, libc++abi, libunwind and compiler-rt builtins, from the PS5 Payload SDK and the compiler | Apache-2.0 WITH LLVM-exception | none needed in binary form |
@@ -220,6 +221,14 @@ No proprietary runtime module, encryption key, or game file is included.
 Source: https://github.com/zserge/jsmn at commit
 `25647e692c7906b96ffd2b05ca54c097948e879c`. The license text is retained in the
 header and in `third_party/jsmn/LICENSE`, which ships as `licenses/jsmn/LICENSE`.
+
+### QR Code generator (Scan to save)
+
+`src/third_party/qrcodegen/`: QR Code generator library by Project Nayuki, MIT license, the C version
+(`c/qrcodegen.c`, `c/qrcodegen.h`) of release 1.8.0, commit `720f62bddb7226106071d4728c292cb1df519ceb` of
+<https://github.com/nayuki/QR-Code-generator>, unchanged. The C version rather than the C++ one because the PS5
+build has no exceptions. The licence is in both files' headers and in `src/third_party/qrcodegen/LICENSE`, which
+ships as `licenses/qrcodegen/LICENSE`.
 
 ### projectM / MilkDrop
 

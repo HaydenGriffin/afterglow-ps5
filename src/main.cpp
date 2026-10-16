@@ -17,6 +17,9 @@
 #include "afterglow/night.hpp"
 #include "afterglow/online_lyrics.hpp"
 #include "afterglow/presentation.hpp"
+#include "afterglow/https.hpp"
+#include "afterglow/lrclib.hpp"
+#include "afterglow/setup_check.hpp"
 #include "concepts/concepts.hpp"
 #include "core/save_file.hpp"
 #include "gfx/canvas.hpp"
@@ -426,6 +429,25 @@ hui::afterglow::HomeConfig read_home_config()
         return {};
     return hui::afterglow::home_wire::parse_config(text);
 }
+// Check my setup: runs when the UI asks, against the server and token in use.
+void pump_setup_check(hui::afterglow::Presentation &model, hui::afterglow::SetupCheck &check,
+                      const hui::afterglow::Credentials &credentials, const Config &config)
+{
+    if (!model.setup_requested && !model.setup_has_run)
+        return;
+    hui::afterglow::SetupRequest request;
+    request.host = credentials.host;
+    request.port = credentials.port;
+    request.token = credentials.token;
+    if (!model.preferences.follow)
+        request.player_ids = {config.client_id, config.ma_player_id, model.companion.own_player_id};
+    request.lyrics = model.preferences.online_lyrics;
+    const auto facts = hui::afterglow::setup_facts(
+        model, credentials.host + ":" + std::to_string(credentials.port),
+        credentials.source == hui::afterglow::AccountState::Source::config);
+    hui::afterglow::pump_setup(model, check, facts, request);
+}
+
 void start_home(hui::afterglow::HomeAssistant &home, hui::afterglow::Presentation &model)
 {
     const auto config = read_home_config();
@@ -524,6 +546,16 @@ int main()
     artwork->start();
     afterglow::OnlineLyrics online_lyrics(afterglow::lrclib_fetch(), afterglow::https_abort);
     online_lyrics.start();
+    // Check my setup: socket probes, and one GET of a fixed LRCLIB record (no song).
+    auto setup_probes = afterglow::setup_socket_probes();
+    setup_probes.lyrics = [](std::atomic<bool> &stop)
+    {
+        const auto answer = afterglow::https_get(afterglow::lrclib::kHost, "/api/get/1",
+                                                 afterglow::lrclib::user_agent(), 256 * 1024, 8000,
+                                                 [&stop] { return stop.load(); });
+        return answer.ok ? answer.status : 0;
+    };
+    afterglow::SetupCheck setup_check(std::move(setup_probes));
     afterglow::LyricsLookup lyrics_lookup;
     // Sheet rows with artwork ask for 160-pixel covers; GL stays on this thread.
     afterglow::ThumbnailOptions thumb_options;
@@ -701,6 +733,7 @@ int main()
             afterglow::pump_lyrics(
                 model, lyrics_lookup, online_lyrics, [&] { companion->retry_lyrics(); },
                 now / 1000);
+            pump_setup_check(model, setup_check, credentials, config);
             if (model.companion.favorites_ready &&
                 (!favorites_received || model.companion.favorite_revision != favorite_revision))
             {
@@ -1109,6 +1142,7 @@ int main()
     artwork->stop();
     thumbnails->stop();
     online_lyrics.stop();
+    setup_check.stop();
     model.thumbnail = nullptr;
     thumbnails->clear(thumb_release);
     milkdrop->release();
@@ -1123,6 +1157,7 @@ int main()
     artwork->join();
     thumbnails->join();
     online_lyrics.join();
+    setup_check.join();
     preference_store.join();
     pad.reset_light_bar();
     pad.close();

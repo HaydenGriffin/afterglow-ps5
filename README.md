@@ -46,6 +46,10 @@ GPL-3.0-or-later.
   the artwork, and favourites are shared with Music Assistant and your LG TVs.
 - **Sound & sync.** TV output compensation sets this PS5's delay in Music Assistant, so it plays in time with your
   other speakers; picture and lyrics timing have their own control. 30, 60 or 120 fps.
+- **Scan to save.** Details shows a QR code that opens the playing song on your phone, on the streaming service it
+  came from.
+- **Check my setup.** A pass/fail list (Music Assistant, sign-in, this PS5 as a speaker, the MilkDrop Visualizer
+  plugin, the clock, online lyrics, the preset scan), each failure with one plain next step.
 - **Light bar and Home.** The DualSense light bar takes the artwork's colour, and an optional Home section shows a
   few Home Assistant sensors and switches.
 
@@ -106,7 +110,7 @@ everything. The full list is in [docs/AFTERGLOW.md](docs/AFTERGLOW.md#controls).
 Press **Options** for the playback controls: a row of tiles (previous, play, next, back and ahead 10 s, favourite,
 Details, Display) and a strip with **Browse**, **Now playing**, **Queue**, **Settings** and, once configured,
 **Home**. Settings holds the source, visuals and presets, lyrics timing, sound and sync, the account and a status
-page. Settings for this console are kept on the console and, with **Sync settings with Music Assistant** on, in your
+page, and **Check my setup**. Settings for this console are kept on the console and, with **Sync settings with Music Assistant** on, in your
 Music Assistant account; preset favourites are shared with your other Afterglows. Every row is described in
 [docs/AFTERGLOW.md](docs/AFTERGLOW.md).
 
@@ -121,6 +125,10 @@ The one other service is lyrics. When Music Assistant has none for a song, the P
 [lrclib.net](https://lrclib.net) directly over HTTPS, sending only the song's title and first artist (no account,
 token or device id); LRCLIB sees the request coming from your network. Turn **Online lyrics** off (Options →
 Settings → Lyrics) to stop it; it is on by default.
+
+**Check my setup** asks lrclib.net for one fixed record (`/api/get/1`: no song, nothing about you) to see that it
+answers, only when you run it and Online lyrics is on. The Scan to save code in Details is drawn on the console from
+the link Music Assistant already sent; nothing is sent.
 
 The console stores its Music Assistant token in the app's own storage (`/download0/hui/afterglow.auth`), never your
 password. A token or Home Assistant token you put in `afterglow.conf` sits in the install folder, which anything with
@@ -168,6 +176,7 @@ Afterglow is free and open source. If it made your setup better, you can
 - [butterchurn-presets](https://github.com/jberg/butterchurn-presets) and the MilkDrop preset authors.
 - [Archivo](https://github.com/Omnibus-Type/Archivo) typeface (SIL OFL 1.1).
 - [jsmn](https://github.com/zserge/jsmn) (MIT) and [stb](https://github.com/nothings/stb) (public domain or MIT).
+- [QR Code generator](https://github.com/nayuki/QR-Code-generator) by Project Nayuki (MIT), for Scan to save.
 - Lyrics fallback by [LRCLIB](https://lrclib.net).
 
 Full notices, with what the app folder ships, are in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

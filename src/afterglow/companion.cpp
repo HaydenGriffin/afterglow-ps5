@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "afterglow/companion.hpp"
+#include "afterglow/share_link.hpp"
 #include "afterglow/controls.hpp"
 #include "afterglow/ma_socket.hpp"
 #include "afterglow/speaker_group.hpp"
@@ -331,6 +332,24 @@ void read_stream(CompanionTrack &out, std::string_view item)
                                        : std::string{};
     out.quality_badge = joined({out.quality, joined({format, detail}, " / ")}, " · ");
 }
+// Scan to save: the provider mappings' public pages (the url is all that is
+// kept of them), preferring the one the stream came from.
+void read_share(CompanionTrack &out, std::string_view media, std::string_view item)
+{
+    std::vector<ProviderLink> links;
+    for (auto mapping : elements(field(media, "provider_mappings"), 16))
+    {
+        ProviderLink link;
+        link.domain = text_field(mapping, "provider_domain");
+        link.instance = text_field(mapping, "provider_instance");
+        link.url = text_field(mapping, "url");
+        if (!link.url.empty())
+            links.push_back(std::move(link));
+    }
+    const auto share = pick_share_link(links, text_field(field(item, "streamdetails"), "provider"));
+    out.share_url = share.url;
+    out.share_service = share.service;
+}
 std::string item_subtitle(const CompanionTrack &track, std::string_view media)
 {
     if (track.media_type == "album" || track.media_type == "track")
@@ -434,6 +453,7 @@ CompanionTrack parse_track(std::string_view item)
     }
     out.subtitle = item_subtitle(out, media);
     read_stream(out, item);
+    read_share(out, media, item);
     return out;
 }
 } // namespace

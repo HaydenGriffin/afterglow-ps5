@@ -1,0 +1,2 @@
+https://github.com/nayuki/QR-Code-generator v1.8.0 (720f62bddb7226106071d4728c292cb1df519ceb), c/qrcodegen.c and c/qrcodegen.h, unchanged.
+The C version is vendored rather than the C++ one: the PS5 build has no exceptions, and the C++ version throws.

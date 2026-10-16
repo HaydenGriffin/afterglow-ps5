@@ -36,6 +36,8 @@ src/afterglow/presentation.cpp
 src/afterglow/protocol.cpp
 src/afterglow/thumbnails.cpp
 src/afterglow/scenes.cpp
+src/afterglow/setup_check.cpp
+src/afterglow/share_link.cpp
 src/afterglow/speakers.cpp
 src/afterglow/speaker_group.cpp
 src/app/shell.cpp
@@ -57,6 +59,7 @@ src/gfx/font.cpp
 src/gfx/triangulate.cpp
 src/platform/ps5/keyboard.cpp
 src/third_party/stb/vorbis.c
+src/third_party/qrcodegen/qrcodegen.c
 src/ui/components/*.cpp
 src/ui/confetti.cpp
 src/ui/glyphs.cpp

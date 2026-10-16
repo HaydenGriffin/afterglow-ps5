@@ -19,6 +19,9 @@ struct SheetRow
     bool adjustable = false; // left/right changes the value: chevrons on the focused row
     bool thumbnail = false;  // an artwork square before the words
     std::string artwork;     // its URL; a flat neutral square until it loads (never fake art)
+    // Check my setup: the subtitle (a next step) runs under the value too, and
+    // strong sets the value in semibold (a failed check).
+    bool wide_subtitle = false, strong = false;
 };
 
 struct SheetLook

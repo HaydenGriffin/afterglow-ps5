@@ -6,6 +6,7 @@
 #include "afterglow/presentation.hpp"
 #include "afterglow/home_sheet.hpp"
 #include "afterglow/lyrics.hpp"
+#include "afterglow/share_link.hpp"
 #include "afterglow/sheet_list.hpp"
 
 namespace hui::afterglow
@@ -59,6 +60,7 @@ class Panel
         sync,    // TV output compensation (static delay) with the sync figure
         account, // sign in / log out / settings sync
         home,    // Home Assistant glance, drawn by HomeSheet
+        setup,   // Check my setup: pass/fail rows with next steps, Check again
     };
 
     Panel();
@@ -205,5 +207,10 @@ class Panel
     bool leave_ = false;
     // Settings opens on the row it was left at (LG 1.4.3).
     int settings_focus_ = 0;
+    // Scan to save on Details: the code is encoded once per url.
+    ShareLink share_link() const;
+    void draw_share_details(ui::Canvas &canvas, float rule) const;
+    mutable std::string share_url_;
+    mutable QrGrid share_grid_;
 };
 } // namespace hui::afterglow

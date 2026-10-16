@@ -44,6 +44,9 @@ class Socket
     bool send_text(const std::string &text);
     std::function<bool(int, const std::uint8_t *, std::size_t)> handler;
     std::int64_t last_receive_ = 0;
+    // The upgrade response's Date header ("" when none): Check my setup
+    // compares the console's clock with it.
+    std::string server_date;
 
   private:
     bool fail(const char *, int = 0, int = 0)

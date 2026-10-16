@@ -29,7 +29,8 @@ enum class IdleTileKind
     resume, // the paused song
     retry,  // reading recent music failed
     play,   // a recently played item
-    browse  // always last, so Cross never dead-ends
+    browse, // always there, so Cross never dead-ends
+    setup   // Check my setup, after Browse, when there is nothing to offer
 };
 struct IdleTile
 {
@@ -37,9 +38,12 @@ struct IdleTile
     CompanionTrack item;
 };
 // The strip, in order: the paused song, a retry after an error, up to
-// kRecentLimit recent items (the paused one left out), then Browse.
+// kRecentLimit recent items (the paused one left out), then Browse. With
+// setup on and nothing to offer (reading failed, or nothing played yet),
+// Check my setup comes last (LG idle-view.js).
 std::vector<IdleTile> idle_tiles(const CompanionTrack *paused,
-                                 const std::vector<CompanionTrack> &recent, RecentState state);
+                                 const std::vector<CompanionTrack> &recent, RecentState state,
+                                 bool setup = false);
 
 // What the poster says for a tile; hint labels the Cross glyph.
 struct IdleText
@@ -55,7 +59,8 @@ enum class IdleAct
     resume,
     play,
     browse,
-    retry
+    retry,
+    setup
 };
 enum class IdleKey
 {
