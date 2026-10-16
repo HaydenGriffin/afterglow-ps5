@@ -70,6 +70,25 @@ TEST(AfterglowIdleTiles, WordsFollowLg)
     EXPECT_EQ(idle_text(retry, RecentState::error, false).hint, "Try again");
 }
 
+TEST(AfterglowIdleTiles, TonightsProgrammeComesJustBeforeBrowseAndBrowseStillFits)
+{
+    const IdleOffer offer{"Tonight", "14 songs since 19:40"};
+    auto paused = item("Slow Current", "library://track/1");
+    const auto tiles = idle_tiles(&paused, recent(12), RecentState::ready, {}, false, &offer);
+    ASSERT_EQ(tiles.size(), static_cast<std::size_t>(1 + kRecentWithOffer + 2));
+    EXPECT_EQ(kRecentWithOffer, 7) << "at most seven recent items while it is offered";
+    const auto &programme = tiles[tiles.size() - 2];
+    EXPECT_EQ(programme.kind, IdleTileKind::programme);
+    EXPECT_EQ(programme.word, "Tonight");
+    EXPECT_EQ(tiles.back().kind, IdleTileKind::browse);
+    const auto words = idle_text(programme, RecentState::ready, true);
+    EXPECT_EQ(words.title, "Tonight’s programme");
+    EXPECT_EQ(words.detail, "14 songs since 19:40");
+    EXPECT_EQ(words.hint, "Open");
+    EXPECT_EQ(idle_tiles(nullptr, recent(3), RecentState::ready, {}, false, &offer).size(), 5U)
+        << "fewer recent items keep their place";
+}
+
 class AfterglowIdlePoster : public ::testing::Test
 {
   protected:
@@ -178,6 +197,19 @@ TEST_F(AfterglowIdlePoster, LeftAndRightWalkTheStripAndCrossActsOnTheTile)
     idle_.press(IdleKey::confirm, with_pause, act);
     EXPECT_EQ(act, IdleAct::retry);
     EXPECT_FALSE(idle_.press(IdleKey::other, with_pause, act));
+}
+
+TEST_F(AfterglowIdlePoster, CrossOnTheProgrammeOpensIt)
+{
+    in_ = quiet();
+    run(9);
+    const IdleOffer offer{"Today", "5 songs on Kitchen"};
+    const auto tiles = idle_tiles(nullptr, recent(2), RecentState::ready, {}, false, &offer);
+    IdleAct act = IdleAct::none;
+    idle_.press(IdleKey::right, tiles, act);
+    idle_.press(IdleKey::right, tiles, act);
+    ASSERT_TRUE(idle_.press(IdleKey::confirm, tiles, act));
+    EXPECT_EQ(act, IdleAct::programme);
 }
 
 TEST_F(AfterglowIdlePoster, AStartThatDoesNotTakeSaysSo)

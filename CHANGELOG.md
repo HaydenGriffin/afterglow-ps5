@@ -49,6 +49,16 @@ Built and tested on a PC only.
   While one plays, Details offers **Speed** (0.75× to 2×) and **Chapters** (Cross plays from a chapter's start);
   Start radio and Retry lyrics are not offered for them. Empty Podcasts, Audiobooks and episode lists say so.
 - A playing audiobook names its authors where a song names its artist.
+- **Save the queue as a playlist.** Queue → **Save as a playlist** (under the Up next songs) saves the whole queue
+  as a Music Assistant playlist named “Queue · 16 Oct” (unique with “(2)”), no keyboard needed. The row and a
+  notice confirm with a tick, say how many songs could not be added, or why Music Assistant refused (an account
+  that cannot change playlists, nowhere to keep them).
+- **Add to a playlist** on Details, a queued song and a song in Browse: **New playlist** or one of the eight
+  playlists you can change, most recently changed first; the song's own row confirms, as Play next does.
+- **Tonight's programme.** After a listening session the idle poster offers **Tonight** (or **Today**) before
+  Browse: the evening's songs set as a concert programme with their artists and start times, and **Keep it as a
+  playlist**. Offered only, never opened by itself; built from Music Assistant's played history for the queue, so
+  it survives a restart.
 
 # 1.6.0 — First public release (unreleased)
 

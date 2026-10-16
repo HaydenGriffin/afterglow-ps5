@@ -10,6 +10,7 @@
 #include "afterglow/preset_quality.hpp"
 #include "afterglow/home_model.hpp"
 #include "afterglow/lyrics_lookup.hpp"
+#include "afterglow/programme.hpp"
 #include "afterglow/setup_check.hpp"
 #include <array>
 #include <cstdint>
@@ -187,6 +188,12 @@ struct Presentation
     std::vector<SetupRow> setup_rows;
     // Kept timings, chosen lyrics and Go to a line (song_lyrics.hpp).
     SongLyricsState song_lyrics;
+    // Playlists (save the queue, add a song, keep the programme) and tonight's
+    // programme, over plain Music Assistant calls numbered from api_next;
+    // pumped by pump_playlists (programme.hpp).
+    Playlists playlists;
+    Programme programme;
+    std::uint64_t api_next = 0;
 };
 
 // Only the UI thread accesses this model. Audio reaches it through Analyzer.

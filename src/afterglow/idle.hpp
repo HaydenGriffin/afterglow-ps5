@@ -31,23 +31,33 @@ enum class IdleTileKind
     play,   // a recently played item
     browse, // always there, so Cross never dead-ends
     setup,  // Check my setup, after Browse, when there is nothing to offer
-    carry   // an audiobook or episode in progress, after the paused song
+    carry,  // an audiobook or episode in progress, after the paused song
+    // Tonight's programme (programme.hpp), a word tile just before Browse.
+    programme,
 };
 struct IdleTile
 {
     IdleTileKind kind = IdleTileKind::browse;
     CompanionTrack item;
+    std::string word, detail; // the programme's: "Tonight", "14 songs since 19:40"
 };
+// What the programme offers the strip (Programme::tile()).
+struct IdleOffer
+{
+    std::string word, detail;
+};
+// While it is offered the strip keeps one recent item fewer, so Browse fits.
+constexpr int kRecentWithOffer = companion_wire::kRecentLimit - 1;
 // The strip, in order: the paused song, up to kCarryOnLimit audiobooks and
 // episodes in progress, a retry after an error, up to kRecentLimit recent
-// items (none shown twice), then Browse. With setup on and nothing to offer
-// (reading failed, or nothing played yet), Check my setup comes last (LG
-// idle-view.js).
+// items (none shown twice; kRecentWithOffer while the programme is offered),
+// the programme, then Browse. With setup on and nothing to offer (reading
+// failed, or nothing played yet), Check my setup comes last (LG idle-view.js).
 constexpr std::size_t kCarryOnLimit = 3;
 std::vector<IdleTile> idle_tiles(const CompanionTrack *paused,
                                  const std::vector<CompanionTrack> &recent, RecentState state,
                                  const std::vector<CompanionTrack> &in_progress = {},
-                                 bool setup = false);
+                                 bool setup = false, const IdleOffer *offer = nullptr);
 
 // What the poster says for a tile; hint labels the Cross glyph.
 struct IdleText
@@ -64,7 +74,8 @@ enum class IdleAct
     play,
     browse,
     retry,
-    setup
+    setup,
+    programme // open tonight's programme
 };
 enum class IdleKey
 {

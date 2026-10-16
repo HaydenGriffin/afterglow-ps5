@@ -42,6 +42,9 @@ GPL-3.0-or-later.
   volume and sleep timer. **Playing on** picks the speaker and says what each one plays; picking a silent one
   moves the music there. **Join** adds the console to the music playing elsewhere and **Move here** brings that
   music to it. **Speakers together** joins or leaves a sync group and sets each member's own volume.
+- **Playlists and tonight's programme.** Save the queue as a playlist, or add a song to one, named without a
+  keyboard. With nothing playing, the idle poster offers the evening's songs set as a concert programme, which can
+  be kept as a playlist.
 - **Presets.** 395 MilkDrop presets (393 enabled) through [projectM](https://github.com/projectM-visualizer/projectm). A preset
   scan measures each one on your console and keeps the ones that run smoothly. Presets can take their colours from
   the artwork, and favourites are shared with Music Assistant and your LG TVs.

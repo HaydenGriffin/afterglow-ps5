@@ -884,6 +884,8 @@ int main()
             model.seek_seconds = 0;
         }
         pump_account(now);
+        afterglow::pump_playlists(model, companion->take_replies(),
+                                  [&](const afterglow::ApiCall &call) { companion->call(call); });
         const auto command = [&](afterglow::Command value)
         {
             if (model.preferences.follow)

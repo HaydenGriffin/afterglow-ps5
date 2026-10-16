@@ -15,6 +15,7 @@ src/afterglow/icons.cpp
 src/afterglow/idle.cpp
 src/afterglow/lightbar.cpp
 src/afterglow/panel.cpp
+src/afterglow/panel_playlists.cpp
 src/afterglow/sheet_list.cpp
 src/afterglow/home_sheet.cpp
 src/afterglow/home_assistant.cpp
@@ -30,6 +31,10 @@ src/afterglow/night.cpp
 src/afterglow/preset_colour.cpp
 src/afterglow/preferences.cpp
 src/afterglow/preset_change.cpp
+src/afterglow/playlists.cpp
+src/afterglow/programme.cpp
+src/afterglow/json_slice.cpp
+src/afterglow/programme_scene.cpp
 src/afterglow/preset_quality.cpp
 src/afterglow/preference_store.cpp
 src/afterglow/presentation.cpp

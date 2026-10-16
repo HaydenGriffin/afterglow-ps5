@@ -89,6 +89,55 @@ been played yet) the strip ends in **Check setup** after Browse: its field
 says "Nothing playing" and "Something not right? Check my setup", and Cross
 opens [Check my setup](#check-my-setup) and runs it.
 
+**Tonight's programme.** Once the queue the screen follows has played at least
+three songs in the last four hours, the strip offers a word tile just before
+Browse: **Tonight** (17:00–04:59) or **Today**, and the strip keeps at most
+seven recent items so Browse still fits. Focused, it reads "Tonight’s
+programme" and "14 songs since 19:40" (or "14 songs on Living room" when no
+start time is known). Cross opens a full-screen page set as a concert
+programme: the queue's name and "14 songs · 19:40 to 22:15" on the top line,
+the word and the evening's date (before 05:00 it is still the day before) in
+the left columns, and the songs in two numbered columns of eleven with their
+artists and start times ("and N more" past 22). Up/down (or left/right) move
+between **Keep it as a playlist** and **Back**, Cross acts, Circle closes the
+page. Keep it as a playlist creates "Tonight · 16 Oct" (unique with " (2)")
+and adds every song in order. The songs come from Music Assistant's played
+history for the queue (`music/recently_played_items` with `queue_id` and
+`played_after_timestamp`), merged with a log the app keeps while it runs (80
+songs, 12 hours) for the song still playing, artists and start times; artists
+the log missed come from the queue's items, read once when the page opens. The
+page keeps the poster's OLED movement and dim register. It never opens by
+itself.
+
+### Playlists
+
+Music Assistant owns playlists; Afterglow only asks, and names them without a
+keyboard (`<Prefix> · 16 Oct`, unique with " (2)" … " (99)" among library
+playlists; renaming is left to Music Assistant's own app).
+
+- **Save as a playlist**, the last row under the Queue sheet's Up next songs,
+  reads `As “Queue · 16 Oct”` and saves the whole queue, played and to come
+  (`player_queues/save_as_playlist`). It is disabled while offline or when the
+  queue is empty.
+- **Add to a playlist** is on Details (after the favourites row), a queued
+  song's page (before Remove from the queue) and a song's actions in Browse
+  (after Add to the queue). Songs only. It opens a picker: **New playlist**
+  (`As “Playlist · 16 Oct”`, `create_playlist` then `add_playlist_tracks`),
+  then up to eight playlists you can change, most recently changed first
+  (`music/playlists/library_items`, editable and not dynamic). From Browse the
+  picker takes the actions column; elsewhere it is a sheet. Choosing goes back
+  where it came from and the song's own row confirms.
+- Confirmations sit on the row that started the job and show as a notice:
+  "Saving…" / "Adding to “Sunday kitchen”…" while it works; a success ticks
+  for 2.5 s ("Saved as “Queue · 16 Oct”", "Added to “Sunday kitchen”"); a
+  partial save ("· 3 songs couldn’t be added"), "Already in “…”, or not
+  available there", "Still saving in Music Assistant" (after 30 s of following
+  the task with `tasks/get`) and refusals stay 6 s without a tick. Refusals:
+  "This account can’t change playlists" (a guest account), "Music Assistant
+  has nowhere to keep playlists", "Nothing in the queue can go in a playlist",
+  else "Couldn’t save. Try again" / "Couldn’t add. Try again". One job runs at
+  a time.
+
 The current build includes:
 
 - Album artwork, track/artist/album information, plain, timed or
@@ -662,12 +711,16 @@ Not checked one by one on the console either, so still host-tested only:
 - speaker group editing, TV output compensation and the sync figure;
 - moving music between speakers (transfers, Play on this PS5) and the idle
   poster (only the Python mocks have answered these writes);
+- saving the queue as a playlist, Add to a playlist and Keep it as a playlist
+  (no live Music Assistant has answered these writes; only unit fakes and the
+  preview's invented answers), and tonight's programme from a real played
+  history;
 - log out by token id, the `afterglow.auth` write and settings mirroring;
 - group volume on real speakers, and the relay's stall reconnect after Music
   Assistant stops sending frames;
 - beat detection and projectM beat sensitivity, album slot recolouring and
   the night register's local time;
-- word-by-word lyrics, lyric timing on L2/R2 and the quality facts in Details.
+- word-by-word lyrics, lyric timing on L2/R2 and the quality facts in Details;
 - Scan to save read by a phone camera from across a room, and Check my setup
   against a real server, relay, clock and lrclib.net (only unit fakes and the
   preview's fixed answers have run it).

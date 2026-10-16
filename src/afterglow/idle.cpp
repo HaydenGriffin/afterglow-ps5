@@ -56,7 +56,8 @@ std::string joined(const std::vector<std::string> &parts)
 
 std::vector<IdleTile> idle_tiles(const CompanionTrack *paused,
                                  const std::vector<CompanionTrack> &recent, RecentState state,
-                                 const std::vector<CompanionTrack> &in_progress, bool setup)
+                                 const std::vector<CompanionTrack> &in_progress, bool setup,
+                                 const IdleOffer *offer)
 {
     std::vector<IdleTile> tiles;
     if (paused != nullptr && !paused->title.empty())
@@ -89,15 +90,24 @@ std::vector<IdleTile> idle_tiles(const CompanionTrack *paused,
         tiles.push_back(std::move(tile));
     }
     int added = 0;
+    const int limit = offer != nullptr ? kRecentWithOffer : companion_wire::kRecentLimit;
     for (const auto &item : recent)
     {
         if (item.uri.empty() || shown(item.uri))
             continue;
-        if (added++ >= companion_wire::kRecentLimit)
+        if (added++ >= limit)
             break;
         IdleTile tile;
         tile.kind = IdleTileKind::play;
         tile.item = item;
+        tiles.push_back(std::move(tile));
+    }
+    if (offer != nullptr)
+    {
+        IdleTile tile;
+        tile.kind = IdleTileKind::programme;
+        tile.word = offer->word;
+        tile.detail = offer->detail;
         tiles.push_back(std::move(tile));
     }
     tiles.emplace_back();
@@ -138,6 +148,8 @@ IdleText idle_text(const IdleTile &tile, RecentState state, bool has_recent)
         return {"Nothing playing", "Couldn’t load what you played", "Try again"};
     case IdleTileKind::setup:
         return {"Nothing playing", "Something not right? Check my setup", "Check your setup"};
+    case IdleTileKind::programme:
+        return {tile.word + "’s programme", tile.detail, "Open"};
     case IdleTileKind::browse:
         break;
     }
@@ -232,6 +244,9 @@ bool IdlePoster::press(IdleKey key, const std::vector<IdleTile> &tiles, IdleAct 
         break;
     case IdleTileKind::setup:
         act = IdleAct::setup;
+        break;
+    case IdleTileKind::programme:
+        act = IdleAct::programme;
         break;
     }
     return true;

@@ -1328,6 +1328,13 @@ struct Companion::Impl
     // The token the last auth on the API socket carried; a refusal of a token
     // replaced since (set_token) is not a refusal of this PS5's sign-in.
     std::string auth_sent;
+    // Plain calls (Companion::call). Wanted, pending (id -> deadline) and
+    // replies are under the mutex; in flight and partial answers are the worker's.
+    std::deque<ApiCall> api_wanted;
+    std::map<std::uint64_t, std::int64_t> api_pending;
+    std::vector<ApiReply> api_replies;
+    std::map<std::string, std::uint64_t> api_inflight;
+    std::map<std::string, std::vector<std::string>> api_parts;
 
     std::string current_token()
     {
@@ -1516,6 +1523,8 @@ struct Companion::Impl
         const auto result = field(raw, "result");
         if (id.starts_with("browse-"))
             return browse_message(id, raw, result);
+        if (id.starts_with("call-"))
+            return api_reply(id, raw, result);
         if (!action_inflight.empty() && id == action_inflight)
         {
             if (action_remove_lookup && field(raw, "error_code").empty())
@@ -1728,6 +1737,76 @@ struct Companion::Impl
             recent_inflight.clear();
             state.recent_state = RecentState::error;
         }
+    }
+    // A plain call's answer. A long list comes in parts under one id ("partial"),
+    // joined here into one array.
+    bool api_reply(const std::string &id, std::string_view raw, std::string_view result)
+    {
+        const auto it = api_inflight.find(id);
+        if (it == api_inflight.end())
+            return true;
+        const bool failed = !field(raw, "error_code").empty();
+        auto &parts = api_parts[id];
+        if (field(raw, "partial") == "true" && !failed)
+        {
+            for (auto item : elements(result, 4096))
+                parts.emplace_back(item);
+            return true;
+        }
+        ApiReply reply;
+        reply.id = it->second;
+        if (failed)
+        {
+            reply.error_code = number(raw, "error_code", kApiNoAnswer);
+            reply.details = text_field(raw, "details");
+        }
+        else if (!parts.empty())
+        {
+            for (auto item : elements(result, 4096))
+                parts.emplace_back(item);
+            reply.result = "[";
+            for (std::size_t i = 0; i < parts.size(); ++i)
+                reply.result += (i ? "," : "") + parts[i];
+            reply.result += "]";
+        }
+        else
+            reply.result = std::string(result);
+        api_inflight.erase(it);
+        api_parts.erase(id);
+        std::lock_guard<std::mutex> lock(mutex);
+        if (api_pending.erase(reply.id) != 0)
+            api_replies.push_back(std::move(reply));
+        return true;
+    }
+    bool send_api_calls()
+    {
+        std::deque<ApiCall> calls;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            calls.swap(api_wanted);
+        }
+        bool okay = true;
+        for (const auto &wanted : calls)
+        {
+            const auto id = "call-" + std::to_string(++sequence);
+            api_inflight[id] = wanted.id;
+            okay = okay && call(id, wanted.command, wanted.args.empty() ? "{}" : wanted.args);
+        }
+        return okay;
+    }
+    // Caller holds the mutex: every call not yet answered gets kApiNoAnswer.
+    void fail_api_calls(const char *why)
+    {
+        for (const auto &[id, deadline] : api_pending)
+        {
+            ApiReply reply;
+            reply.id = id;
+            reply.error_code = kApiNoAnswer;
+            reply.details = why;
+            api_replies.push_back(std::move(reply));
+        }
+        api_pending.clear();
+        api_wanted.clear();
     }
     void read_account(std::string_view result)
     {
@@ -2510,6 +2589,7 @@ struct Companion::Impl
                         }
                     }
                     okay = okay && pump_controls(now);
+                    okay = okay && send_api_calls();
                     companion_wire::Request browse_request, action_request;
                     std::string browse_id, action_id;
                     {
@@ -2593,7 +2673,10 @@ struct Companion::Impl
                 browse_pending = false;
                 browse_inflight.clear();
                 ++browse_generation;
+                fail_api_calls("Music Assistant disconnected");
             }
+            api_inflight.clear();
+            api_parts.clear();
             // A refused token stays refused until stop() or a renewed token (set_token).
             while (rejected && !stopping && current_token() == auth_sent)
                 poll(nullptr, 0, 100);
@@ -2809,6 +2892,41 @@ void Companion::set_queue_offset(int offset)
     impl_->queue_window = offset < 0 ? -1 : std::clamp(offset, 0, std::max(0, total - 1));
     impl_->window_queue = impl_->state.queue_id;
     impl_->queue_window_dirty = true;
+}
+void Companion::call(const ApiCall &call)
+{
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    if (!impl_->state.connected || call.command.empty() || call.args.size() > 65536)
+    {
+        ApiReply reply;
+        reply.id = call.id;
+        reply.error_code = kApiNoAnswer;
+        reply.details = "Music Assistant is not connected";
+        impl_->api_replies.push_back(std::move(reply));
+        return;
+    }
+    impl_->api_wanted.push_back(call);
+    impl_->api_pending[call.id] = sys::monotonic_us() + std::int64_t{kApiCallSeconds} * 1000000;
+}
+std::vector<ApiReply> Companion::take_replies()
+{
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    const auto now = sys::monotonic_us();
+    for (auto it = impl_->api_pending.begin(); it != impl_->api_pending.end();)
+    {
+        if (now < it->second)
+        {
+            ++it;
+            continue;
+        }
+        ApiReply reply;
+        reply.id = it->first;
+        reply.error_code = kApiNoAnswer;
+        reply.details = "No reply from Music Assistant";
+        impl_->api_replies.push_back(std::move(reply));
+        it = impl_->api_pending.erase(it);
+    }
+    return std::exchange(impl_->api_replies, {});
 }
 void Companion::load_recent()
 {

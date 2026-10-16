@@ -854,18 +854,18 @@ using namespace style;
 constexpr float kIdleTile = 88;
 constexpr float kIdleTileGap = 16;
 constexpr float kIdleStripY = 936;
-const char *idle_word(IdleTileKind kind)
+std::string idle_word(const IdleTile &tile)
 {
-    return kind == IdleTileKind::retry   ? "Try again"
-           : kind == IdleTileKind::setup ? "Check setup"
-                                         : "Browse";
+    return tile.kind == IdleTileKind::retry       ? "Try again"
+           : tile.kind == IdleTileKind::setup     ? "Check setup"
+           : tile.kind == IdleTileKind::programme ? tile.word
+                                                  : "Browse";
 }
 float idle_tile_width(const Scene &scene, const IdleTile &tile)
 {
     if (tile.kind == IdleTileKind::resume || tile.kind == IdleTileKind::play)
         return kIdleTile;
-    const char *word = idle_word(tile.kind);
-    return std::max(kIdleTile, scene.fonts.semibold.font->measure(word, kTypeMin) + 24);
+    return std::max(kIdleTile, scene.fonts.semibold.font->measure(idle_word(tile), kTypeMin) + 24);
 }
 void draw_idle_strip(const Scene &scene, const IdleView &idle, Color fill_b)
 {
@@ -899,8 +899,8 @@ void draw_idle_strip(const Scene &scene, const IdleView &idle, Color fill_b)
             const Color colour = focused ? kInk : ink_paper;
             if (!focused)
                 list.line(box.x, box.y + 1, box.x + box.w, box.y + 1, 2, kRule);
-            ui::text(list, scene.fonts.semibold, idle_word(tile.kind), box.x + 12,
-                     box.y + box.h - 16, kTypeMin, colour);
+            ui::text(list, scene.fonts.semibold, idle_word(tile), box.x + 12, box.y + box.h - 16,
+                     kTypeMin, colour);
         }
         x += width + kIdleTileGap;
     }
@@ -979,5 +979,14 @@ void draw_idle_poster(const Scene &scene, const IdleView &idle)
     // The dim register: a veil of the ground, so nothing overlapping shows through.
     if (idle.level < 0.999f)
         list.rounded_rect({0, 0, 1920, 1080}, 0, kInk.with_alpha(1 - idle.level));
+}
+
+gfx::Color poster_paper(const Presentation &state)
+{
+    return paper(state);
+}
+gfx::Color poster_muted(const Presentation &state)
+{
+    return muted(state);
 }
 } // namespace hui::afterglow

@@ -565,16 +565,17 @@ Panel::Panel()
 bool Panel::browse_page() const
 {
     return page_ == Page::browse || page_ == Page::collection || page_ == Page::item_actions ||
-           page_ == Page::search || page_ == Page::artist;
+           page_ == Page::search || page_ == Page::artist ||
+           (page_ == Page::playlist && adding_from_ == Page::item_actions);
 }
 
 const char *Panel::page_name() const
 {
     constexpr const char *kNames[] = {
-        "browse",  "collection", "item_actions",  "queue",       "queue_actions", "details",
-        "display", "settings",   "source",        "visuals",     "presets",       "lyrics_timing",
-        "status",  "search",     "artist",        "players",     "sync",          "account",
-        "home",    "setup",      "lyrics_choice", "lyrics_lines",  "chapters"};
+        "browse",  "collection", "item_actions",  "queue",        "queue_actions", "details",
+        "display", "settings",   "source",        "visuals",      "presets",       "lyrics_timing",
+        "status",  "search",     "artist",        "players",      "sync",          "account",
+        "home",    "setup",      "lyrics_choice", "lyrics_lines", "chapters",      "playlist"};
     const auto index = static_cast<std::size_t>(page_);
     return index < std::size(kNames) ? kNames[index] : "";
 }
@@ -627,6 +628,10 @@ std::string Panel::title() const
         return "Go to a line";
     case Page::chapters:
         return "Chapters";
+    case Page::playlist:
+        if (!browse_page())
+            return "Add to a playlist";
+        [[fallthrough]];
     default:
         return search_root_ ? "Search" : "Browse";
     }
@@ -698,6 +703,9 @@ std::string Panel::note() const
         return lyrics_lines_note(s);
     case Page::chapters:
         return s.companion.track.title;
+    case Page::playlist:
+        return adding_song_.artist.empty() ? adding_song_.title
+                                           : adding_song_.title + " · " + adding_song_.artist;
     default:
         return {};
     }
@@ -813,12 +821,14 @@ std::vector<SheetRow> Panel::queue_rows() const
         auto &row = rows.row(track.title.empty() ? "Untitled" : track.title, i, track.artist);
         row.thumbnail = true;
         row.artwork = track.artwork;
+        mark_playlist(row, "queue:" + track.uri, false);
     }
     if (shown == 0)
         rows.row("Nothing queued next", info).item.disabled = true;
     const int later = later_songs(c);
     if (shown > 0 && later > 0)
         rows.row("Later songs", queue_later, std::to_string(later) + " more");
+    rows.list.push_back(save_playlist_row());
     rows.header("Playback");
     rows.row("Shuffle", shuffle, on_off(c.shuffle)).item.disabled = !live;
     auto &rep = rows.row("Repeat", repeat, kRepeatLabels[repeat_index(c.repeat)]);
@@ -986,6 +996,7 @@ std::vector<SheetRow> Panel::sheet_rows() const
         rows.row("Play next", queue_next).item.disabled = !ready || position == 0;
         rows.row("Move up", queue_up).item.disabled = !ready || position == 0;
         rows.row("Move down", queue_down).item.disabled = !ready || position >= last;
+        rows.list.push_back(add_playlist_row(selected_track_, ready));
         rows.row("Remove from the queue", queue_remove).item.disabled = !ready;
         break;
     }
@@ -1009,6 +1020,7 @@ std::vector<SheetRow> Panel::sheet_rows() const
         rows.row(c.track.favorite ? "Remove from music favourites" : "Add to music favourites",
                  favourite)
             .item.disabled = !ready;
+        rows.list.push_back(add_playlist_row(c.track, ready));
         if (offers_radio(c.track))
             rows.row("Start radio from this song", radio, "Replaces the queue").item.disabled =
                 !ready;
@@ -1157,6 +1169,8 @@ std::vector<SheetRow> Panel::sheet_rows() const
         int focus = 0;
         return lyrics_line_rows(s, focus);
     }
+    case Page::playlist:
+        return picker_rows();
     default:
         break;
     }
@@ -1235,6 +1249,8 @@ std::vector<SheetRow> Panel::list_rows() const
             row.chosen = true;
             row.item.subtitle = confirmed_text_;
         }
+        else if (row.item.tag >= 0 && static_cast<std::size_t>(row.item.tag) < items.size())
+            mark_playlist(row, "browse:" + items[static_cast<std::size_t>(row.item.tag)].uri, true);
     const auto empty = empty_list_copy(request_.category);
     if (items.empty() && !search && !empty.first.empty())
     {
@@ -1271,6 +1287,8 @@ std::vector<SheetRow> Panel::action_rows() const
     {
         rows.row("Play next", play_next).item.disabled = !ready;
         rows.row("Add to the queue", add_to_queue).item.disabled = !ready;
+        if (type == "track")
+            rows.list.push_back(add_playlist_row(subject_, ready));
     }
     // Music Assistant builds radio from songs, albums, playlists and artists.
     if (type != "radio" && type != "podcast" && type != "podcast_episode" && type != "audiobook")
@@ -1300,12 +1318,14 @@ void Panel::rebuild_browse()
     if (appending_ && !loading && c.browse_error.empty() &&
         (c.browse_items.size() > append_from_ || !c.browse_has_more))
         appending_ = false;
-    const bool actions = page_ == Page::item_actions;
+    const bool actions = page_ == Page::item_actions || page_ == Page::playlist;
     sheet_.look = SheetLook{};
     sheet_.look.row_height = actions ? kActionRow : kCollectionRow;
     sheet_.set_bounds(
         {kCollectionLeft, kCollectionTop, kRight - kCollectionLeft, kListBottom - kCollectionTop});
-    sheet_.set_rows(actions ? action_rows() : list_rows());
+    sheet_.set_rows(page_ == Page::playlist ? picker_rows()
+                    : actions               ? action_rows()
+                                            : list_rows());
     if (pending_focus_ >= 0 && !actions && !loading)
     {
         sheet_.set_focus(pending_focus_);
@@ -1412,6 +1432,9 @@ bool Panel::back()
     case Page::lyrics_lines:
     case Page::chapters:
         navigate(Page::details, parent_focus_);
+        return true;
+    case Page::playlist:
+        close_picker();
         return true;
     case Page::source:
     case Page::visuals:
@@ -1741,7 +1764,7 @@ void Panel::confirm_browse(const SheetRow &row)
         request_category(tag);
         return;
     }
-    if (page_ == Page::item_actions)
+    if (page_ == Page::item_actions || page_ == Page::playlist)
         confirm(row);
     else
         confirm_list(row);
@@ -1811,6 +1834,8 @@ void Panel::confirm(const SheetRow &row)
         navigate(page);
     };
     if (confirm_song_lyrics_row(tag))
+        return;
+    if (confirm_playlist(row))
         return;
     if (tag >= kGoToTag)
     {
@@ -2390,7 +2415,7 @@ void Panel::update(const InputFrame &input, float dt, ui::Feedback &feedback, bo
     if (input.nav == Direction::left || input.nav == Direction::right)
         held_steps_ = input.nav_repeat ? held_steps_ + 1 : 0;
     refresh_ -= dt;
-    if (refresh_ <= 0 || acted)
+    if (refresh_ <= 0 || acted || playlists_moved())
     {
         rebuild();
         refresh_ = 0.5f;
@@ -2607,6 +2632,8 @@ std::string Panel::browse_heading() const
         return kCategories[category_].name;
     case Page::search:
         return query_.empty() ? "Search Music Assistant" : "Results for “" + query_ + "”";
+    case Page::playlist:
+        return "Add to a playlist";
     case Page::artist:
     {
         const std::string name = subject_.title.empty() ? "Artist" : subject_.title;
