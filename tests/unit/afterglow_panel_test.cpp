@@ -804,6 +804,19 @@ TEST_F(AfterglowPanel, PlayOnThisPs5BringsTheMusicHere)
     cross();
     EXPECT_FALSE(s.companion_action_pending);
     EXPECT_FALSE(s.preferences.follow);
+
+    // This PS5's own player in the speaker list is the same choice.
+    s.preferences.follow = true;
+    CompanionPlayer own{"ps5", "Afterglow PS5"};
+    own.takes_music = true;
+    s.companion.players = {own};
+    panel_.open(Page::players);
+    down(2); // Active speaker, then past the heading to this PS5's own player
+    cross();
+    ASSERT_TRUE(s.companion_action_pending);
+    EXPECT_EQ(s.companion_action.text, "ps5");
+    EXPECT_TRUE(s.companion_action.enabled);
+    EXPECT_FALSE(s.preferences.follow) << "followed, its own player would play silently";
 }
 
 TEST_F(AfterglowPanel, SpeakersTogetherBelongsToTheTargetAndRefusesWhoCannotJoin)

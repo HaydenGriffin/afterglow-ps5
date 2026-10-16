@@ -1908,7 +1908,9 @@ struct Companion::Impl
         const auto it = queues.find(target.queue_id);
         if (it == queues.end())
         {
+            // A late reply for the old target must not fill the empty window.
             window_key.clear();
+            items_request.clear();
             upcoming.clear();
             return true;
         }

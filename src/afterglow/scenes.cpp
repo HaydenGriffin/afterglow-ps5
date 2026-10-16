@@ -813,7 +813,8 @@ void draw_idle_poster(const Scene &scene, const IdleView &idle)
     ui::paragraph(list, fonts.display, lines, kColumn, top, size, size * 0.94f, ink_paper);
 
     const gfx::Rect field{kColumn, 670, 706, 248};
-    const Color ta = field_text(fa);
+    // Night fields carry the night paper (LG 1.4.4), never full paper.
+    const Color ta = contrast(fa, kInk) >= contrast(fa, kPaper) ? kInk : ink_paper;
     list.rounded_rect(field, 0, fa);
     const float inset = field.x + kFieldInset;
     const float end = ui::paragraph(list, fonts.semibold, idle.text.detail, inset, 735, 40,

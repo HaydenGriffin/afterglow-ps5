@@ -315,7 +315,8 @@ std::string speaker_detail(const Presentation &s, const CompanionPlayer &player)
 {
     if (!player.available)
         return "Unavailable";
-    const std::string kind = player.type == "group" ? "Group"
+    const std::string kind = player.id == s.companion.own_player_id ? "This PS5"
+                             : player.type == "group"               ? "Group"
                              : !player.synced_to.empty() || !player.group_members.empty()
                                  ? "Grouped"
                                  : "Speaker";
@@ -1439,6 +1440,18 @@ void Panel::confirm_group(int tag)
 void Panel::choose_speaker(const CompanionPlayer &player)
 {
     auto &s = presentation();
+    // This PS5's own player only sounds with Source: This PS5; followed, it is silent.
+    if (!player.id.empty() && player.id == s.companion.own_player_id)
+    {
+        CompanionAction action;
+        action.kind = CompanionActionKind::transfer;
+        action.text = player.id;
+        action.enabled = true;
+        if (page_ == Page::players && player.takes_music)
+            send(action, "Moved the music to this PS5");
+        s.preferences.follow = false;
+        return;
+    }
     if (page_ == Page::players && player.takes_music)
     {
         CompanionAction action;
