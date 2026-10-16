@@ -32,8 +32,8 @@ time: most of it is the preset scan running on its own.
   Afterglow has been run on **one console, on system software 7.61**. The packaging it inherits from
   ps5-native-app-boilerplate was checked on 6.02 and 12.70, but Afterglow itself has not been tried on any other
   firmware or enabler.
-  <!-- TODO(owner): name the jailbreak and homebrew enabler (and versions) used on the 7.61 console, and link
-       their own setup guides. Afterglow's docs should not explain how to jailbreak a console. -->
+  For reference, that console runs Y2JB with the PLK ps5-unified-autoloader, kstuff-lite, ShadowMount Plus
+  1.7beta4 and ftpsrv 0.21.1. Follow those projects' own guides; this one does not explain jailbreaking.
 
 - **Music Assistant 2.10 or newer** on the same network, reachable by its **numeric IPv4 address** (for example
   `192.168.1.10`). The PS5 does not resolve names such as `music-assistant.local`, and Home Assistant's ingress
@@ -55,8 +55,7 @@ time: most of it is the preset scan running on its own.
 
 - **Sendspin.** The PS5 plays as a Sendspin client of Music Assistant's Sendspin server on port 8927. When it
   connects, a player named *Afterglow PS5* appears in Music Assistant.
-  <!-- TODO(owner): say whether a fresh Music Assistant 2.10 needs the Sendspin provider added by hand
-       (Settings → Providers) or has it on by default. -->
+  Sendspin is built into Music Assistant 2.10 and always on; there is nothing to add.
 - **MilkDrop Visualizer plugin** (only for following speakers): Music Assistant's web interface → **Settings →
   Plugins → Add plugin → MilkDrop Visualizer**. Keep its defaults and save. It streams the waveform of whatever is
   playing, which is what the PS5 draws when it follows a speaker. Playing on the PS5 itself does not need it.
@@ -219,12 +218,12 @@ Afterglow subscribes only to the entities you list, never to the whole house.
 
 - **Updating**: close Afterglow, then copy the new `PPSA99481` folder over the old one (or `make deploy`). Keep your
   `afterglow.conf`. Settings and the sign-in live in the title's own storage, not in the folder.
-  <!-- TODO(owner): confirm on the console that preferences and afterglow.auth survive replacing the folder. -->
 - **Signing out**: Settings → Account → **Log out** revokes this console's token in Music Assistant and deletes it
   from the console. Do this before removing Afterglow or lending the console.
 - **Removing**: log out, close Afterglow, then delete `/data/homebrew/PPSA99481` (from a checkout,
   `make undeploy PS5_HOST=<console address>`). Deleting the folder does not unregister the title: the home-screen
-  tile can stay until your enabler refreshes its list.
+  tile can stay until your enabler refreshes its list. Restart the console before deleting the folder: deleting a
+  folder title the enabler still has mounted has crashed a console.
 - **Several consoles**: give each its own `client_id` (and `name`) in `afterglow.conf`, sign in on each, and run the
   scan on each.
 
@@ -233,11 +232,16 @@ Afterglow subscribes only to the entities you list, never to the whole house.
 The Lyrics view shows the lyrics Music Assistant has for the song: timed lyrics follow the music line by line, word
 by word when the lyrics carry word timing, and plain lyrics are paged with up and down.
 
-When Music Assistant has no lyrics, the PS5 asks [lrclib.net](https://lrclib.net) directly, sending the song's title
-and artist. This is the only request Afterglow makes to a service other than your Music Assistant server (and your
-Home Assistant, if you set up the Home section). **Online lyrics** turns it off; it is on by default. **Retry
-lyrics** asks again after a failed or empty lookup.
-<!-- TODO(owner): check these rows' names and place, and the fields sent to LRCLIB, after the lyrics lane merges. -->
+When Music Assistant has no lyrics (or does not answer within 5 s), the PS5 searches [lrclib.net](https://lrclib.net)
+over HTTPS, sending only the song's title (without "feat." credits or version tags) and its first artist; no account,
+token or device id. The album and length stay on the console and only pick the best match. It asks only while lyrics
+are on screen. This is the only request Afterglow makes to a service other than your Music Assistant server (and your
+Home Assistant, if you set up the Home section). Options → Settings → **Lyrics** holds
+**Online lyrics** (on by default; off sends nothing to lrclib.net), **Retry lyrics** after a failed or empty lookup,
+and **Lyrics timing**, which moves the words up to 10 s earlier or later.
+
+Online lyrics need the console's clock to be right: certificates are checked against the console's own list, and a
+wrong date fails every lookup as "certificate expired or clock wrong".
 
 There is no analytics or telemetry.
 
@@ -254,5 +258,5 @@ There is no analytics or telemetry.
   frame rate and the display's refresh rate.
 - While Afterglow runs, its log is in the title's storage; over FTP it is
   `/mnt/sandbox/PPSA99481_000/download0/hui/dev/app.log`. It helps with a bug report; it names your server's
-  LAN address, so look it over before you share it.
-  <!-- TODO(owner): confirm app.log never prints user names or tokens. -->
+  LAN address and the presets and lyrics lookups of the session, but never your user name, password or tokens.
+  Look it over before you share it.

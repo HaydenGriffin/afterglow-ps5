@@ -17,7 +17,7 @@ in the app folder's `licenses/` directory.
 | `eboot.bin` (linked in) | [BearSSL](https://www.bearssl.org/) (HTTPS for online lyrics) | MIT | `bearssl/` |
 | `eboot.bin` (linked in) | [stb_vorbis](https://github.com/nothings/stb) | MIT or public domain | `stb/` |
 | `eboot.bin` (linked in) | Parts of LLVM libc++, libc++abi, libunwind and compiler-rt builtins, from the PS5 Payload SDK and the compiler | Apache-2.0 WITH LLVM-exception | none needed in binary form |
-| `eboot.bin` (linked in) | Three C-locale objects of the PS5 Payload SDK's `libc.a` (`no-locale.o`, `mbsnrtowcs.o`, `wcsnrtombs.o`), FreeBSD-derived | See below | see below |
+| `eboot.bin` (linked in) | Three C-locale objects of the [PS5 Payload SDK](https://github.com/ps5-payload-dev/sdk)'s `libc.a`: `no-locale.o` (John Törnblom) and `mbsnrtowcs.o`, `wcsnrtombs.o` (from musl) | GPL-3.0-or-later; musl's MIT | `LICENSE`, `musl/` |
 | `sce_module/libc.prx` | The project's clean-room runtime shim | GPL-3.0-or-later | `LICENSE` |
 | `assets/fonts/archivo-*.huifont` | Archivo, baked to distance fields | SIL OFL 1.1 | `fonts/Archivo-LICENSE.txt` |
 | `assets/fonts/dejavu-sans-mono.huifont` | DejaVu Sans Mono, baked | Bitstream Vera licence; DejaVu changes public domain | `fonts/DejaVu-LICENSE.txt` |
@@ -28,10 +28,9 @@ Not shipped, though in the repository: the upstream kit's sound effects, music a
 (`assets/audio/`, `sce_sys/snd0.at9`), the Inter, Montserrat, Press Start 2P and Patrick Hand fonts, the gallery of
 designs, and the host-only tools (stb_truetype, stb_image_write, GoogleTest, zlib).
 
-The FreeBSD-derived `libc.a` objects are linked so projectM's locale functions resolve; FreeBSD's libc is under
-BSD-style licences, which ask for the copyright notice in binary distributions.
-<!-- TODO(owner): find the exact copyright lines of no-locale.c, mbsnrtowcs.c and wcsnrtombs.c in the PS5
-     Payload SDK's libc sources and add them here (and as a text file under licenses/). -->
+The three `libc.a` objects are linked so projectM's locale functions resolve. `no-locale.c` is Copyright (C) 2024
+John Törnblom under GPL-3.0-or-later; `mbsnrtowcs.c` and `wcsnrtombs.c` are Copyright © 2005-2020 Rich Felker, et
+al. (musl) under the MIT licence, shipped as `licenses/musl/COPYRIGHT`.
 
 ### projectM and the LGPL
 
@@ -43,10 +42,8 @@ projectM is statically linked into `eboot.bin`, so the LGPL-2.1 terms for a "wor
 - Everything needed to relink the application against a modified projectM is this repository: the complete
   application source, the build scripts, and the same pinned toolchain. `make app` relinks it.
 - These notices and projectM's licence text ship with every build.
-
-<!-- TODO(owner): for strict LGPL-2.1 section 6 compliance when publishing binaries, consider attaching the patched
-     projectM source (an archive of .deps/projectm/src after tools/build-projectm.sh) to each GitHub release, so the
-     library source is offered from the same place as the ZIP. -->
+- Each GitHub release also attaches `projectm-source.tar.gz`, the patched projectM source that release was built
+  from, so the library source is offered from the same place as the ZIP.
 
 ### The presets' licence, plainly
 
@@ -216,9 +213,6 @@ product's name, artwork or trademark is used.
 No proprietary runtime module, encryption key, or game file is included.
 
 ## Afterglow's dependencies
-
-<!-- TODO(owner): the lyrics lane fetches LRCLIB over HTTPS; if it adds a TLS library (or any other code), add
-     it to the table at the top, here, and to licenses/ through tools/build.sh. -->
 
 ### jsmn
 

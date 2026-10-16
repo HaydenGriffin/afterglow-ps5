@@ -116,9 +116,9 @@ image proxy. With a Home section configured, it also talks to your Home Assistan
 you list.
 
 The one other service is lyrics. When Music Assistant has none for a song, the PS5 asks
-[lrclib.net](https://lrclib.net) directly, sending the song's title and artist; LRCLIB sees the request coming from
-your network. Turn **Online lyrics** off (Options → Display) to stop it; it is on by default.
-<!-- TODO(owner): check the LRCLIB request fields and the Online lyrics row's place once the lyrics lane is merged. -->
+[lrclib.net](https://lrclib.net) directly over HTTPS, sending only the song's title and first artist (no account,
+token or device id); LRCLIB sees the request coming from your network. Turn **Online lyrics** off (Options →
+Settings → Lyrics) to stop it; it is on by default.
 
 The console stores its Music Assistant token in the app's own storage (`/download0/hui/afterglow.auth`), never your
 password. A token or Home Assistant token you put in `afterglow.conf` sits in the install folder, which anything with

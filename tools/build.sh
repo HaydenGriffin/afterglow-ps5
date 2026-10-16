@@ -289,9 +289,11 @@ cp "$root/THIRD_PARTY_NOTICES.md" "$root/LICENSE" "$app/licenses/"
 cp "$root"/third_party/projectm/licenses/* "$app/licenses/projectm/"
 cp "$root/third_party/bearssl/LICENSE.txt" "$app/licenses/bearssl/"
 cp "$root"/third_party/presets/* "$app/licenses/presets/"
-# Linked into eboot.bin: jsmn (MIT) and stb_vorbis (MIT or public domain).
-mkdir -p "$app/licenses/jsmn" "$app/licenses/stb"
+# Linked into eboot.bin: jsmn (MIT), stb_vorbis (MIT or public domain) and two
+# musl objects from the PS5 Payload SDK's libc.a (MIT).
+mkdir -p "$app/licenses/jsmn" "$app/licenses/stb" "$app/licenses/musl"
 cp "$root/third_party/jsmn/LICENSE" "$app/licenses/jsmn/"
+cp "$root/third_party/musl/COPYRIGHT" "$app/licenses/musl/"
 cp "$root/src/third_party/stb/LICENSE" "$app/licenses/stb/"
 # ps5-opengl (with Mesa) is linked into eboot.bin, so its notices travel with it.
 opengl_release=$(dirname -- "$(realpath -e -- "$root/.deps/ps5-opengl/current")")

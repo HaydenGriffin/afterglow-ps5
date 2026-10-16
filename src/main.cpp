@@ -574,7 +574,9 @@ int main()
         if (account.take_result(result))
         {
             model.account.busy = false;
-            sys::log("[Afterglow] account: %s", result.message.c_str());
+            // Success messages name the user; the log keeps only failures.
+            if (!result.ok)
+                sys::log("[Afterglow] account: %s", result.message.c_str());
             if (result.job == afterglow::AccountJob::renew && result.ok && result.token_changed)
             {
                 // Same server: the open connections take the fresh token for their
