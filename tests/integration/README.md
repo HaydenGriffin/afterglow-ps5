@@ -49,3 +49,18 @@ settings mirroring (`vizman.devices[<device>]` read, a debounced
 merge-before-write that keeps other devices, favourites and unrelated keys) and
 the static delay (found on the universal player under a protocol-prefixed key,
 then saved with `config/players/save`). Neither contacts a real server.
+
+## Command target and moving music smoke
+
+```sh
+bash tests/integration/run-companion-playback-smoke.sh
+```
+
+A disposable loopback server stands in for Music Assistant 2.10.6 with a
+playing living room (a kitchen synced to it), an idle bedroom and this PS5's
+own player. It checks the command target (the followed queue, then a chosen
+silent speaker that still takes Play, Play now and its own volume), group
+volume on a sync leader (`players/cmd/group_volume`), recent music for the idle
+poster (`music/recently_played_items`, artwork made absolute), a transfer to a
+silent speaker (`player_queues/transfer` without `auto_play`) and Play on this
+PS5 (`auto_play: true`). It never contacts a real server.
