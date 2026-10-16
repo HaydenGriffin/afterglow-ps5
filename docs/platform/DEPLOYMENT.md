@@ -21,7 +21,7 @@ FTP service on the console.
 Build and update the title folder through the default FTP port `2121`:
 
 ```bash
-make deploy PS5_HOST=192.168.1.100
+make deploy PS5_HOST=192.0.2.100
 ```
 
 The deployment:
@@ -46,7 +46,7 @@ the title directory with `make undeploy` when an exact reset is required.
 Select a non-default port with a Make variable:
 
 ```bash
-make deploy PS5_HOST=192.168.1.100 FTP_PORT=2121
+make deploy PS5_HOST=192.0.2.100 FTP_PORT=2121
 ```
 
 The folder is the only form this project builds and deploys. Do not keep a
@@ -80,7 +80,7 @@ Fully close the application, then remove the current `titleId` from the FTP
 staging area:
 
 ```bash
-make undeploy PS5_HOST=192.168.1.100
+make undeploy PS5_HOST=192.0.2.100
 ```
 
 The command validates `sce_sys/param.json`, recursively removes only

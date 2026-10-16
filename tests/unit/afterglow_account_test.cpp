@@ -59,16 +59,16 @@ TEST(AfterglowAccount, TokenNameAndStoredAuthRoundTrip)
 {
     EXPECT_EQ(account_wire::token_name("afterglow-ps5-232"), kName);
     StoredAuth auth;
-    auth.host = "192.168.0.4";
+    auth.host = "192.0.2.4";
     auth.port = 8095;
-    auth.username = "hayden";
+    auth.username = "alex";
     auth.token = "abc.def";
     auth.token_name = kName;
     const auto decoded = account_wire::decode_auth(account_wire::encode_auth(auth));
     EXPECT_TRUE(decoded.valid());
     EXPECT_EQ(decoded.host, auth.host);
     EXPECT_EQ(decoded.port, 8095);
-    EXPECT_EQ(decoded.username, "hayden");
+    EXPECT_EQ(decoded.username, "alex");
     EXPECT_EQ(decoded.token, "abc.def");
     EXPECT_EQ(decoded.token_name, kName);
     auth.token = "bad\ntoken";
@@ -108,8 +108,8 @@ TEST(AfterglowAccount, HostParsingIsNumericIpv4WithOptionalPort)
 {
     std::string host;
     std::uint16_t port = 0;
-    EXPECT_TRUE(account_wire::parse_host(" 192.168.0.4 ", 8095, host, port));
-    EXPECT_EQ(host, "192.168.0.4");
+    EXPECT_TRUE(account_wire::parse_host(" 192.0.2.4 ", 8095, host, port));
+    EXPECT_EQ(host, "192.0.2.4");
     EXPECT_EQ(port, 8095);
     EXPECT_TRUE(account_wire::parse_host("http://10.1.2.3:9000/", 8095, host, port));
     EXPECT_EQ(host, "10.1.2.3");
@@ -123,15 +123,15 @@ TEST(AfterglowAccount, HostParsingIsNumericIpv4WithOptionalPort)
 TEST(AfterglowAccount, SignInFormFallsBackToConfiguredHost)
 {
     StoredAuth target;
-    EXPECT_EQ(account_wire::sign_in_target("", "192.168.0.4", 8095, " hayden ", "pw",
+    EXPECT_EQ(account_wire::sign_in_target("", "192.0.2.4", 8095, " alex ", "pw",
                                            "afterglow-ps5-232", target),
               "");
-    EXPECT_EQ(target.host, "192.168.0.4");
-    EXPECT_EQ(target.username, "hayden");
+    EXPECT_EQ(target.host, "192.0.2.4");
+    EXPECT_EQ(target.username, "alex");
     EXPECT_EQ(target.token_name, kName);
-    EXPECT_FALSE(account_wire::sign_in_target("", "", 8095, "hayden", "pw", "id", target).empty());
+    EXPECT_FALSE(account_wire::sign_in_target("", "", 8095, "alex", "pw", "id", target).empty());
     EXPECT_FALSE(
-        account_wire::sign_in_target("10.0.0.1", "", 8095, "hayden", "", "id", target).empty());
+        account_wire::sign_in_target("10.0.0.1", "", 8095, "alex", "", "id", target).empty());
 }
 
 TEST(AfterglowAccount, SignedInTokenWinsOverConfigToken)
@@ -146,7 +146,7 @@ TEST(AfterglowAccount, SignedInTokenWinsOverConfigToken)
     stored.port = 9000;
     stored.token = "mine";
     stored.token_name = kName;
-    stored.username = "hayden";
+    stored.username = "alex";
     credentials = account_wire::effective_credentials(stored, "10.0.0.1", 8095, "conf");
     EXPECT_EQ(credentials.source, AccountState::Source::signed_in);
     EXPECT_EQ(credentials.host, "10.0.0.9");
@@ -154,7 +154,7 @@ TEST(AfterglowAccount, SignedInTokenWinsOverConfigToken)
     EXPECT_EQ(credentials.token, "mine");
     const auto state = account_wire::account_state(credentials, stored);
     EXPECT_EQ(state.source, AccountState::Source::signed_in);
-    EXPECT_EQ(state.username, "hayden");
+    EXPECT_EQ(state.username, "alex");
 }
 
 TEST(AfterglowAccount, ParsesMusicAssistantTimestamps)
@@ -201,18 +201,18 @@ TEST(AfterglowAccount, SignInCreatesNamedTokenAndRevokesSessionAndSupersededToke
 {
     FakeServer server;
     server.answer("auth/login", "{\"success\":true,\"access_token\":\"session-token\","
-                                "\"user\":{\"username\":\"Hayden\"}}");
+                                "\"user\":{\"username\":\"Alex\"}}");
     server.answer("auth", "{\"authenticated\":true}");
     server.answer("auth/token/create", "\"long-lived\"");
     server.answer("auth/tokens",
                   "[" + token_json("s1", kName, false, "2026-10-15T00:00:00Z", nullptr) + "," +
                       token_json("old", kName, true, "2026-01-15T00:00:01Z", nullptr) + "]");
     server.answer("auth/token/revoke", "null");
-    const auto outcome = account_wire::sign_in(server.call(), "hayden", "p\"w", kName);
+    const auto outcome = account_wire::sign_in(server.call(), "alex", "p\"w", kName);
     EXPECT_TRUE(outcome.ok);
     EXPECT_TRUE(outcome.token_changed);
     EXPECT_EQ(outcome.token, "long-lived");
-    EXPECT_EQ(outcome.username, "Hayden");
+    EXPECT_EQ(outcome.username, "Alex");
     ASSERT_GE(server.requests.size(), 4u);
     Json login(server.requests[0].second);
     EXPECT_EQ(server.requests[0].first, "auth/login");
@@ -232,17 +232,17 @@ TEST(AfterglowAccount, SignInReportsLoginErrors)
 {
     FakeServer server;
     server.answer("auth/login", "{\"success\":false,\"error\":\"Invalid username or password\"}");
-    auto outcome = account_wire::sign_in(server.call(), "hayden", "bad", kName);
+    auto outcome = account_wire::sign_in(server.call(), "alex", "bad", kName);
     EXPECT_FALSE(outcome.ok);
     EXPECT_EQ(outcome.message, "Invalid username or password");
     EXPECT_EQ(server.requests.size(), 1u);
     server.replies["auth/login"] = {false, {}, "Authentication failed"};
-    outcome = account_wire::sign_in(server.call(), "hayden", "bad", kName);
+    outcome = account_wire::sign_in(server.call(), "alex", "bad", kName);
     EXPECT_EQ(outcome.message, "Authentication failed");
     server.answer("auth/login", "{\"success\":true,\"access_token\":\"s\"}");
     server.answer("auth", "{\"authenticated\":true}");
     server.answer("auth/token/create", "null");
-    outcome = account_wire::sign_in(server.call(), "hayden", "pw", kName);
+    outcome = account_wire::sign_in(server.call(), "alex", "pw", kName);
     EXPECT_FALSE(outcome.ok);
     EXPECT_TRUE(outcome.token.empty());
 }

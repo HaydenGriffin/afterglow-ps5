@@ -366,7 +366,7 @@ std::string sign_in_target(const std::string &host_text, const std::string &fall
     target = {};
     if (!parse_host(host_text.empty() ? fallback_host : host_text, default_port, target.host,
                     target.port))
-        return "Enter Music Assistant's IPv4 address, like 192.168.0.4";
+        return "Enter Music Assistant's IPv4 address, like 192.168.1.10";
     std::string_view name = username;
     while (!name.empty() && std::isspace(static_cast<unsigned char>(name.front())))
         name.remove_prefix(1);
