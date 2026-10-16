@@ -3,9 +3,10 @@
 An unofficial Music Assistant TV companion, built on BlackBearReloaded's
 [ps5-homebrew-ui](https://github.com/blackbearreloaded/ps5-homebrew-ui).
 This is a foreground playback client, not a Music Assistant server fork.
-Version 1.5.0 shares the LG Afterglow poster interface and core music
-controls. Everything new in 1.5.0 is host-tested only; see
-[Not verified on hardware](#not-verified-on-hardware).
+Version 1.6.0 shares the LG Afterglow poster interface and core music
+controls. Everything added since the parity build is host-tested only; see
+[Not verified on hardware](#not-verified-on-hardware). Setting it up:
+[install.md](install.md); history: [CHANGELOG.md](../CHANGELOG.md).
 
 The PS5 connects directly to Music Assistant's Sendspin server on the LAN,
 receives timestamped 48 kHz stereo PCM, and plays it through the console's
@@ -86,8 +87,9 @@ docker run --rm -v "$PWD:/work" afterglow-builder make app
 The result is `dist/PPSA99481/` and `dist/PPSA99481.zip`. It uses a separate
 homebrew title identity; it does not update the LG webOS app. The original
 reference gallery remains available to the host preview and unit tests, but
-is excluded from the PS5 executable. Only the four required fonts and a new
-Afterglow icon are packaged; upstream demo music and artwork are not shipped.
+is excluded from the PS5 executable. Only the four required fonts and
+Afterglow's icon and home-screen backgrounds are packaged; the upstream kit's
+sound effects, music and artwork are not shipped.
 
 Copy `afterglow.conf.example` to `dist/PPSA99481/afterglow.conf` and replace
 the example address with the Music Assistant server's numeric LAN IPv4 address.
@@ -143,8 +145,8 @@ Music Assistant acknowledges them, so a reconnect or app restart can retry
 without overwriting newer changes from another device. Other LG device settings
 and unrelated Music Assistant preferences are preserved.
 
-Upload the app folder using the homebrew launcher's documented installation
-method. Refresh its list and open Afterglow. On first connection, select the new
+Upload the app folder as [install.md](install.md) describes, wait for the
+title to be registered and open Afterglow. On first connection, select the new
 player in Music Assistant and play a track. Console sound, controller behavior
 and firmware compatibility must be checked on hardware.
 
@@ -320,8 +322,8 @@ glance. The mocks never change real players, accounts or Home Assistant.
 ### Not verified on hardware
 
 An earlier build passed hardware audio/title/artwork checks and measured
-59.9–60 fps without audio errors. **Everything new in 1.5.0 is unverified on
-the console**, including:
+59.9–60 fps without audio errors. **Everything new in 1.5.0 and 1.6.0 is
+unverified on the console**, including:
 
 - the transport band, sheets and every controller binding with a DualSense
   in hand;
