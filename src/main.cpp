@@ -29,6 +29,7 @@
 #include <cmath>
 #include <optional>
 #include <string>
+#include <utility>
 
 extern "C" void hui_heap_stats(std::size_t *live_bytes, std::size_t *peak_bytes,
                                std::size_t *blocks, std::size_t *failures);
@@ -659,7 +660,8 @@ int main()
                 model.group = "Following " + model.companion.player_name;
                 model.volume = model.companion.volume;
             }
-            const std::string next_art = model.preferences.follow || !applied_player.empty()
+            const std::string next_art = model.idle_showing ? model.idle_artwork
+                                         : model.preferences.follow || !applied_player.empty()
                                              ? model.companion.track.artwork
                                              : "";
             if (next_art != artwork_url)
@@ -743,6 +745,8 @@ int main()
             companion->browse(model.browse_request);
             model.browse_pending = false;
         }
+        if (std::exchange(model.recent_pending, false))
+            companion->load_recent();
         if (model.queue_offset_request >= 0 ||
             model.queue_offset_request == afterglow::kQueueOffsetDefault)
         {

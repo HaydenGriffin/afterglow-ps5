@@ -108,6 +108,7 @@ class Panel
     bool confirm_list(const SheetRow &row);
     void confirm_browse(const SheetRow &row);
     void confirm_group(int tag);
+    void choose_speaker(const CompanionPlayer &player);
     void adjust(const SheetRow &row, int direction, ui::Feedback &feedback);
     void adjust_delay(int direction);
     void browse_input(const InputFrame &input, ui::Feedback &feedback);

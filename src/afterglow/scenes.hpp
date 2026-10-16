@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "afterglow/idle.hpp"
 #include "afterglow/lyrics.hpp"
 #include "afterglow/presentation.hpp"
 #include "ui/fonts.hpp"
@@ -107,4 +108,19 @@ void draw_transport(const Scene &scene, const Transport &transport);
 const char *section_name(int section);
 // Four sections, five once Home Assistant is set up (Home comes last).
 int section_count(const Presentation &state);
+
+// The idle poster (idle.hpp), handed over by the screen's update().
+struct IdleView
+{
+    const std::vector<IdleTile> *tiles = nullptr;
+    int focus = 0;
+    IdleText text;
+    // Where Cross acts (the command target) and what state the music is in.
+    std::string where, status, note;
+    float level = 1; // IdlePoster::level(): 1 awake, dimmer at rest
+};
+// Full screen, LG's #idle: a cover box, the title, one field and the strip.
+// Only the paused song wears its own colours; every other tile is set on the
+// neutral fields.
+void draw_idle_poster(const Scene &scene, const IdleView &idle);
 } // namespace hui::afterglow

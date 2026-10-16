@@ -188,7 +188,8 @@ void draw_next_field(const Scene &scene, const gfx::Rect &b, Color tb)
 {
     auto &list = scene.list;
     const auto &fonts = scene.fonts;
-    const auto &upcoming = scene.state.companion.upcoming;
+    // The drawn song's next two; the Queue sheet's window may belong to another speaker.
+    const auto &upcoming = scene.state.companion.next_up;
     const float x = b.x + kFieldInset;
     const float width = b.w - kFieldInset * 2;
     ui::text(list, fonts.semibold, "Next", x, 725, kTypeBody, tb);
@@ -702,5 +703,139 @@ void draw_transport(const Scene &scene, const Transport &transport)
         ui::text(list, fonts.regular, tiles[i].label, tx + 20, ty + 98, kTypeMin, colour);
     }
     list.pop_opacity();
+}
+} // namespace hui::afterglow
+
+namespace hui::afterglow
+{
+namespace
+{
+using gfx::Color;
+using namespace style;
+
+// LG's idle strip: square tiles, the focused one inverted to paper; the words
+// (Browse, Try again) take the width they need at the smallest type size.
+constexpr float kIdleTile = 88;
+constexpr float kIdleTileGap = 16;
+constexpr float kIdleStripY = 936;
+float idle_tile_width(const Scene &scene, const IdleTile &tile)
+{
+    if (tile.kind == IdleTileKind::resume || tile.kind == IdleTileKind::play)
+        return kIdleTile;
+    const char *word = tile.kind == IdleTileKind::retry ? "Try again" : "Browse";
+    return std::max(kIdleTile, scene.fonts.semibold.font->measure(word, kTypeMin) + 24);
+}
+void draw_idle_strip(const Scene &scene, const IdleView &idle, Color fill_b)
+{
+    auto &list = scene.list;
+    const auto &tiles = *idle.tiles;
+    const Color ink_paper = paper(scene.state);
+    float x = kColumn;
+    for (std::size_t i = 0; i < tiles.size(); ++i)
+    {
+        const auto &tile = tiles[i];
+        const float width = idle_tile_width(scene, tile);
+        if (x + width > kSafeRight)
+            break;
+        const gfx::Rect box{x, kIdleStripY, width, kIdleTile};
+        const bool focused = static_cast<int>(i) == idle.focus;
+        if (focused)
+            list.rounded_rect(box, 0, ink_paper);
+        const gfx::Rect inner{box.x + 5, box.y + 5, box.w - 10, box.h - 10};
+        if (tile.kind == IdleTileKind::resume || tile.kind == IdleTileKind::play)
+        {
+            const auto &source = scene.state.thumbnail;
+            const std::uint32_t texture =
+                source && !tile.item.artwork.empty() ? source(tile.item.artwork) : 0;
+            list.rounded_rect(inner, 0, fill_b);
+            if (texture != 0)
+                list.image(texture, inner, gfx::kFullUv,
+                           Color{1, 1, 1, night(scene.state) ? kNightDim : 1.0f});
+        }
+        else
+        {
+            const Color colour = focused ? kInk : ink_paper;
+            if (!focused)
+                list.line(box.x, box.y + 1, box.x + box.w, box.y + 1, 2, kRule);
+            ui::text(list, scene.fonts.semibold,
+                     tile.kind == IdleTileKind::retry ? "Try again" : "Browse", box.x + 12,
+                     box.y + box.h - 16, kTypeMin, colour);
+        }
+        x += width + kIdleTileGap;
+    }
+}
+} // namespace
+
+void draw_idle_poster(const Scene &scene, const IdleView &idle)
+{
+    if (idle.tiles == nullptr || idle.tiles->empty())
+        return;
+    auto &list = scene.list;
+    const auto &fonts = scene.fonts;
+    const auto &state = scene.state;
+    const auto &tiles = *idle.tiles;
+    const auto &tile = tiles[static_cast<std::size_t>(
+        std::clamp(idle.focus, 0, static_cast<int>(tiles.size()) - 1))];
+    const Color ink_paper = paper(state);
+    const Color soft = muted(state);
+    // Only the paused song has colours of its own (LG #idle.neutral); the
+    // last song's fields never dress another item.
+    const bool own = tile.kind == IdleTileKind::resume;
+    const Color fa = own ? field_a(state) : dimmed(kNeutralA, state);
+    const Color fb = own ? field_b(state) : dimmed(kNeutralB, state);
+    list.rounded_rect({0, 0, 1920, 1080}, 0, kInk);
+
+    const std::string status_line = fonts.regular.font->fit(idle.status, kTypeMin, 520);
+    const float status_width = fonts.regular.font->measure(status_line, kTypeMin);
+    ui::text(list, fonts.regular,
+             fonts.regular.font->fit(idle.where, kTypeMin, std::max(240.0f, 1104 - status_width)),
+             kColumn, 92, kTypeMin, soft);
+    ui::text(list, fonts.regular, status_line, kSafeRight, 92, kTypeMin, soft, gfx::Align::right);
+    list.line(kColumn, 124, kSafeRight, 124, 2, kRule);
+
+    // The cover in a square box (LG .idle-art), backed by field B while it loads.
+    const gfx::Rect art{kSafeLeft, 173, 544, 544};
+    if (tile.kind == IdleTileKind::resume || tile.kind == IdleTileKind::play)
+    {
+        list.rounded_rect(art, 0, fb);
+        if (state.artwork_texture != 0 && !tile.item.artwork.empty())
+            list.image(state.artwork_texture, art, gfx::kFullUv,
+                       Color{1, 1, 1, night(state) ? kNightDim : 1.0f});
+    }
+
+    const std::string &title = idle.text.title;
+    const float size = title.size() <= 12   ? 184.0f
+                       : title.size() <= 26 ? 144.0f
+                       : title.size() <= 50 ? 104.0f
+                                            : 80.0f;
+    const auto lines = ui::paragraph_lines(fonts.display, title, size, 1144, 3);
+    const float top = 608 - static_cast<float>(lines.lines.size() - 1) * size * 0.94f;
+    ui::paragraph(list, fonts.display, lines, kColumn, top, size, size * 0.94f, ink_paper);
+
+    const gfx::Rect field{kColumn, 670, 706, 248};
+    const Color ta = field_text(fa);
+    list.rounded_rect(field, 0, fa);
+    const float inset = field.x + kFieldInset;
+    const float end = ui::paragraph(list, fonts.semibold, idle.text.detail, inset, 735, 40,
+                                    field.w - kFieldInset * 2, 46, ta, 2);
+    const float hint_y = std::max(end + 22, 850.0f);
+    if (!idle.note.empty())
+        ui::text(list, fonts.semibold,
+                 fonts.semibold.font->fit(idle.note, kTypeBody, field.w - kFieldInset * 2), inset,
+                 hint_y + 10, kTypeBody, ta);
+    else
+    {
+        const ui::Hint hint[] = {{ui::Button::cross, idle.text.hint.c_str()}};
+        ui::HintLayout layout;
+        layout.size = 34;
+        layout.text_size = kTypeBody;
+        layout.cy = hint_y;
+        ui::draw_hints(list, fonts, ui::GlyphStyle::mono(ta, fa), hint, 1, inset, false, layout);
+    }
+
+    draw_idle_strip(scene, idle, fb);
+    // The dim register: a veil of the ground, so nothing overlapping shows through.
+    if (idle.level < 0.999f)
+        list.rounded_rect({0, 0, 1920, 1080}, 0, kInk.with_alpha(1 - idle.level));
 }
 } // namespace hui::afterglow

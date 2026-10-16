@@ -242,7 +242,7 @@ TEST_F(AfterglowMain, AlbumPosterListsTheNextTwoSongs)
     hui::afterglow::CompanionTrack next;
     next.title = "Evening";
     next.artist = "Someone";
-    s.companion.upcoming = {next};
+    s.companion.next_up = {next};
     const auto drawn = [&]
     {
         step(idle(), 1.0f);
@@ -252,14 +252,96 @@ TEST_F(AfterglowMain, AlbumPosterListsTheNextTwoSongs)
     };
     const int one = drawn();
     next.title = "Still Water";
-    s.companion.upcoming.push_back(next);
-    s.companion.upcoming.push_back(next);
+    s.companion.next_up.push_back(next);
+    s.companion.next_up.push_back(next);
     EXPECT_EQ(drawn() - one, 10 + 7) << "the second title and artist, never a third";
     s.companion.track.quality_badge = "Lossless";
     s.companion.track.format = "flac / 44100 Hz / 16 bit";
     const int badge = drawn();
     s.companion.track.quality_badge.clear();
     EXPECT_GT(drawn(), badge) << "the badge replaces the longer format line";
+}
+
+// Music Assistant answering with a paused song and recent music.
+void paused_with_recent()
+{
+    auto &s = presentation();
+    s.configured = s.connected = true;
+    s.companion_configured = true;
+    s.companion.connected = true;
+    s.companion.queue_state = "paused";
+    s.companion.track.title = "Slow Current";
+    s.companion.track.uri = "library://track/7";
+    s.companion.track.artwork = "http://192.0.2.1/now.png";
+    s.companion.target_name = "Listening room";
+    hui::afterglow::CompanionTrack album;
+    album.title = "Harbour Lamps";
+    album.uri = "library://album/3";
+    album.media_type = "album";
+    album.artwork = "http://192.0.2.1/album.png";
+    s.companion.recent = {album};
+    s.companion.recent_state = hui::afterglow::RecentState::ready;
+}
+
+TEST_F(AfterglowMain, IdlePosterSetsThePausedSongAndPlaysRecentMusicOnTheTarget)
+{
+    paused_with_recent();
+    auto &s = presentation();
+    for (int i = 0; i < 29 * 5; ++i)
+        step(idle(), 0.2f);
+    EXPECT_FALSE(s.idle_showing) << "a pause waits half a minute";
+    for (int i = 0; i < 10; ++i)
+        step(idle(), 0.2f);
+    ASSERT_TRUE(s.idle_showing);
+    EXPECT_TRUE(s.recent_pending) << "recent music is read as it appears";
+    EXPECT_EQ(s.idle_artwork, "http://192.0.2.1/now.png");
+    EXPECT_FALSE(s.milkdrop_visible) << "MilkDrop rests behind the idle poster";
+    {
+        hui::app::Frame frame;
+        screen_->draw(frame);
+        EXPECT_FALSE(frame.scene.empty());
+    }
+
+    step(press(Action::confirm));
+    EXPECT_EQ(s.command, UiCommand::toggle) << "Cross resumes the paused song";
+    s.command = UiCommand::none;
+    step(nav(Direction::right));
+    EXPECT_FALSE(s.companion_action_pending) << "right walks the strip instead of seeking";
+    step(idle());
+    EXPECT_EQ(s.idle_artwork, "http://192.0.2.1/album.png");
+    step(press(Action::confirm));
+    ASSERT_TRUE(s.companion_action_pending);
+    EXPECT_EQ(s.companion_action.kind, CompanionActionKind::play_media);
+    EXPECT_EQ(s.companion_action.text, "library://album/3");
+    EXPECT_EQ(s.companion_action.option, "replace");
+    s.companion_action_pending = false;
+
+    step(nav(Direction::right));
+    step(press(Action::confirm));
+    step(idle());
+    EXPECT_EQ(s.page, "browse") << "Browse closes the strip, so Cross never dead-ends";
+    EXPECT_FALSE(s.idle_showing);
+}
+
+TEST_F(AfterglowMain, IdlePosterGivesWayToTheControlsAndToMusic)
+{
+    paused_with_recent();
+    auto &s = presentation();
+    s.companion.queue_state = "idle"; // stopped: eight seconds are enough
+    for (int i = 0; i < 9 * 5; ++i)
+        step(idle(), 0.2f);
+    ASSERT_TRUE(s.idle_showing);
+    step(press(Action::menu));
+    step(idle());
+    EXPECT_FALSE(s.idle_showing) << "Options opens the transport band as usual";
+    step(press(Action::back));
+    step(idle());
+    EXPECT_TRUE(s.idle_showing);
+    s.companion.playing = true;
+    s.companion.queue_state = "playing";
+    step(idle());
+    EXPECT_FALSE(s.idle_showing);
+    EXPECT_TRUE(s.idle_artwork.empty()) << "the song's own cover is loaded again";
 }
 
 TEST_F(AfterglowMain, HostShellForwardsShoulderButtonsToAfterglow)

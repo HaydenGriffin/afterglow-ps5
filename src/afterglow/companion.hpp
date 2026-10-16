@@ -22,6 +22,14 @@ struct CompanionPlayer
     std::vector<std::string> group_members, can_group_with;
     std::string synced_to;
     bool available = true;
+    // Speakers together (speakers.hpp group_options): fixed members, the
+    // provider instance (can_group_with may name a whole provider) and
+    // whether this player can lead a group (supported_features set_members).
+    std::vector<std::string> static_members;
+    std::string provider;
+    bool can_set_members = false;
+    // Picking this speaker in Playing on moves the target's music to it.
+    bool takes_music = false;
 };
 struct CompanionTrack
 {
@@ -84,7 +92,28 @@ enum class CompanionActionKind
     static_delay,
     // text = player id to add to / remove from the group led by option.
     group_add,
-    group_remove
+    group_remove,
+    // Moves the target's queue to the player text (player_queues/transfer);
+    // enabled starts it there even when it was stopped (Play on this PS5).
+    transfer
+};
+// Why commands act on the target (speakers.hpp command_target).
+enum class TargetReason
+{
+    none,
+    chosen,
+    following,
+    last,
+    this_ps5,
+    first
+};
+// Recently played for the idle poster (music/recently_played_items).
+enum class RecentState
+{
+    idle,
+    loading,
+    ready,
+    error
 };
 struct CompanionAction
 {
@@ -133,6 +162,23 @@ struct CompanionSnapshot
     double elapsed = 0;
     double clock_rtt_ms = 0;
     std::size_t buffered_frames = 0;
+    // The command target (LG 1.4.3): Browse, the idle poster and the controls
+    // act on it. queue_id is its queue and the queue fields above (shuffle to
+    // upcoming, volume) describe it; track, playing, elapsed and player_id
+    // describe the queue drawn. They differ only while a chosen speaker is
+    // silent and another one plays (target_elsewhere).
+    std::string target_player_id, target_name;
+    TargetReason target_reason = TargetReason::none;
+    bool target_elsewhere = false;
+    // The drawn queue's state: "playing", "paused", "idle", or "" for none.
+    std::string queue_state;
+    // The poster's Next field: up to two songs after the drawn one.
+    std::vector<CompanionTrack> next_up;
+    // Play on this PS5: the target's music can move to this PS5's own player.
+    bool can_move_here = false;
+    // Idle poster: recently played items, newest first (Companion::load_recent).
+    std::vector<CompanionTrack> recent;
+    RecentState recent_state = RecentState::idle;
 };
 
 namespace companion_wire
@@ -207,6 +253,14 @@ std::string merge_device_preferences(std::string_view preferences, std::string_v
 // config/players/get result: finds sendspin_static_delay (value, else default).
 bool decode_static_delay(std::string_view config, std::string &key, int &milliseconds);
 Request static_delay_request(std::string_view player_id, std::string_view key, int milliseconds);
+// Moves a queue to another player, keeping its place (MA 2.10.6
+// player_queues/transfer); auto_play starts it there even when stopped.
+Request transfer_request(std::string_view from, std::string_view to, bool auto_play);
+// The idle poster's recent music: a few more than it shows, since items
+// without a uri are dropped.
+constexpr int kRecentLimit = 8;
+Request recent_request();
+std::vector<CompanionTrack> decode_recent(std::string_view result);
 } // namespace companion_wire
 
 class Companion
@@ -248,6 +302,8 @@ class Companion
     std::uint64_t account_revision() const;
     // UI consumer only. Returns each due waveform once, normalized stereo PCM.
     std::vector<float> take_pcm(int trim_ms = 0);
+    // Reads recently played music for the idle poster into snapshot().recent.
+    void load_recent();
 
   private:
     struct Impl;

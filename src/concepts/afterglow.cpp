@@ -94,6 +94,18 @@ constexpr app::TourStep kTour[] = {
     {0.1f, 0, Direction::down},
     {0.1f, action_bit(Action::confirm)},
     {0.8f, 0, Direction::none, "artist"},
+    // The idle poster: the preview pauses on Cross, ends the queue on R1 while
+    // paused and starts what Cross plays (host/snapshot_main.cpp).
+    {0.1f, action_bit(Action::menu)},
+    {0.1f, action_bit(Action::confirm)},
+    {30.6f, 0, Direction::none, "idle-paused"},
+    {0.1f, 0, Direction::right},
+    {0.8f, 0, Direction::none, "idle-recent"},
+    {180.4f, 0, Direction::none, "idle-rest"},
+    {0.1f, action_bit(Action::page_next)},
+    {1.2f, 0, Direction::none, "idle-nothing"},
+    {0.1f, action_bit(Action::confirm)},
+    {0.8f, 0, Direction::none, "idle-starting"},
 };
 
 class Afterglow final : public app::Concept
@@ -158,7 +170,7 @@ class Afterglow final : public app::Concept
             update_sheet(input, dt, feedback);
         else if (transport_open_)
             update_transport(input, dt, feedback);
-        else
+        else if (!idle_input(input, feedback))
             update_listening(input, feedback);
         if (!sheet_open_)
             update_shortcuts(input, feedback);
@@ -167,8 +179,9 @@ class Afterglow final : public app::Concept
         update_layers(dt);
         transport_.open =
             approach(transport_.open, transport_open_ && !sheet_open_ ? 1.0f : 0.0f, dt, 16.0f);
+        update_idle(state, dt);
         const int mode = p.display_mode;
-        const bool visuals = mode < 2 || p.poster_visuals;
+        const bool visuals = (mode < 2 || p.poster_visuals) && !idle_.showing();
         state.milkdrop_visible = state.scanning || (p.visual_style == 0 && visuals && !sheet_open_);
     }
 
@@ -182,7 +195,8 @@ class Afterglow final : public app::Concept
         list.rounded_rect({0, 0, 1920, 1080}, 0, kInk);
         const afterglow::Scene scene{list, fonts, state, clock_, view_};
 
-        const bool visuals = (mode < 2 || p.poster_visuals) && !sheet_open_;
+        const bool idle = idle_.showing() && !sheet_open_;
+        const bool visuals = (mode < 2 || p.poster_visuals) && !sheet_open_ && !idle;
         if (visuals || state.scanning)
         {
             // Album colour is applied inside the preset (Milkdrop recolours its slots).
@@ -209,7 +223,9 @@ class Afterglow final : public app::Concept
         const float drift = p.oled_drift ? std::sin(clock_.time * 0.025f) * 6.0f : 0;
         list.push_transform(1, 0, 0, drift, 0);
         list.push_opacity(static_cast<float>(p.text_brightness) / 100.0f);
-        if (sheet_open_ && !panel_.covers_screen())
+        if (idle)
+            afterglow::draw_idle_poster(scene, idle_view_);
+        else if (sheet_open_ && !panel_.covers_screen())
             afterglow::draw_slab(scene, 1);
         else if (!sheet_open_ && mode >= 2)
             afterglow::draw_poster(scene, mode == 3, p.poster_visuals ? 0.86f : 1.0f);
@@ -223,7 +239,7 @@ class Afterglow final : public app::Concept
         }
         const float hint_alpha =
             std::clamp((kHintSeconds - hint_age_) / 0.6f, 0.0f, 1.0f) * (1 - transport_.open);
-        if (!sheet_open_ && hint_alpha > 0)
+        if (!sheet_open_ && !idle && hint_alpha > 0)
         {
             ui::Hint hints[4];
             int count = 0;
@@ -322,6 +338,118 @@ class Afterglow final : public app::Concept
             y += height;
         }
         view_.pages = static_cast<int>(page_starts_.size());
+    }
+
+    // ---- the idle poster -----------------------------------------------------
+    // Timers and the strip; the view draw() needs is prepared here.
+    void update_idle(afterglow::Presentation &state, float dt)
+    {
+        const auto &c = state.companion;
+        const bool playing = state.playing || c.playing;
+        const bool paused = !playing && c.queue_state == "paused" && !c.track.title.empty();
+        afterglow::IdlePoster::Inputs in;
+        in.playing = playing;
+        in.paused = paused;
+        in.allowed = state.companion_configured && c.connected && !sheet_open_ &&
+                     !transport_open_ && !state.scanning && !state.keyboard_open;
+        in.recent = c.recent_state;
+        in.tiles = static_cast<int>(idle_tiles_.size());
+        idle_.set_reduced_motion(state.preferences.reduce_motion);
+        if (idle_.update(dt, in))
+            state.recent_pending = true;
+        state.idle_showing = idle_.showing();
+        if (!idle_.showing())
+        {
+            idle_tiles_.clear();
+            state.idle_artwork.clear();
+            return;
+        }
+        idle_tiles_ = afterglow::idle_tiles(paused ? &c.track : nullptr, c.recent, c.recent_state);
+        const auto &tile = idle_tiles_[static_cast<std::size_t>(
+            std::clamp(idle_.focus(), 0, static_cast<int>(idle_tiles_.size()) - 1))];
+        const bool has_recent =
+            std::any_of(idle_tiles_.begin(), idle_tiles_.end(),
+                        [](const auto &t) { return t.kind == afterglow::IdleTileKind::play; });
+        idle_view_.tiles = &idle_tiles_;
+        idle_view_.focus = idle_.focus();
+        idle_view_.text = afterglow::idle_text(tile, c.recent_state, has_recent);
+        idle_view_.where = c.target_name.empty() ? "Music Assistant" : c.target_name;
+        idle_view_.status = paused ? "Paused" : "Nothing playing";
+        idle_view_.note = idle_.note();
+        idle_view_.level = idle_.level();
+        state.idle_artwork = tile.item.artwork;
+    }
+    // While the idle poster shows it takes Cross, left and right; any key
+    // wakes it, and every other key keeps its usual meaning.
+    bool idle_input(const InputFrame &input, app::Feedback &feedback)
+    {
+        if (!idle_.showing() || (input.pressed == 0 && input.nav == Direction::none))
+            return false;
+        auto key = afterglow::IdleKey::other;
+        if (input.is_pressed(Action::confirm))
+            key = afterglow::IdleKey::confirm;
+        else if (input.nav == Direction::left)
+            key = afterglow::IdleKey::left;
+        else if (input.nav == Direction::right)
+            key = afterglow::IdleKey::right;
+        const int before = idle_.focus();
+        const bool woke = idle_.resting();
+        auto act = afterglow::IdleAct::none;
+        if (!idle_.press(key, idle_tiles_, act))
+            return false;
+        if (woke)
+            return true;
+        if (key == afterglow::IdleKey::left || key == afterglow::IdleKey::right)
+        {
+            if (idle_.focus() != before)
+                feedback.play(audio::Cue::focus);
+            else if (!input.nav_repeat)
+                feedback.play(audio::Cue::error);
+            return true;
+        }
+        idle_act(act, before);
+        feedback.play(audio::Cue::select);
+        return true;
+    }
+    void idle_act(afterglow::IdleAct act, int focus)
+    {
+        auto &state = afterglow::presentation();
+        switch (act)
+        {
+        case afterglow::IdleAct::resume:
+            state.command = afterglow::UiCommand::toggle;
+            idle_.starting("Resuming…");
+            break;
+        case afterglow::IdleAct::play:
+            if (play_now(idle_tiles_[static_cast<std::size_t>(focus)].item.uri))
+                idle_.starting("Starting…");
+            else
+                idle_.failed();
+            break;
+        case afterglow::IdleAct::browse:
+            open_sheet(Panel::Page::browse, 0);
+            break;
+        case afterglow::IdleAct::retry:
+            state.recent_pending = true;
+            break;
+        case afterglow::IdleAct::none:
+            break;
+        }
+    }
+    // Replaces the target's queue with an item, as Browse's Play now does.
+    static bool play_now(const std::string &uri)
+    {
+        auto &state = afterglow::presentation();
+        if (uri.empty() || !state.companion.connected || state.companion.action_busy ||
+            state.companion_action_pending)
+            return false;
+        afterglow::CompanionAction action;
+        action.kind = afterglow::CompanionActionKind::play_media;
+        action.text = uri;
+        action.option = "replace";
+        state.companion_action = std::move(action);
+        state.companion_action_pending = true;
+        return true;
     }
 
     // ---- what is on screen ---------------------------------------------------
@@ -712,6 +840,9 @@ class Afterglow final : public app::Concept
 
     app::Context &context_;
     Panel panel_;
+    afterglow::IdlePoster idle_;
+    std::vector<afterglow::IdleTile> idle_tiles_;
+    afterglow::IdleView idle_view_;
     afterglow::SceneClock clock_;
     afterglow::LyricView view_;
     afterglow::Transport transport_;

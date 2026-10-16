@@ -259,21 +259,34 @@ TEST(AfterglowCompanionLibrary, QueueWindowRequestsFiftyItemsFromTheOffset)
     EXPECT_EQ(companion.snapshot().queue_offset, 0);
 }
 
-TEST(AfterglowCompanionLibrary, PlayersCarryGroupFieldsAndSkipGroupsAndUnavailable)
+TEST(AfterglowCompanionLibrary, PlayersCarryGroupFieldsListSyncGroupsFirstAndSkipUnavailable)
 {
     const auto players = companion_wire::decode_players(kPlayers);
-    ASSERT_EQ(players.size(), 2U);
-    EXPECT_EQ(players[0].name, "Living room TV");
-    EXPECT_EQ(players[0].synced_to, "up48b02d337816");
-    EXPECT_EQ(players[0].type, "player");
-    EXPECT_TRUE(players[0].available);
-    EXPECT_EQ(players[1].id, "up48b02d337816");
-    ASSERT_EQ(players[1].group_members.size(), 2U);
-    EXPECT_EQ(players[1].group_members[1], "up2028bc229efe");
-    ASSERT_EQ(players[1].can_group_with.size(), 2U);
-    EXPECT_EQ(players[1].can_group_with[0], "up2028bc229efe");
-    EXPECT_TRUE(players[1].synced_to.empty());
+    ASSERT_EQ(players.size(), 3U);
+    // Sync groups are speakers too (LG speakersOf), ahead of the rest.
+    EXPECT_EQ(players[0].id, "syncgroup_crdeqnda");
+    EXPECT_EQ(players[0].type, "group");
+    EXPECT_EQ(players[1].name, "Living room TV");
+    EXPECT_EQ(players[1].synced_to, "up48b02d337816");
+    EXPECT_EQ(players[1].type, "player");
+    EXPECT_TRUE(players[1].available);
+    EXPECT_EQ(players[2].id, "up48b02d337816");
+    ASSERT_EQ(players[2].group_members.size(), 2U);
+    EXPECT_EQ(players[2].group_members[1], "up2028bc229efe");
+    ASSERT_EQ(players[2].can_group_with.size(), 2U);
+    EXPECT_EQ(players[2].can_group_with[0], "up2028bc229efe");
+    EXPECT_TRUE(players[2].synced_to.empty());
+    EXPECT_FALSE(players[2].can_set_members) << "no supported_features in the fixture";
     EXPECT_TRUE(companion_wire::decode_players("{}").empty());
+
+    const auto grouping = companion_wire::decode_players(
+        R"([{"player_id":"a","name":"A","type":"player","available":true,"provider":"sendspin",)"
+        R"("supported_features":["volume_set","set_members"],"static_group_members":["b"]}])");
+    ASSERT_EQ(grouping.size(), 1U);
+    EXPECT_TRUE(grouping[0].can_set_members);
+    EXPECT_EQ(grouping[0].provider, "sendspin");
+    ASSERT_EQ(grouping[0].static_members.size(), 1U);
+    EXPECT_EQ(grouping[0].static_members[0], "b");
 }
 
 TEST(AfterglowCompanionLibrary, GroupEditsUseSetMembersWithoutAPlayingQueue)
@@ -349,4 +362,86 @@ TEST(AfterglowCompanionLibrary, StreamQualityMatchesTheLgBadge)
                        R"({"input_fidelity":{"quality":"unknown"}})");
     EXPECT_TRUE(track.quality_badge.empty());
     EXPECT_TRUE(companion_wire::decode_track(R"({"name":"x"})").quality_badge.empty());
+}
+
+TEST(AfterglowCompanionLibrary, TransferMovesTheTargetQueueToTheChosenPlayer)
+{
+    // MA 2.10.6 api-docs: player_queues/transfer(source_queue_id, target_queue_id, auto_play?).
+    auto wire = companion_wire::transfer_request("living", "kitchen", false);
+    EXPECT_EQ(wire.command, "player_queues/transfer");
+    {
+        Json args(wire.args);
+        ASSERT_TRUE(args.valid());
+        EXPECT_EQ(args.string(args.get(0, "source_queue_id")), "living");
+        EXPECT_EQ(args.string(args.get(0, "target_queue_id")), "kitchen");
+        EXPECT_EQ(args.get(0, "auto_play"), -1) << "Music Assistant keeps the queue's own state";
+    }
+    wire = companion_wire::transfer_request("living", "ps\"5", true);
+    {
+        Json args(wire.args);
+        ASSERT_TRUE(args.valid());
+        EXPECT_EQ(args.string(args.get(0, "target_queue_id")), "ps\"5");
+        EXPECT_TRUE(args.boolean(args.get(0, "auto_play")));
+    }
+    EXPECT_FALSE(companion_wire::transfer_request("living", "living", false).error.empty());
+    EXPECT_FALSE(companion_wire::transfer_request("", "kitchen", false).error.empty());
+    EXPECT_FALSE(
+        companion_wire::transfer_request("living", std::string(300, 'k'), false).error.empty());
+
+    // As an action it moves whatever the command target holds.
+    CompanionSnapshot target;
+    target.connected = true;
+    target.queue_id = "living";
+    CompanionAction action;
+    action.kind = CompanionActionKind::transfer;
+    action.text = "kitchen";
+    wire = companion_wire::action_request(action, target);
+    ASSERT_TRUE(wire.error.empty());
+    EXPECT_EQ(Json(wire.args).string(Json(wire.args).get(0, "source_queue_id")), "living");
+    target.connected = false;
+    EXPECT_FALSE(companion_wire::action_request(action, target).error.empty());
+    target.connected = true;
+    target.queue_id.clear();
+    EXPECT_FALSE(companion_wire::action_request(action, target).error.empty())
+        << "nothing to move without a target";
+}
+
+TEST(AfterglowCompanionLibrary, SeekRefusesWhileTheTargetIsAnotherSpeaker)
+{
+    CompanionSnapshot target;
+    target.connected = true;
+    target.queue_id = "bedroom";
+    target.track.duration = 200; // the song drawn plays elsewhere
+    target.target_elsewhere = true;
+    target.target_name = "Bedroom";
+    CompanionAction seek;
+    seek.kind = CompanionActionKind::seek;
+    seek.value = 30;
+    const auto wire = companion_wire::action_request(seek, target);
+    EXPECT_EQ(wire.error, "Nothing is playing on Bedroom");
+    target.target_elsewhere = false;
+    EXPECT_TRUE(companion_wire::action_request(seek, target).error.empty());
+}
+
+TEST(AfterglowCompanionLibrary, RecentMusicForTheIdlePosterKeepsPlayableItems)
+{
+    const auto wire = companion_wire::recent_request();
+    EXPECT_EQ(wire.command, "music/recently_played_items");
+    Json args(wire.args);
+    EXPECT_EQ(args.integer(args.get(0, "limit")), companion_wire::kRecentLimit + 2);
+    EXPECT_FALSE(args.boolean(args.get(0, "fully_played_only"), true));
+    // ItemMapping shapes as Music Assistant 2.10.6 sends them (invented names).
+    std::string reply = R"([{"item_id":"1","provider":"library","name":"Harbour Lamps",)"
+                        R"("uri":"library://album/1","media_type":"album","image":{"type":"thumb",)"
+                        R"("path":"x","proxy_id":"ab12","remotely_accessible":false}},)"
+                        R"({"item_id":"2","provider":"library","name":"No uri"})";
+    for (int i = 0; i < 12; ++i)
+        reply += R"(,{"name":"Song )" + std::to_string(i) + R"(","uri":"library://track/)" +
+                 std::to_string(i) + R"(","media_type":"track"})";
+    const auto items = companion_wire::decode_recent(reply + "]");
+    ASSERT_EQ(items.size(), static_cast<std::size_t>(companion_wire::kRecentLimit));
+    EXPECT_EQ(items[0].title, "Harbour Lamps");
+    EXPECT_EQ(items[0].artwork, "/imageproxy/ab12?size=512&fmt=png");
+    EXPECT_EQ(items[1].title, "Song 0") << "an item without a uri cannot be played";
+    EXPECT_TRUE(companion_wire::decode_recent("null").empty());
 }

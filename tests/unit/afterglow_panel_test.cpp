@@ -691,10 +691,13 @@ TEST_F(AfterglowPanel, PlayersChooseASpeakerAndToggleItsGroup)
     live();
     CompanionPlayer room{"room", "Listening room"};
     room.can_group_with = {"kitchen", "garden"};
+    room.can_set_members = true;
     CompanionPlayer kitchen{"kitchen", "Kitchen"};
     CompanionPlayer garden{"garden", "Garden"};
     garden.available = false;
     s.companion.players = {room, kitchen, garden};
+    // Speakers together belongs to the command target, which leads the group.
+    s.companion.queue_id = "room";
     panel_.open(Page::queue);
     cross();
     ASSERT_EQ(panel_.page(), Page::players);
@@ -707,7 +710,7 @@ TEST_F(AfterglowPanel, PlayersChooseASpeakerAndToggleItsGroup)
     down(1); // Garden is unavailable: the focus may rest on it but Cross refuses
     cross();
     EXPECT_EQ(s.preferences.player, "room");
-    down(1); // past the Group heading to Kitchen
+    down(2); // past the Speakers together heading and the leader to Kitchen
     cross();
     ASSERT_TRUE(s.companion_action_pending);
     EXPECT_EQ(s.companion_action.kind, CompanionActionKind::group_add);
@@ -724,6 +727,117 @@ TEST_F(AfterglowPanel, PlayersChooseASpeakerAndToggleItsGroup)
     EXPECT_FALSE(s.companion_action_pending);
     EXPECT_TRUE(panel_.back());
     EXPECT_EQ(panel_.page(), Page::queue);
+}
+
+TEST_F(AfterglowPanel, PlayingOnASilentSpeakerMovesTheMusicThere)
+{
+    auto &s = presentation();
+    live();
+    CompanionPlayer room{"room", "Listening room"};
+    CompanionPlayer kitchen{"kitchen", "Kitchen"};
+    kitchen.takes_music = true; // speakers.hpp moves_music, worked out by the companion
+    s.companion.players = {room, kitchen};
+    s.companion.queue_id = "room";
+    s.preferences.follow = true;
+    s.preferences.player = "room";
+    panel_.open(Page::queue);
+    cross();
+    ASSERT_EQ(panel_.page(), Page::players);
+    down(3); // Active speaker, then past the heading to Listening room, Kitchen
+    cross();
+    ASSERT_TRUE(s.companion_action_pending);
+    EXPECT_EQ(s.companion_action.kind, CompanionActionKind::transfer);
+    EXPECT_EQ(s.companion_action.text, "kitchen");
+    EXPECT_FALSE(s.companion_action.enabled) << "the queue keeps its own playing state";
+    EXPECT_EQ(s.toast, "Moved the music to Kitchen");
+    EXPECT_TRUE(s.preferences.follow);
+    EXPECT_EQ(s.preferences.player, "kitchen") << "and Afterglow follows it there";
+
+    // A speaker with music of its own is just followed.
+    s.companion_action_pending = false;
+    input(nav(Direction::up));
+    cross();
+    EXPECT_FALSE(s.companion_action_pending);
+    EXPECT_EQ(s.preferences.player, "room");
+
+    // Settings -> Source only chooses; it never moves music.
+    panel_.open(Page::source);
+    down(3);
+    cross();
+    EXPECT_FALSE(s.companion_action_pending);
+    EXPECT_EQ(s.preferences.player, "kitchen");
+}
+
+TEST_F(AfterglowPanel, PlayOnThisPs5BringsTheMusicHere)
+{
+    auto &s = presentation();
+    live();
+    s.companion.queue_id = "room";
+    s.companion.own_player_id = "ps5";
+    s.companion.can_move_here = true;
+    s.preferences.follow = true;
+    panel_.open(Page::queue);
+    down(1); // under Playing on
+    cross();
+    ASSERT_TRUE(s.companion_action_pending);
+    EXPECT_EQ(s.companion_action.kind, CompanionActionKind::transfer);
+    EXPECT_EQ(s.companion_action.text, "ps5");
+    EXPECT_TRUE(s.companion_action.enabled) << "it starts here even if it had stopped";
+    EXPECT_FALSE(s.preferences.follow) << "the PS5 now sounds it";
+
+    // Playing on offers the same move as its first row.
+    s.companion_action_pending = false;
+    s.preferences.follow = true;
+    panel_.open(Page::queue);
+    cross();
+    ASSERT_EQ(panel_.page(), Page::players);
+    cross();
+    ASSERT_TRUE(s.companion_action_pending);
+    EXPECT_EQ(s.companion_action.text, "ps5");
+    EXPECT_FALSE(s.preferences.follow);
+
+    // Nothing to move: the row is the plain choice again.
+    s.companion_action_pending = false;
+    s.companion.can_move_here = false;
+    s.preferences.follow = true;
+    panel_.open(Page::players);
+    cross();
+    EXPECT_FALSE(s.companion_action_pending);
+    EXPECT_FALSE(s.preferences.follow);
+}
+
+TEST_F(AfterglowPanel, SpeakersTogetherBelongsToTheTargetAndRefusesWhoCannotJoin)
+{
+    auto &s = presentation();
+    live();
+    CompanionPlayer lead{"lead", "Lead"};
+    lead.can_set_members = true;
+    lead.group_members = {"lead", "fixed"};
+    lead.static_members = {"fixed"};
+    lead.can_group_with = {"sendspin"};
+    CompanionPlayer fixed{"fixed", "Fixed"};
+    CompanionPlayer cousin{"cousin", "Cousin"};
+    cousin.provider = "sendspin";
+    CompanionPlayer stranger{"stranger", "Stranger"};
+    s.companion.players = {lead, fixed, cousin, stranger};
+    // Automatic following: the target is the queue followed, not a chosen speaker.
+    s.preferences.follow = true;
+    s.companion.queue_id = "lead";
+    panel_.open(Page::players);
+    down(8); // Active speaker, four speakers, then the leader, Fixed and Cousin together
+    cross();
+    ASSERT_TRUE(s.companion_action_pending);
+    EXPECT_EQ(s.companion_action.kind, CompanionActionKind::group_add);
+    EXPECT_EQ(s.companion_action.option, "lead");
+    EXPECT_EQ(s.companion_action.text, "cousin");
+    s.companion_action_pending = false;
+    down(1); // Stranger: neither named nor of a named provider
+    cross();
+    EXPECT_FALSE(s.companion_action_pending);
+    input(nav(Direction::up));
+    input(nav(Direction::up)); // Fixed: always in the group
+    cross();
+    EXPECT_FALSE(s.companion_action_pending);
 }
 
 TEST_F(AfterglowPanel, CompensationSavesOnceAfterTheLastStep)
