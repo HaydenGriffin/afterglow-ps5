@@ -287,6 +287,20 @@ cp "$root/third_party/fonts/Archivo-LICENSE.txt" "$root/third_party/fonts/DejaVu
 cp "$root/THIRD_PARTY_NOTICES.md" "$root/LICENSE" "$app/licenses/"
 cp "$root"/third_party/projectm/licenses/* "$app/licenses/projectm/"
 cp "$root"/third_party/presets/* "$app/licenses/presets/"
+# Linked into eboot.bin: jsmn (MIT) and stb_vorbis (MIT or public domain).
+mkdir -p "$app/licenses/jsmn" "$app/licenses/stb"
+cp "$root/third_party/jsmn/LICENSE" "$app/licenses/jsmn/"
+cp "$root/src/third_party/stb/LICENSE" "$app/licenses/stb/"
+# ps5-opengl (with Mesa) is linked into eboot.bin, so its notices travel with it.
+opengl_release=$(dirname -- "$(realpath -e -- "$root/.deps/ps5-opengl/current")")
+mkdir -p "$app/licenses/ps5-opengl"
+for notice in LICENSE THIRD_PARTY_NOTICES.md LICENSES; do
+    [[ -e $opengl_release/$notice ]] || {
+        echo "the ps5-opengl SDK has no $notice next to it; its notices must ship with the app" >&2
+        exit 2
+    }
+    cp -R "$opengl_release/$notice" "$app/licenses/ps5-opengl/"
+done
 # Directory listing returns nothing under /app0 on the console, so each
 # audio folder carries an index of its files (read by save::list_files).
 for dir in "$app/assets/audio/music" "$app"/assets/audio/sfx/*/; do
