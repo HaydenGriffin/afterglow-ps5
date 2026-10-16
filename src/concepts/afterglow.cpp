@@ -833,9 +833,10 @@ class Afterglow final : public app::Concept
         }
         if (input.is_pressed(Action::r3) && !state.preset.empty())
         {
-            p.toggle_favorite(state.preset);
-            state.show_toast(p.favorite(state.preset) ? "Favourite preset"
-                                                      : "Removed from favourite presets");
+            const bool done = p.toggle_favorite(state.preset);
+            state.show_toast(!done                      ? "Favourite presets are full"
+                             : p.favorite(state.preset) ? "Favourite preset"
+                                                        : "Removed from favourite presets");
         }
     }
 

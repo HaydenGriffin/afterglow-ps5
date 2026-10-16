@@ -467,6 +467,35 @@ void sync_home(hui::afterglow::HomeAssistant &home, hui::afterglow::Presentation
         home.send(command);
     model.home_commands.clear();
 }
+// The preferences file, or false when there is none to read: a fresh install,
+// which restores them from the account. A file that cannot be read is moved
+// aside, never written over, and the log says so.
+bool load_preferences(hui::afterglow::Preferences &preferences)
+{
+    constexpr const char *kPath = "/download0/hui/afterglow.prefs";
+    const std::string aside = std::string(kPath) + ".unreadable";
+    std::string saved;
+    if (!hui::save::read_file(kPath, &saved, hui::afterglow::kMaxPreferencesFile))
+    {
+        if (std::rename(kPath, aside.c_str()) == 0)
+            hui::sys::log("[Afterglow] PREFERENCES NOT READ: unreadable or over %zu bytes; "
+                          "kept as %s",
+                          hui::afterglow::kMaxPreferencesFile, aside.c_str());
+        return false;
+    }
+    const auto decoded = hui::save::decode(hui::save::Kind::prefs, saved);
+    if (decoded.ok && decoded.version == 1)
+    {
+        preferences = hui::afterglow::Preferences::decode(decoded.payload);
+        return true;
+    }
+    const bool kept = std::rename(kPath, aside.c_str()) == 0;
+    hui::sys::log("[Afterglow] PREFERENCES NOT READ: %s (version %u); %s %s",
+                  decoded.ok ? "unknown version" : decoded.error.c_str(),
+                  static_cast<unsigned>(decoded.version), kept ? "kept as" : "could not move to",
+                  aside.c_str());
+    return false;
+}
 } // namespace
 
 int main()
@@ -474,16 +503,8 @@ int main()
     using namespace hui;
     sys::log("[Afterglow] starting %s", afterglow::kVersion);
     auto &model = afterglow::presentation();
-    std::string saved;
     // No local preferences (a fresh install): restore them from the account.
-    const bool restore_preferences =
-        !save::read_file("/download0/hui/afterglow.prefs", &saved, 1u << 20);
-    if (!restore_preferences)
-    {
-        const auto decoded = save::decode(save::Kind::prefs, saved);
-        if (decoded.ok && decoded.version == 1)
-            model.preferences = afterglow::Preferences::decode(decoded.payload);
-    }
+    const bool restore_preferences = !load_preferences(model.preferences);
     model.requested_refresh_hz = model.preferences.fps == 120 ? 120 : 60;
     ps5::Display display;
     if (!display.open(1920, 1080, model.requested_refresh_hz))
@@ -523,8 +544,18 @@ int main()
     const std::string account_device = "ps5-" + config.client_id;
     std::string audio_host = config.host.empty() ? credentials.host : config.host;
     model.configured = !audio_host.empty();
-    model.quality = afterglow::PresetQuality::decode(model.preferences.quality);
-    model.preferences.quality = model.quality.encode();
+    bool quality_read = false;
+    model.quality = afterglow::PresetQuality::decode(model.preferences.quality, &quality_read);
+    // Ratings that cannot be read stay as saved until a scan or Keep replaces them.
+    std::optional<std::string> unread_quality;
+    if (quality_read)
+        model.preferences.quality = model.quality.encode();
+    else
+    {
+        sys::log("[Afterglow] PRESET RATINGS NOT READ (%zu bytes); kept as saved",
+                 model.preferences.quality.size());
+        unread_quality = model.preferences.quality;
+    }
     milkdrop->configure(model.preferences);
     if (!milkdrop->init(1280, 720, "/app0/assets/presets"))
         milkdrop->release();
@@ -1144,8 +1175,11 @@ int main()
                      blocks, failures);
         }
     }
-    model.quality.cancel();
-    model.preferences.quality = model.quality.encode();
+    if (model.preferences.quality != unread_quality)
+    {
+        model.quality.cancel();
+        model.preferences.quality = model.quality.encode();
+    }
     model.preferences.favorite_pending = companion->pending_favorites();
     preference_store.submit(model.preferences.encode());
     preference_store.stop();

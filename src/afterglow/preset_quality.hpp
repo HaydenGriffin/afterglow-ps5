@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
+#include <cstddef>
 #include <map>
 #include <string>
 #include <string_view>
@@ -38,8 +39,13 @@ class PresetQuality
     {
         return pending_;
     }
+    // At most kMaxRatings records and kMaxPreferenceDocument bytes, what
+    // decode() reads back: records past that are left out, never the document.
     std::string encode() const;
-    static PresetQuality decode(std::string_view text);
+    // ok (when given) is false for a document that could not be read, which
+    // the caller must keep rather than replace with this empty result.
+    static PresetQuality decode(std::string_view text, bool *ok = nullptr);
+    static constexpr std::size_t kMaxRatings = 1000;
 
   private:
     std::map<std::string, PresetRating> ratings_;

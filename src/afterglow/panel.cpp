@@ -2385,9 +2385,10 @@ void Panel::preset_input(const InputFrame &input)
     const std::string name = s.presets[static_cast<std::size_t>(row->item.tag)];
     if (input.is_pressed(Action::r3))
     {
-        s.preferences.toggle_favorite(name);
-        s.show_toast(s.preferences.favorite(name) ? "Added to favourite presets"
-                                                  : "Removed from favourite presets");
+        const bool done = s.preferences.toggle_favorite(name);
+        s.show_toast(!done                          ? "Favourite presets are full"
+                     : s.preferences.favorite(name) ? "Added to favourite presets"
+                                                    : "Removed from favourite presets");
     }
     if (input.is_pressed(Action::west))
     {
