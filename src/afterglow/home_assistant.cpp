@@ -934,7 +934,8 @@ class HomeSocket
                 if (fin)
                 {
                     fragment_open_ = false;
-                    if (!message(fragment_.data(), fragment_.size()))
+                    // Only text is JSON; a binary message is read through and dropped.
+                    if (fragment_text_ && !message(fragment_.data(), fragment_.size()))
                         return false;
                     fragment_.clear();
                 }
@@ -951,6 +952,7 @@ class HomeSocket
                 else
                 {
                     fragment_open_ = true;
+                    fragment_text_ = opcode == 1;
                     fragment_.assign(payload, payload + size);
                 }
             }
@@ -966,7 +968,7 @@ class HomeSocket
 
     std::atomic<bool> &stopping_;
     int fd_ = -1;
-    bool fragment_open_ = false;
+    bool fragment_open_ = false, fragment_text_ = false;
     std::vector<std::uint8_t> incoming_, fragment_;
 };
 } // namespace
