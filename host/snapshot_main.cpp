@@ -293,12 +293,58 @@ void answer_afterglow_playback(hui::afterglow::Presentation &model)
     model.artwork_texture = model.idle_showing ? idle_cover : preview_covers.now_playing;
 }
 
+// Music Assistant's playlist and history answers for the playlist and
+// programme pictures (main.cpp pumps these through Companion::call). Every
+// call is answered on the next frame; titles are invented.
+std::vector<hui::afterglow::ApiReply> preview_replies;
+std::string preview_answer(const hui::afterglow::ApiCall &call)
+{
+    const std::string_view command = call.command;
+    if (command == "music/playlists/library_items")
+        return call.args.find("\"search\"") != std::string::npos
+                   ? "[]"
+                   : R"([{"item_id":"21","name":"Sunday kitchen","is_editable":true},)"
+                     R"({"item_id":"22","name":"Late, quiet","is_editable":true},)"
+                     R"({"item_id":"23","name":"Daily mix","is_editable":true,"is_dynamic":true}])";
+    if (command == "music/playlists/create_playlist")
+        return R"({"item_id":"30"})";
+    if (command == "music/recently_played_items")
+        return R"([{"uri":"library://track/66","name":"Lantern hour"},)"
+               R"({"uri":"library://track/65","name":"Everything we said on the long drive back"},)"
+               R"({"uri":"library://track/64","name":"Harbour lights"},)"
+               R"({"uri":"library://track/63","name":"Second kettle"},)"
+               R"({"uri":"library://track/62","name":"Low tide"},)"
+               R"({"uri":"library://track/61","name":"The lights settle"}])";
+    if (command == "player_queues/items")
+        return R"([{"queue_item_id":"p1","media_item":{"uri":"library://track/61","name":"The lights settle",)"
+               R"("artists":[{"name":"Afterglow preview"}]}},)"
+               R"({"queue_item_id":"p2","media_item":{"uri":"library://track/62","name":"Low tide",)"
+               R"("artists":[{"name":"The Demo Ensemble"}]}},)"
+               R"({"queue_item_id":"p3","media_item":{"uri":"library://track/64","name":"Harbour lights",)"
+               R"("artists":[{"name":"Harbour Lamps"}]}}])";
+    // save_as_playlist, add_playlist_tracks and tasks/get: a finished task.
+    return R"({"id":"preview-task","status":"success"})";
+}
+void answer_afterglow_calls(hui::afterglow::Presentation &model)
+{
+    auto replies = std::exchange(preview_replies, {});
+    hui::afterglow::pump_playlists(model, std::move(replies),
+                                   [](const hui::afterglow::ApiCall &call)
+                                   {
+                                       hui::afterglow::ApiReply reply;
+                                       reply.id = call.id;
+                                       reply.result = preview_answer(call);
+                                       preview_replies.push_back(std::move(reply));
+                                   });
+}
+
 void answer_afterglow_preview()
 {
     using hui::afterglow::BrowseCategory;
     using hui::afterglow::KeyboardPurpose;
     auto &model = hui::afterglow::presentation();
     answer_afterglow_playback(model);
+    answer_afterglow_calls(model);
     // Every action is accepted at once, so Browse's confirmations can be photographed.
     if (model.companion_action_pending && model.companion_action.id != 0)
     {
@@ -469,13 +515,22 @@ int main(int argc, char **argv)
                 model.lyrics.status = hui::afterglow::LyricsStatus::error;
         }
         hui::afterglow::CompanionTrack next;
+        next.media_type = "track";
         next.title = "Evening Light";
         next.artist = "Afterglow preview";
+        next.uri = "library://track/81";
+        next.queue_item_id = "preview-81";
         model.companion.upcoming.push_back(next);
         next.title = "Still Water";
+        next.uri = "library://track/82";
+        next.queue_item_id = "preview-82";
         model.companion.upcoming.push_back(next);
         next.title = "The Long Way Home";
+        next.uri = "library://track/83";
+        next.queue_item_id = "preview-83";
         model.companion.upcoming.push_back(next);
+        model.companion.queue_index = 0;
+        model.companion.queue_total = 4;
         model.companion.next_up = {model.companion.upcoming[0], model.companion.upcoming[1]};
         preview_home(model.home);
         for (std::size_t i = 0; i < model.spectrum.size(); ++i)
