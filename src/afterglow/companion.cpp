@@ -1078,6 +1078,24 @@ RelayCheck relay_check(std::int64_t now_us, std::int64_t opened_us, std::int64_t
     return now_us - std::max(last_wave_us, opened_us) > kRelayStallUs ? RelayCheck::skip
                                                                       : RelayCheck::keep;
 }
+bool relay_clock(std::int64_t client_ms, std::int64_t server_us, std::int64_t now_us,
+                 RelayClock &out)
+{
+    // Both numbers come off the network. Range checks come before any
+    // arithmetic, so no value the server sends can overflow (undefined
+    // behaviour): the echo must be a time we could have sent, and the server
+    // clock is bounded the way the Sendspin client bounds its own (client.cpp).
+    if (now_us < 0 || now_us > kMaxRelayClockUs || client_ms < 0 || client_ms > now_us / 1000 || server_us <= 0 ||
+        server_us > kMaxRelayClockUs)
+        return false;
+    const auto sent_us = client_ms * 1000;
+    const auto rtt = now_us - sent_us;
+    if (rtt > kRelayClockRttUs)
+        return false;
+    out.rtt_us = rtt;
+    out.offset_us = server_us - (sent_us + rtt / 2);
+    return true;
+}
 } // namespace companion_wire
 
 struct Companion::Impl
@@ -1790,19 +1808,19 @@ struct Companion::Impl
         {
             auto payload = field(raw, "payload");
             Json clock(payload);
-            const auto sent_us = clock.integer(clock.get(0, "client_transmitted")) * 1000;
-            const auto server_us = clock.integer(clock.get(0, "server_transmitted"));
-            const auto rtt = now - sent_us;
-            if (rtt < 0 || rtt > 10000000 || server_us <= 0)
+            companion_wire::RelayClock sample;
+            if (!companion_wire::relay_clock(clock.integer(clock.get(0, "client_transmitted"), -1),
+                                             clock.integer(clock.get(0, "server_transmitted"), -1),
+                                             now, sample))
                 return true;
             std::lock_guard<std::mutex> lock(mutex);
-            if (rtt <= best_rtt || now - clock_sample > 60000000)
+            if (sample.rtt_us <= best_rtt || now - clock_sample > 60000000)
             {
-                best_rtt = rtt;
-                offset = server_us - (sent_us + now) / 2;
+                best_rtt = sample.rtt_us;
+                offset = sample.offset_us;
                 clock_sample = now;
                 clock_ready = true;
-                state.clock_rtt_ms = static_cast<double>(rtt) / 1000;
+                state.clock_rtt_ms = static_cast<double>(sample.rtt_us) / 1000;
             }
         }
         return true;
@@ -2629,6 +2647,7 @@ std::vector<float> Companion::take_pcm(int trim_ms)
     std::vector<float> pcm;
     if (!impl_->clock_ready)
         return pcm;
+    // offset passed companion_wire::relay_clock, so this sum stays in range.
     const auto now = sys::monotonic_us() + impl_->offset -
                      static_cast<std::int64_t>(std::clamp(trim_ms, -5000, 5000)) * 1000;
     while (!impl_->waves.empty() && impl_->waves.front().time <= now)

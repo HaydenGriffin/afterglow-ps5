@@ -6,6 +6,7 @@
 #include "afterglow/ma_socket.hpp"
 #include <cstdio>
 #include <gtest/gtest.h>
+#include <limits>
 #include <string>
 
 using namespace hui::afterglow;
@@ -231,6 +232,37 @@ TEST(AfterglowCompanion, ReadsLongPlainAndEnhancedLyricsWhole)
         plain_json + R"(","lrc_lyrics":")" + lrc_json + R"("}}})");
     EXPECT_EQ(track.lyrics, plain);
     EXPECT_EQ(track.lrc_lyrics, lrc);
+}
+
+TEST(AfterglowCompanion, RelayClockRefusesValuesThatWouldOverflow)
+{
+    constexpr std::int64_t max = std::numeric_limits<std::int64_t>::max();
+    constexpr std::int64_t min = std::numeric_limits<std::int64_t>::min();
+    const std::int64_t now = 5000000000; // 5000 s of uptime
+    companion_wire::RelayClock clock;
+    // A sane reply: sent 40 ms ago, the server 1 s ahead of the midpoint.
+    ASSERT_TRUE(companion_wire::relay_clock(now / 1000 - 40, now - 20000 + 1000000, now, clock));
+    EXPECT_EQ(clock.rtt_us, 40000);
+    EXPECT_EQ(clock.offset_us, 1000000);
+    for (const auto client : {max, min, max / 1000, -1LL, now / 1000 + 1})
+    {
+        clock = {};
+        EXPECT_FALSE(companion_wire::relay_clock(client, now, now, clock)) << client;
+        EXPECT_EQ(clock.offset_us, 0) << client;
+    }
+    for (const auto server : {max, min, 0LL, -1LL, companion_wire::kMaxRelayClockUs + 1})
+        EXPECT_FALSE(companion_wire::relay_clock(now / 1000, server, now, clock)) << server;
+    for (const auto at : {min, -1LL, max})
+        EXPECT_FALSE(companion_wire::relay_clock(0, 1, at, clock)) << at;
+    // Stale: answered more than 10 s after it was sent.
+    EXPECT_FALSE(companion_wire::relay_clock(now / 1000 - 10001, now, now, clock));
+    EXPECT_TRUE(companion_wire::relay_clock(now / 1000 - 10000, now, now, clock));
+    // The extremes still accepted give an offset the monotonic clock can take.
+    ASSERT_TRUE(companion_wire::relay_clock(now / 1000, companion_wire::kMaxRelayClockUs, now,
+                                            clock));
+    EXPECT_LE(clock.offset_us, companion_wire::kMaxRelayClockUs);
+    ASSERT_TRUE(companion_wire::relay_clock(now / 1000, 1, now, clock));
+    EXPECT_GE(clock.offset_us, -now);
 }
 
 TEST(AfterglowCompanion, HandlesRadioAndUnavailableMetadata)
