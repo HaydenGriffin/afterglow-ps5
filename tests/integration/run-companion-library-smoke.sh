@@ -9,6 +9,7 @@ mkdir -p "$root/build/tests"
 "${CXX:-c++}" -std=c++20 -Wall -Wextra -Wpedantic -Werror \
     -fno-exceptions -fno-rtti -pthread -I"$root/src" \
     "$root/src/afterglow/companion.cpp" "$root/src/afterglow/speakers.cpp" "$root/src/afterglow/controls.cpp" \
+    "$root/src/afterglow/share_pick.cpp" \
     "$root/src/afterglow/speaker_group.cpp" \
     "$root/src/afterglow/ma_socket.cpp" \
     "$root/src/afterglow/protocol.cpp" \

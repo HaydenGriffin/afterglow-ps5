@@ -23,6 +23,8 @@ HOST_CC=${CC:-${HOST_CC:-clang}} bash "$root/tools/build-bearssl.sh" host >/dev/
     "$root/src/afterglow/https.cpp" "$root/src/afterglow/http_response.cpp" \
     "$root/src/afterglow/lrclib.cpp" "$root/src/afterglow/online_lyrics.cpp" \
     "$root/src/afterglow/lyrics_lookup.cpp" "$root/src/afterglow/lyrics.cpp" \
+    "$root/src/afterglow/song_lyrics.cpp" "$root/src/afterglow/song_store.cpp" \
+    "$root/src/afterglow/spoken_word.cpp" "$root/src/afterglow/protocol.cpp" \
     "$root/src/core/save_file.cpp" "$root/host/platform_host.cpp" \
     "$root/tests/integration/lyrics_https_smoke.cpp" \
     "$root/.deps/bearssl/host/libbearssl.a" -o "$out/lyrics_https_smoke"
