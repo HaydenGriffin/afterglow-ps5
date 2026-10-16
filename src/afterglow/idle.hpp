@@ -50,9 +50,10 @@ struct IdleOffer
 constexpr int kRecentWithOffer = companion_wire::kRecentLimit - 1;
 // The strip, in order: the paused song, up to kCarryOnLimit audiobooks and
 // episodes in progress, a retry after an error, up to kRecentLimit recent
-// items (none shown twice; kRecentWithOffer while the programme is offered),
-// the programme, then Browse. With setup on and nothing to offer (reading
-// failed, or nothing played yet), Check my setup comes last (LG idle-view.js).
+// items less the carried ones (none shown twice; kRecentWithOffer while the
+// programme is offered), the programme, then Browse. With setup on and
+// nothing to offer (reading failed, or nothing played yet), Check my setup
+// comes last (LG idle-view.js).
 constexpr std::size_t kCarryOnLimit = 3;
 std::vector<IdleTile> idle_tiles(const CompanionTrack *paused,
                                  const std::vector<CompanionTrack> &recent, RecentState state,

@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "afterglow/idle.hpp"
+#include <algorithm>
 #include <gtest/gtest.h>
 
 namespace
@@ -87,6 +88,27 @@ TEST(AfterglowIdleTiles, TonightsProgrammeComesJustBeforeBrowseAndBrowseStillFit
     EXPECT_EQ(words.hint, "Open");
     EXPECT_EQ(idle_tiles(nullptr, recent(3), RecentState::ready, {}, false, &offer).size(), 5U)
         << "fewer recent items keep their place";
+}
+
+TEST(AfterglowIdleTiles, CarriedBooksTakeRecentPlacesSoBrowseStillFits)
+{
+    const IdleOffer offer{"Tonight", "14 songs since 19:40"};
+    auto paused = item("Slow Current", "library://track/1");
+    std::vector<CompanionTrack> books;
+    for (int i = 0; i < 3; ++i)
+        books.push_back(
+            item("Book", ("library://audiobook/" + std::to_string(i)).c_str(), "audiobook"));
+    const auto count = [](const std::vector<IdleTile> &tiles, IdleTileKind kind)
+    {
+        return std::count_if(tiles.begin(), tiles.end(),
+                             [kind](const IdleTile &t) { return t.kind == kind; });
+    };
+    const auto plain = idle_tiles(&paused, recent(12), RecentState::ready, books);
+    EXPECT_EQ(count(plain, IdleTileKind::carry), 3);
+    EXPECT_EQ(count(plain, IdleTileKind::play), companion_wire::kRecentLimit - 3);
+    const auto offered = idle_tiles(&paused, recent(12), RecentState::ready, books, false, &offer);
+    EXPECT_EQ(count(offered, IdleTileKind::play), kRecentWithOffer - 3);
+    EXPECT_EQ(offered.back().kind, IdleTileKind::browse);
 }
 
 class AfterglowIdlePoster : public ::testing::Test

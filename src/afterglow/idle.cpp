@@ -90,7 +90,9 @@ std::vector<IdleTile> idle_tiles(const CompanionTrack *paused,
         tiles.push_back(std::move(tile));
     }
     int added = 0;
-    const int limit = offer != nullptr ? kRecentWithOffer : companion_wire::kRecentLimit;
+    // Carried tiles take recent music's places, so Browse still fits the strip.
+    const int limit = (offer != nullptr ? kRecentWithOffer : companion_wire::kRecentLimit) -
+                      static_cast<int>(carried);
     for (const auto &item : recent)
     {
         if (item.uri.empty() || shown(item.uri))

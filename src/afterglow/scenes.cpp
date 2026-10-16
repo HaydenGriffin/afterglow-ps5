@@ -854,6 +854,12 @@ using namespace style;
 constexpr float kIdleTile = 88;
 constexpr float kIdleTileGap = 16;
 constexpr float kIdleStripY = 936;
+// Tiles that show a cover; the others are words.
+bool cover_tile(IdleTileKind kind)
+{
+    return kind == IdleTileKind::resume || kind == IdleTileKind::play ||
+           kind == IdleTileKind::carry;
+}
 std::string idle_word(const IdleTile &tile)
 {
     return tile.kind == IdleTileKind::retry       ? "Try again"
@@ -863,7 +869,7 @@ std::string idle_word(const IdleTile &tile)
 }
 float idle_tile_width(const Scene &scene, const IdleTile &tile)
 {
-    if (tile.kind == IdleTileKind::resume || tile.kind == IdleTileKind::play)
+    if (cover_tile(tile.kind))
         return kIdleTile;
     return std::max(kIdleTile, scene.fonts.semibold.font->measure(idle_word(tile), kTypeMin) + 24);
 }
@@ -884,7 +890,7 @@ void draw_idle_strip(const Scene &scene, const IdleView &idle, Color fill_b)
         if (focused)
             list.rounded_rect(box, 0, ink_paper);
         const gfx::Rect inner{box.x + 5, box.y + 5, box.w - 10, box.h - 10};
-        if (tile.kind == IdleTileKind::resume || tile.kind == IdleTileKind::play)
+        if (cover_tile(tile.kind))
         {
             const auto &source = scene.state.thumbnail;
             const std::uint32_t texture =
@@ -936,7 +942,7 @@ void draw_idle_poster(const Scene &scene, const IdleView &idle)
 
     // The cover in a square box (LG .idle-art), backed by field B while it loads.
     const gfx::Rect art{kSafeLeft, 173, 544, 544};
-    if (tile.kind == IdleTileKind::resume || tile.kind == IdleTileKind::play)
+    if (cover_tile(tile.kind))
     {
         list.rounded_rect(art, 0, fb);
         if (state.artwork_texture != 0 && !tile.item.artwork.empty())
