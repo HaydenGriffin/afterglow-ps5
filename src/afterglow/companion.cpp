@@ -1735,6 +1735,9 @@ struct Companion::Impl
         if (!recent_inflight.empty() && now >= recent_deadline)
         {
             recent_inflight.clear();
+            // Continue listening rides along with it; unanswered, it would
+            // otherwise never be asked again on this connection.
+            progress_inflight.clear();
             state.recent_state = RecentState::error;
         }
     }
