@@ -42,8 +42,7 @@ constexpr float kTypeLabel = 30;
 constexpr float kTypeSheetTitle = 65;
 constexpr float kTypeBrowseTitle = 97;
 
-// Motion follows the LG field reveal: a fast start that settles softly.
-constexpr float kRevealSeconds = 0.52f;
+// Fades and lyric lines start fast and settle softly.
 constexpr float kFadeSeconds = 0.5f;
 inline float ease_out(float t)
 {
