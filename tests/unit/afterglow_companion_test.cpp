@@ -4,7 +4,9 @@
 
 #include "afterglow/companion.hpp"
 #include "afterglow/ma_socket.hpp"
+#include <cstdio>
 #include <gtest/gtest.h>
+#include <string>
 
 using namespace hui::afterglow;
 
@@ -206,6 +208,29 @@ TEST(AfterglowCompanion, ReadsNestedMetadataWithoutConfusingRepeatedNames)
     EXPECT_EQ(track.artwork, "/imageproxy/abc?size=512&fmt=png");
     EXPECT_EQ(track.lyrics, "First\nSecond");
     EXPECT_EQ(track.lrc_lyrics, "[00:01.00]First");
+}
+
+TEST(AfterglowCompanion, ReadsLongPlainAndEnhancedLyricsWhole)
+{
+    std::string plain, plain_json, lrc, lrc_json;
+    for (int i = 0; i < 200; ++i)
+    {
+        const auto line = "Line " + std::to_string(i) + " of a long fixture song";
+        plain += line + "\n";
+        plain_json += line + "\\n";
+        char stamp[32];
+        std::snprintf(stamp, sizeof(stamp), "[%02d:%02d.00]", i / 60, i % 60);
+        const auto timed = std::string(stamp) + "<00:00.10> Word <00:00.40> \\u00e9t\\u00e9";
+        lrc += std::string(stamp) + "<00:00.10> Word <00:00.40> été\n";
+        lrc_json += timed + "\\n";
+    }
+    ASSERT_GT(plain.size(), 5000U);
+    ASSERT_GT(lrc.size(), 5000U);
+    const auto track = companion_wire::decode_track(
+        R"({"name":"x","media_item":{"uri":"library://track/9","name":"Long","metadata":{"lyrics":")" +
+        plain_json + R"(","lrc_lyrics":")" + lrc_json + R"("}}})");
+    EXPECT_EQ(track.lyrics, plain);
+    EXPECT_EQ(track.lrc_lyrics, lrc);
 }
 
 TEST(AfterglowCompanion, HandlesRadioAndUnavailableMetadata)

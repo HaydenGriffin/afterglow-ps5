@@ -65,16 +65,20 @@ class AudioQueue
 };
 
 std::string json_quote(std::string_view value);
+// The default document limit; callers that keep larger documents pass their own.
+constexpr std::size_t kJsonMaxBytes = 65536;
 // JSON queries are limited to direct children, avoiding ambiguous repeated keys.
 class Json
 {
   public:
-    explicit Json(std::string_view text);
+    explicit Json(std::string_view text, std::size_t max_bytes = kJsonMaxBytes);
     bool valid() const
     {
         return count_ > 0;
     }
     int get(int parent, std::string_view key) const;
+    // Decodes the whole string. The document limit bounds it: an escape never
+    // decodes to more bytes than it occupies, so no second cap is needed here.
     std::string string(int token) const;
     std::int64_t integer(int token, std::int64_t fallback = 0) const;
     bool boolean(int token, bool fallback = false) const;

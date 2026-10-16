@@ -14,6 +14,12 @@ import sys
 import time
 
 
+# Both well past the 2 KB a string once decoded to; the smoke rebuilds them.
+LONG_PLAIN = "".join(f"Line {i} of a long fixture song\n" for i in range(200))
+LONG_LRC = "[00:01.00]Fixture\n" + "".join(
+    f"[{i // 60:02d}:{i % 60:02d}.50]<00:00.10> Word <00:00.40> été\n" for i in range(1, 200))
+
+
 def exact(connection, count):
     data = b""
     while len(data) < count:
@@ -104,7 +110,7 @@ def exercise(binary, mode=None):
             elif command == "music/item_by_uri":
                 result = track
             elif command == "metadata/get_track_lyrics":
-                result = ["", "[00:01.00]Fixture"]
+                result = [LONG_PLAIN, LONG_LRC]
             elif command == "player_queues/items":
                 result = [{"name": "Next", "media_item": {"name": "Next"}}]
             elif command == "auth/user/update":

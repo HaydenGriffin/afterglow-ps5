@@ -173,9 +173,10 @@ std::string json_quote(std::string_view value)
     return result + '"';
 }
 
-Json::Json(std::string_view text) : text_(text)
+Json::Json(std::string_view text, std::size_t max_bytes) : text_(text)
 {
-    if (text.size() > 65536)
+    if (text.size() > max_bytes ||
+        text.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
         return;
     std::array<jsmntok_t, 512> parsed{};
     jsmn_parser parser;
@@ -216,6 +217,7 @@ std::string Json::string(int token) const
         return {};
     const auto &t = tokens_[static_cast<std::size_t>(token)];
     std::string result;
+    result.reserve(static_cast<std::size_t>(t.end - t.start));
     auto hex = [](char c) -> unsigned int
     {
         if (c >= '0' && c <= '9')
@@ -224,7 +226,7 @@ std::string Json::string(int token) const
             return static_cast<unsigned int>(c - 'a' + 10);
         return static_cast<unsigned int>(c - 'A' + 10);
     };
-    for (int i = t.start; i < t.end && result.size() < 2048; ++i)
+    for (int i = t.start; i < t.end; ++i)
     {
         char c = text_[static_cast<std::size_t>(i)];
         if (c != '\\')

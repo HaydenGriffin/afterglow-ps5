@@ -138,7 +138,7 @@ std::string string_value(std::string_view s)
     if (s.empty() || s.size() > 65536)
         return {};
     const std::string object = "{\"v\":" + std::string(s) + "}";
-    Json json(object);
+    Json json(object, object.size());
     return json.string(json.get(0, "v"));
 }
 std::string text_field(std::string_view s, std::string_view key)

@@ -159,5 +159,26 @@ TEST(AfterglowJson, RejectsTruncationAndBoundsTokens)
     EXPECT_EQ(json.integer(json.get(0, "number"), 42), 42);
     EXPECT_TRUE(json.boolean(json.get(0, "ok")));
 }
+
+TEST(AfterglowJson, DecodesLongStringsWholeAndHonoursTheDocumentLimit)
+{
+    std::string text;
+    for (int i = 0; i < 400; ++i)
+        text += "Line " + std::to_string(i) + R"( caf\u00e9 \ud83c\udfb5\n)";
+    const std::string document = "{\"v\":\"" + text + "\"}";
+    ASSERT_GT(document.size(), 8000U);
+    Json json(document);
+    ASSERT_TRUE(json.valid());
+    const auto decoded = json.string(json.get(0, "v"));
+    EXPECT_TRUE(decoded.starts_with("Line 0 café 🎵\n"));
+    EXPECT_TRUE(decoded.ends_with("Line 399 café 🎵\n"));
+    EXPECT_EQ(std::count(decoded.begin(), decoded.end(), '\n'), 400);
+
+    const std::string big = "{\"v\":\"" + std::string(kJsonMaxBytes, 'x') + "\"}";
+    EXPECT_FALSE(Json(big).valid());
+    Json allowed(big, big.size());
+    ASSERT_TRUE(allowed.valid());
+    EXPECT_EQ(allowed.string(allowed.get(0, "v")).size(), kJsonMaxBytes);
+}
 } // namespace
 } // namespace hui::afterglow

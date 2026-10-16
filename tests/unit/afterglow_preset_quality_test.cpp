@@ -3,10 +3,33 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "afterglow/preset_quality.hpp"
+#include <algorithm>
+#include <fstream>
 #include <gtest/gtest.h>
 #include <limits>
+#include <string>
+#include <vector>
+
+#ifndef HUI_SOURCE_DIR
+#define HUI_SOURCE_DIR "."
+#endif
 
 using hui::afterglow::PresetQuality;
+
+namespace
+{
+// The display names of the packaged library, which is what the scan records.
+std::vector<std::string> library_names()
+{
+    std::vector<std::string> names;
+    std::ifstream in(std::string(HUI_SOURCE_DIR) + "/assets/presets/index.tsv");
+    std::string line;
+    while (std::getline(in, line))
+        if (const auto tab = line.find('\t'); !line.empty() && line[0] != '#' && tab != line.npos)
+            names.push_back(line.substr(tab + 1));
+    return names;
+}
+} // namespace
 
 TEST(AfterglowPresetQuality, ExcludesWarmupAndMeasuresPresentedFramesOnce)
 {
@@ -100,4 +123,46 @@ TEST(AfterglowPresetQuality, RejectsMalformedRecordsAndUnsupportedVersion)
         R"({"version":1,"ratings":"rating=nan\t1\t0\t0\tBad\nrating=60000\t2\t0\t0\tBad flag\nrating=60000\t1\t0\t0\tValid\r\n"})");
     ASSERT_EQ(quality.ratings().size(), 1U);
     EXPECT_DOUBLE_EQ(quality.ratings().at("Valid").fps, 60);
+}
+
+TEST(AfterglowPresetQuality, RoundTripsTheWholeLibraryWithLongNames)
+{
+    auto names = library_names();
+    ASSERT_GT(names.size(), 390U);
+    // The packaged names are short; padding them to 120 bytes leaves headroom.
+    for (std::size_t i = names.size(); i < 395; ++i)
+        names.push_back("Extra preset " + std::to_string(i));
+    PresetQuality quality;
+    for (std::size_t i = 0; i < names.size(); ++i)
+    {
+        names[i].resize(std::max<std::size_t>(names[i].size(), 120), '~');
+        quality.record(names[i], 30 + static_cast<double>(i % 31));
+        quality.set_keep(names[i], i % 7 == 0);
+    }
+    quality.begin(names.back());
+    const auto encoded = quality.encode();
+    ASSERT_GT(encoded.size(), 50000U);
+    const auto restored = PresetQuality::decode(encoded);
+    ASSERT_EQ(restored.ratings().size(), names.size());
+    for (std::size_t i = 0; i + 1 < names.size(); ++i)
+    {
+        const auto &rating = restored.ratings().at(names[i]);
+        EXPECT_NEAR(rating.fps, 30 + static_cast<double>(i % 31), 0.001) << names[i];
+        EXPECT_EQ(rating.keep, i % 7 == 0) << names[i];
+        EXPECT_FALSE(rating.quarantined) << names[i];
+    }
+    EXPECT_TRUE(restored.ratings().at(names.back()).quarantined);
+    EXPECT_EQ(PresetQuality::decode(restored.encode()).encode(), restored.encode());
+}
+
+TEST(AfterglowPresetQuality, KeepsAQuarantineThatSortsLast)
+{
+    PresetQuality quality;
+    for (int i = 0; i < 395; ++i)
+        quality.record("Preset " + std::to_string(1000 + i), 60);
+    quality.quarantine("zzz crashed the console");
+    const auto restored = PresetQuality::decode(quality.encode());
+    ASSERT_EQ(restored.ratings().size(), 396U);
+    EXPECT_TRUE(restored.ratings().at("zzz crashed the console").quarantined);
+    EXPECT_FALSE(restored.eligible("zzz crashed the console", 30, false));
 }
