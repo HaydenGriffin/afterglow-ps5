@@ -82,7 +82,7 @@ class TimingOffer
 // lyrics later by offset_ms puts the song that much further on. Whole
 // seconds (player_queues/seek), from the start of the line, within 0..duration.
 int line_seek_position(double line_seconds, int offset_ms, int duration);
-// "3:05"
+// "3:05", "1:02:15" (shared with Chapters, defined in spoken_word.cpp).
 std::string clock_label(int seconds);
 // A candidate's second line: length, how far from the song's when more than
 // 10 s, Timed/Plain, then the album (last, so a narrow row cuts only it).

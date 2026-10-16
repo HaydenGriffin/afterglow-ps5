@@ -420,14 +420,6 @@ int line_seek_position(double line_seconds, int offset_ms, int duration)
     return std::max(0, duration > 0 ? std::min(duration, at) : at);
 }
 
-std::string clock_label(int seconds)
-{
-    seconds = std::max(0, seconds);
-    char out[24];
-    std::snprintf(out, sizeof out, "%d:%02d", seconds / 60, seconds % 60);
-    return out;
-}
-
 std::string candidate_detail(const lrclib::Candidate &c, int duration)
 {
     std::string out;
