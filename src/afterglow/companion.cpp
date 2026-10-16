@@ -2406,7 +2406,7 @@ struct Companion::Impl
     // the value sent before (LG playback.js build()). Empty: nothing to send.
     companion_wire::Request control_request(const ControlJob &job, std::int64_t now)
     {
-        const auto &queue_id = control_queue();
+        const auto &queue_id = job.queue.empty() ? control_queue() : job.queue;
         const auto q = queues.find(queue_id);
         if (queue_id.empty() || q == queues.end())
             return {};
@@ -2428,7 +2428,7 @@ struct Companion::Impl
             return {"player_queues/previous", target + "}", {}};
         case Control::volume:
         {
-            const auto p = players.find(control_player());
+            const auto p = players.find(job.player.empty() ? control_player() : job.player);
             if (job.amount == 0 || p == players.end())
                 return {};
             companion_wire::VolumeTarget volume;
@@ -2802,27 +2802,32 @@ void Companion::restore_pending_favorites(std::string_view journal)
 void Companion::command(Command command)
 {
     std::lock_guard<std::mutex> lock(impl_->mutex);
+    // The target the screen shows now, not whatever it is when the press is sent.
+    const auto &player = impl_->state.target_player_id;
+    const auto &queue = impl_->state.queue_id;
     switch (command)
     {
     case Command::toggle:
-        impl_->controls.press(Control::toggle);
+        impl_->controls.press(Control::toggle, 0, player, queue);
         break;
     case Command::next:
-        impl_->controls.press(Control::next);
+        impl_->controls.press(Control::next, 0, player, queue);
         break;
     case Command::previous:
-        impl_->controls.press(Control::previous);
+        impl_->controls.press(Control::previous, 0, player, queue);
         break;
     case Command::volume_up:
     case Command::volume_down:
-        impl_->controls.press(Control::volume, command == Command::volume_up ? 5 : -5);
+        impl_->controls.press(Control::volume, command == Command::volume_up ? 5 : -5, player,
+                              queue);
         break;
     }
 }
 void Companion::seek_by(int seconds)
 {
     std::lock_guard<std::mutex> lock(impl_->mutex);
-    impl_->controls.press(Control::seek, std::clamp(seconds, -3600, 3600));
+    impl_->controls.press(Control::seek, std::clamp(seconds, -3600, 3600),
+                          impl_->state.target_player_id, impl_->state.queue_id);
 }
 void Companion::set_token(const std::string &token)
 {

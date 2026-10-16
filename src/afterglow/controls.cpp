@@ -29,10 +29,12 @@ int Assumed::value_or(const std::string &key, int actual, std::int64_t now_us)
     return value_;
 }
 
-bool ControlQueue::press(Control kind, int amount, const std::string &player)
+bool ControlQueue::press(Control kind, int amount, const std::string &player,
+                         const std::string &queue)
 {
-    const auto same = std::find_if(waiting_.begin(), waiting_.end(), [&](const ControlJob &job)
-                                   { return job.kind == kind && job.player == player; });
+    const auto same =
+        std::find_if(waiting_.begin(), waiting_.end(), [&](const ControlJob &job)
+                     { return job.kind == kind && job.player == player && job.queue == queue; });
     if (same != waiting_.end())
     {
         if (kind == Control::volume || kind == Control::seek || kind == Control::member_volume)
@@ -50,6 +52,7 @@ bool ControlQueue::press(Control kind, int amount, const std::string &player)
     job.kind = kind;
     job.amount = amount;
     job.player = player;
+    job.queue = queue;
     waiting_.push_back(std::move(job));
     return true;
 }

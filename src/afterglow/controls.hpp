@@ -58,8 +58,11 @@ struct ControlJob
 {
     Control kind = Control::toggle;
     int amount = 0;
-    // member_volume: the player the steps are for.
+    // member_volume: the player the steps are for. Other presses: the player
+    // and queue shown as the target when pressed, so a press made just before
+    // the target changes still reaches the speaker it was meant for.
     std::string player;
+    std::string queue;
 };
 
 // Presses made while a command is in flight wait their turn instead of being
@@ -74,7 +77,8 @@ class ControlQueue
     static constexpr std::int64_t kReplyUs = 10000000;
     // False when the press was refused (the queue is full). Waiting
     // member_volume presses collapse only with those for the same player.
-    bool press(Control kind, int amount = 0, const std::string &player = {});
+    bool press(Control kind, int amount = 0, const std::string &player = {},
+               const std::string &queue = {});
     // The next job to send, marked in flight; nothing while one is in flight.
     std::optional<ControlJob> take(std::int64_t now_us);
     // The in-flight job was answered (or could not be sent).

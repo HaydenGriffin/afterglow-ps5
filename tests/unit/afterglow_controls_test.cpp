@@ -170,3 +170,16 @@ TEST(AfterglowControls, RelayReconnectsWhenFramesStopMidStreamAndSkipsASilentSoc
     EXPECT_EQ(companion_wire::relay_check(13 * kSecond, 0, 2 * kSecond, false), RelayCheck::skip);
 }
 } // namespace
+
+TEST(AfterglowControls, PressesForDifferentTargetsStayApart)
+{
+    ControlQueue queue;
+    queue.press(Control::volume, 5, "bedroom", "bedroom");
+    queue.press(Control::volume, 5, "living", "living");
+    queue.press(Control::volume, -5, "bedroom", "bedroom");
+    const auto first = queue.take(0);
+    ASSERT_TRUE(first);
+    EXPECT_EQ(first->queue, "bedroom");
+    EXPECT_EQ(first->player, "bedroom");
+    EXPECT_EQ(first->amount, 0) << "the bedroom steps collapse together";
+}
