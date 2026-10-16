@@ -3,13 +3,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "afterglow/milkdrop.hpp"
-#include "afterglow/cloud_texture.hpp"
 #include "core/save_file.hpp"
 #include "platform/ps5/system.hpp"
 #include <EGL/egl.h>
 #include <GL/glcorearb.h>
 #include <algorithm>
 #include <projectM-4/projectM.h>
+#include <utility>
 
 namespace hui::afterglow
 {
@@ -25,6 +25,10 @@ constexpr int kMaxFailuresInRow = 8;
 // them to settle, and never reload more often than this.
 constexpr double kColourSettleSeconds = 1.0;
 constexpr double kRecolourSeconds = 3.0;
+// A cover fade is uploaded about 15 times a second, and always at its end.
+constexpr std::int64_t kCoverUploadUs = 66000;
+// The audio handed to listen() (Sendspin and the follow relay).
+constexpr double kListenRate = 48000.0;
 
 void *load_gl(const char *name, void *)
 {
@@ -122,7 +126,8 @@ bool Milkdrop::init(int width, int height, const std::string &preset_dir)
     projectm_set_hard_cut_enabled(handle_, false);
     projectm_set_preset_switch_requested_event_callback(handle_, on_switch_requested, this);
     projectm_set_preset_switch_failed_event_callback(handle_, on_switch_failed, this);
-    clouds_ = cloud_texture();
+    clouds_ = cover_clouds();
+    texture_pixels_ = clouds_;
     projectm_set_texture_load_event_callback(handle_, on_texture_requested, this);
     random_.seed(static_cast<std::uint32_t>(sys::monotonic_us()));
     order_.resize(presets_.size());
@@ -158,6 +163,17 @@ void Milkdrop::release()
         handle_ = nullptr;
         restore_kit_state();
     }
+    if (cover_texture_ != 0)
+    {
+        const GLuint texture = cover_texture_;
+        glDeleteTextures(1, &texture);
+        cover_texture_ = 0;
+    }
+    fading_ = false;
+    cover_schedule_ = CoverSchedule{};
+    fade_from_.clear();
+    fade_to_.clear();
+    texture_pixels_.clear();
     canvas_.destroy();
     presets_.clear();
     order_.clear();
@@ -192,6 +208,7 @@ void Milkdrop::render(double frame_time)
 {
     if (handle_ == nullptr || name_.empty() || (selection_blocked_ && !scanning_))
         return;
+    update_cover();
     const auto started = sys::monotonic_us();
     projectm_set_frame_time(handle_, frame_time);
     projectm_opengl_render_frame_fbo(handle_, canvas_.framebuffer());
@@ -208,7 +225,10 @@ void Milkdrop::render(double frame_time)
         next();
     }
     else if (!scanning_)
+    {
         recolour_if_settled();
+        change_if_due();
+    }
     restore_kit_state();
 }
 
@@ -230,6 +250,105 @@ void Milkdrop::set_album_colours(const Rgb &accent, const Rgb &secondary)
     accent_ = accent;
     secondary_ = secondary;
     colouring_changed_at_ = sys::monotonic_us();
+    cover_schedule_.touch(now_ms());
+}
+
+double Milkdrop::now_ms() const
+{
+    return static_cast<double>(sys::monotonic_us()) / 1000.0;
+}
+
+void Milkdrop::set_cover(std::vector<std::uint8_t> pixels)
+{
+    cover_ = std::move(pixels);
+    cover_id_ = cover_.empty() ? 0 : ++cover_count_;
+    want_cover();
+}
+
+void Milkdrop::want_cover()
+{
+    cover_schedule_.want(preferences_.cover_art && cover_id_ != 0 ? cover_id_ : 0, now_ms());
+}
+
+void Milkdrop::set_song(std::string_view key)
+{
+    if (key == song_)
+        return;
+    song_ = std::string(key);
+    changer_.song(song_, now_ms());
+}
+
+void Milkdrop::listen(const float *stereo, std::size_t frames)
+{
+    changer_.hear(pcm_energy(stereo, frames), static_cast<double>(frames) / kListenRate);
+}
+
+// Each song and On big moments go through next(), so the preset list,
+// favourites and skip-slow apply as they do for the timer.
+void Milkdrop::change_if_due()
+{
+    if (handle_ == nullptr || preferences_.locked || selection_blocked_)
+        return;
+    if (changer_.due(preset_change_of(preferences_), now_ms()))
+        next();
+}
+
+// Made the first time a preset asks for a picture, with whatever the
+// picture is by then. GL_LINEAR without mipmaps: projectM's samplers never
+// ask for them.
+std::uint32_t Milkdrop::cover_texture()
+{
+    if (cover_texture_ != 0 || texture_pixels_.empty())
+        return cover_texture_;
+    GLint bound = 0;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &bound);
+    GLuint texture = 0;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, kCoverSize, kCoverSize, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                 texture_pixels_.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(bound));
+    cover_texture_ = texture;
+    return cover_texture_;
+}
+
+// The fade runs on this (the frame) thread, in place in the one texture: the
+// artwork worker has already cropped and scaled the cover (cover_pixels).
+void Milkdrop::update_cover()
+{
+    if (texture_pixels_.empty())
+        return;
+    const double now = now_ms();
+    if (const auto fade = cover_schedule_.tick(now))
+    {
+        fade_from_ = texture_pixels_;
+        fade_to_ = fade->to != 0 && fade->to == cover_id_ ? cover_ : clouds_;
+        fading_ = true;
+        uploaded_at_ = 0;
+    }
+    if (!fading_)
+        return;
+    const float level = cover_schedule_.level(now);
+    const auto at = sys::monotonic_us();
+    if (level < 1 && at - uploaded_at_ < kCoverUploadUs)
+        return;
+    uploaded_at_ = at;
+    blend_pixels(fade_from_, fade_to_, level, texture_pixels_);
+    if (level >= 1)
+        fading_ = false;
+    if (cover_texture_ == 0)
+        return;
+    GLint bound = 0;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &bound);
+    glBindTexture(GL_TEXTURE_2D, cover_texture_);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, kCoverSize, kCoverSize, GL_RGBA, GL_UNSIGNED_BYTE,
+                    texture_pixels_.data());
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(bound));
 }
 
 // Reloads the current preset with a soft cut, so the new colours blend in
@@ -297,7 +416,10 @@ void Milkdrop::configure(const Preferences &preferences)
     if (preferences_.tint != preferences.tint ||
         preferences_.tint_strength != preferences.tint_strength)
         colouring_changed_at_ = sys::monotonic_us();
+    const bool cover_changed = preferences_.cover_art != preferences.cover_art;
     preferences_ = preferences;
+    if (cover_changed)
+        want_cover();
     quality_ = PresetQuality::decode(preferences.quality);
     if (handle_ == nullptr)
         return;
@@ -313,7 +435,9 @@ void Milkdrop::configure(const Preferences &preferences)
     }
     projectm_set_beat_sensitivity(
         handle_, static_cast<float>(std::clamp(preferences.beat_sensitivity, 0, 200)) / 100.0f);
-    projectm_set_preset_locked(handle_, preferences.locked);
+    // Each song and On big moments are decided here (change_if_due), not by
+    // projectM's timer.
+    projectm_set_preset_locked(handle_, preferences.locked || preferences.preset_change != 0);
     projectm_set_preset_duration(handle_, preferences.preset_seconds);
     projectm_set_fps(handle_, preferences.fps);
 }
@@ -340,6 +464,10 @@ void Milkdrop::load(std::size_t index, bool smooth)
         switch_pending_ = true;
         return;
     }
+    // A recolour reloads the same preset; only another one starts the gaps of
+    // Each song and On big moments.
+    if (index != current_)
+        changer_.changed(now_ms());
     current_ = index;
     applied_ = wanted_colouring();
     if (applied_.strength > 0)
@@ -369,16 +497,19 @@ void Milkdrop::on_switch_failed(const char *file, const char *message, void *sel
     view.switch_pending_ = true;
 }
 
-// projectM copies the pixels into a texture of its own for each name, so one
-// buffer serves them all. Built-in textures (main, blur, noise) never reach it.
+// Every name gets the one cover texture by id; projectM keeps it as a texture
+// it does not own, so it never deletes it, and an update shows in every
+// preset at once. Built-in textures (main, blur, noise) never reach here.
 void Milkdrop::on_texture_requested(const char *name, projectm_texture_load_data *data, void *self)
 {
-    const auto &view = *static_cast<const Milkdrop *>(self);
-    sys::log("[Afterglow] milkdrop texture=%s not shipped, using generated clouds",
+    auto &view = *static_cast<Milkdrop *>(self);
+    sys::log("[Afterglow] milkdrop texture=%s not shipped, using the cover texture",
              name ? name : "?");
-    data->data = view.clouds_.data();
-    data->width = kCloudTextureSize;
-    data->height = kCloudTextureSize;
+    data->width = kCoverSize;
+    data->height = kCoverSize;
     data->channels = 4;
+    data->texture_id = view.cover_texture();
+    if (data->texture_id == 0)
+        data->data = view.clouds_.data();
 }
 } // namespace hui::afterglow

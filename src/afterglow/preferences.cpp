@@ -72,6 +72,8 @@ std::string Preferences::encode() const
     number("stage_position", stage_look.position);
     number("stage_background", stage_look.background);
     number("stage_size", stage_look.size);
+    number("cover_art", cover_art);
+    number("preset_change", preset_change);
     if (quality.find_first_of("\r\n") == std::string::npos)
         out += "quality=" + quality + "\n";
     if (favorite_pending.find_first_of("\r\n") == std::string::npos)
@@ -184,19 +186,24 @@ Preferences Preferences::decode(std::string_view text)
             p.stage_look.background = choice(n, kStageLookDefault.background);
         if (key == "stage_size")
             p.stage_look.size = choice(n, kStageLookDefault.size);
+        if (key == "cover_art")
+            p.cover_art = n == 1;
+        if (key == "preset_change")
+            p.preset_change = choice(n, 0);
     }
     return p;
 }
 namespace
 {
-constexpr std::array<std::string_view, 35> kSyncedKeys = {
+constexpr std::array<std::string_view, 37> kSyncedKeys = {
     "follow",           "hold_idle",      "auto_level",     "oled_drift",       "locked",
     "favorites_only",   "tint",           "brightness",     "text_brightness",  "fps",
     "lyrics_layer",     "poster_visuals", "visual_style",   "reduce_motion",    "display_mode",
     "lyrics_offset_ms", "trim_ms",        "preset_seconds", "track_info",       "sequential",
     "skip_slow",        "minimum_fps",    "tint_strength",  "beat_sensitivity", "night_register",
     "karaoke",          "lightbar",       "lightbar_beat",  "online_lyrics",    "line_position",
-    "line_background",  "line_size",      "stage_position", "stage_background", "stage_size"};
+    "line_background",  "line_size",      "stage_position", "stage_background", "stage_size",
+    "cover_art",        "preset_change"};
 bool synced_key(std::string_view key)
 {
     return std::find(kSyncedKeys.begin(), kSyncedKeys.end(), key) != kSyncedKeys.end();

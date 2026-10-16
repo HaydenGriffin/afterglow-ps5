@@ -4,6 +4,7 @@
 
 #include "afterglow/panel.hpp"
 #include "afterglow/lyric_overlay.hpp"
+#include "afterglow/preset_change.hpp"
 #include "afterglow/speaker_group.hpp"
 #include "afterglow/speakers.hpp"
 #include "afterglow/style.hpp"
@@ -197,6 +198,7 @@ enum Row : int
     overlay_background,
     overlay_size,
     join_here,
+    cover_art,
 };
 // "Group with" rows carry this plus the speaker's index in players.
 constexpr int kGroupTag = 100000;
@@ -235,13 +237,6 @@ std::string capitalised(std::string value)
     if (!value.empty() && value[0] >= 'a' && value[0] <= 'z')
         value[0] = static_cast<char>(value[0] - 'a' + 'A');
     return value;
-}
-std::string duration_label(int seconds)
-{
-    if (seconds < 60)
-        return std::to_string(seconds) + " s";
-    const std::string minutes = std::to_string(seconds / 60) + " min";
-    return seconds % 60 == 0 ? minutes : minutes + " " + std::to_string(seconds % 60) + " s";
 }
 std::string percent(int value)
 {
@@ -872,10 +867,11 @@ std::vector<SheetRow> Panel::visuals_rows() const
     rows.row("Album colour tint", tint, on_off(p.tint));
     if (p.tint)
         rows.row("Colour strength", tint_strength, percent(p.tint_strength)).adjustable = true;
+    rows.row("Cover art in the visuals", cover_art, on_off(p.cover_art));
     rows.row("Night register", night_register, on_off(p.night_register));
     rows.row("OLED text movement", oled, on_off(p.oled_drift));
     rows.header("Presets");
-    rows.row("Preset duration", preset_seconds, duration_label(p.preset_seconds)).adjustable = true;
+    rows.row("Change preset", preset_seconds, preset_change_label(p)).adjustable = true;
     rows.row("Preset order", order, p.sequential ? "In order" : "Shuffled");
     rows.row("Lock this preset", lock, on_off(p.locked));
     rows.row("Favourites only", favourites_only, on_off(p.favorites_only));
@@ -1888,6 +1884,9 @@ void Panel::confirm(const SheetRow &row)
     case tint:
         p.tint = !p.tint;
         break;
+    case cover_art:
+        p.cover_art = !p.cover_art;
+        break;
     case night_register:
         p.night_register = !p.night_register;
         break;
@@ -2057,7 +2056,7 @@ void Panel::adjust(const SheetRow &row, int direction, ui::Feedback &feedback)
         changed = step_clamped(p.beat_sensitivity, direction * 10, 0, 200);
         break;
     case preset_seconds:
-        changed = step_clamped(p.preset_seconds, direction * 15, 15, 600);
+        changed = step_preset_change(p, direction);
         break;
     case minimum_fps:
     {

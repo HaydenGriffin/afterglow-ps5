@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "afterglow/artwork.hpp"
+#include "afterglow/cover_texture.hpp"
 #include "platform/ps5/system.hpp"
 #include <algorithm>
 #include <arpa/inet.h>
@@ -338,6 +339,7 @@ bool Artwork::decode(const std::vector<std::uint8_t> &body, ArtworkResult &resul
             result.accent[channel] = static_cast<float>(sum[channel] / (total * 255));
             result.secondary[channel] = result.accent[channel] * 0.45f;
         }
+    result.cover = cover_pixels(result.rgba, result.width, result.height);
     return true;
 }
 } // namespace hui::afterglow

@@ -61,6 +61,11 @@ struct Preferences
     bool online_lyrics = true;
     // Position, background and size of each lyric overlay, kept apart.
     OverlayLook line_look = kLineLookDefault, stage_look = kStageLookDefault;
+    // The song's cover in the presets that sample a picture (cover_texture.hpp).
+    bool cover_art = true;
+    // Change preset: 0 on the preset_seconds timer, 1 each song, 2 on big moments
+    // (preset_change.hpp).
+    int preset_change = 0;
     std::string player, quality, favorite_pending;
     std::vector<std::string> favorites;
     bool favorite(std::string_view name) const;

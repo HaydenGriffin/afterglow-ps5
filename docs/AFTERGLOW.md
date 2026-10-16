@@ -436,7 +436,21 @@ on its current frame (it redraws only on a preset change), stops the OLED
 drift and halo drift where they are, and skips beat lifts and lyric motion. **Hold visuals when
 idle** freezes it while nothing plays.
 
-Visuals & presets sets a 15–600 second preset duration; **Lock this preset**
+Visuals & presets → **Change preset** picks the next preset every 15 s to
+10 min (15 s steps), **Each song** or **On big moments** (right from Every
+10 min goes to Each song, then On big moments). **Each song** changes when
+Music Assistant's queue moves to another song (its queue item; title and
+artist when there is none), once the new song has played 2 s and at least
+10 s after the last preset change, so skipping through songs changes once.
+**On big moments** changes when the music's energy jumps (a drop, a chorus
+coming in): the last half second at 2.5 times the loudness of the last ten
+(about +4 dB), louder than −30 dBFS, at least 25 s apart, re-arming once the
+music falls back below 1.25 times. It listens to the audio before Auto level;
+projectM's own hard cuts stay off. Neither fires on the first song, music
+resuming after a pause or a song starting out of silence. Every automatic
+change follows the preset list, favourites, skip-slow and the order, as the
+timer does; any change, by hand too, restarts the minimum gaps. LG Afterglow
+decides the same way with the same numbers. **Lock this preset**
 stops automatic changes. An empty favourites list falls back to all eligible
 presets. **Beat sensitivity** (0–200 %) sets projectM's beat sensitivity and
 the beat detector behind the halo/spectrum lift and the light-bar pulse.
@@ -591,9 +605,18 @@ is unavailable to this native title. Host builds retain the upstream generator.
 All 395 presets LG Afterglow ships are included (`tools/prepare-presets.py`),
 with 393 enabled in `assets/presets/index.tsv`; original author names are
 retained in the index. 46 presets name MilkDrop texture images, which are not
-shipped because no licence permits it. Like Butterchurn on LG, which draws its
-clouds image in their place, the app hands projectM a generated cloud texture
-for any such image. Two presets that use an image as a colour ramp fade to
+shipped because no licence permits it. With **Cover art in the visuals** (Visuals
+& presets → Picture, on by default) every such image is the song's cover:
+centre-cropped to a square and scaled into one 512 × 512 texture the app owns,
+created once, handed to projectM by id (projectM does not delete it) and
+updated in place, never one per song, and deleted with the visualiser. A new
+cover waits until the artwork has arrived and its colours have settled for 1 s,
+then fades in over 2 s while the preset keeps running; at most one fade starts
+every 4 s, and the newest cover waiting is the one shown. With the row off, or
+no artwork, the texture fades to a generated cloud texture (Butterchurn on LG
+draws its clouds image there too). Some presets expect tiling clouds and look
+odd with a cover. The cover is the artwork already loaded from Music
+Assistant; nothing new is fetched. Two presets that use an image as a colour ramp fade to
 black without it and are disabled. Licensing and source provenance are in
 `THIRD_PARTY_NOTICES.md` and `third_party/presets/README.md`.
 Notices are also copied into the application folder's `licenses` directory.
@@ -608,6 +631,10 @@ AFTERGLOW_MILKDROP=3 tools/host-snapshots.sh build/milkdrop-preview afterglow
 AFTERGLOW_MILKDROP=3 AFTERGLOW_MILKDROP_TRANSITIONS=1 \
   AFTERGLOW_MILKDROP_FRAMES=210 AFTERGLOW_MILKDROP_WIDTH=320 \
   tools/host-snapshots.sh build/milkdrop-transitions afterglow
+# Only some presets (index order), with a cover faded in over the first one;
+# milkdrop-fade.png is halfway through the fade.
+AFTERGLOW_MILKDROP=393 AFTERGLOW_MILKDROP_ONLY=264,189 \
+  AFTERGLOW_MILKDROP_COVER=cover.png tools/host-snapshots.sh build/milkdrop-cover afterglow
 ```
 
 The thumbnail sweep is a brief compatibility check. Default captures run 90

@@ -13,6 +13,14 @@ checked on a PC only (unit tests, mock servers and the off-screen preview).
   Grouped.
 - Speakers together: **Volume for each speaker** sets one member's volume (`players/cmd/volume_set`) beside the
   group's Volume; speakers with a fixed volume are left out.
+- **Cover art in the visuals** (Visuals & presets → Picture, on by default): the presets that sample a picture
+  (worms, cells, seaweed, a sky…) get the song's cover instead of the generated clouds, faded in over 2 s once the
+  artwork and its colours have arrived, at most every 4 s. One 512 × 512 texture owned by the app is updated in
+  place, never one per song. Off, or no artwork, fades back to the clouds.
+- **Change preset** (was Preset duration) goes on past Every 10 min to **Each song** (a new preset when the queue
+  moves to another song, after 2 s, at least 10 s apart) and **On big moments** (when the music's energy jumps, at
+  least 25 s apart). Both follow the preset list, favourites and skip-slow as the timer does; LG Afterglow decides
+  the same way.
 
 # 1.6.0 — First public release (unreleased)
 
