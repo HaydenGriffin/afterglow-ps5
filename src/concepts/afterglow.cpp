@@ -513,10 +513,11 @@ class Afterglow final : public app::Concept
         float y = 0;
         for (std::size_t i = 0; i < lyrics_.size(); ++i)
         {
-            const auto rows =
-                font.font == nullptr
-                    ? std::size_t{1}
-                    : ui::paragraph_lines(font, lyrics_[i].text, 44, 1144, 2).lines.size();
+            const auto rows = font.font == nullptr
+                                  ? std::size_t{1}
+                                  : ui::paragraph_lines(font, lyrics_[i].text, 44,
+                                                        afterglow::kPlainLyricsWidth, 2)
+                                        .lines.size();
             const float height = static_cast<float>(rows) * 52 + 10;
             if (y + height > 360 && y > 0)
             {

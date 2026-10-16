@@ -59,6 +59,18 @@ Built and tested on a PC only.
   Browse: the evening's songs set as a concert programme with their artists and start times, and **Keep it as a
   playlist**. Offered only, never opened by itself; built from Music Assistant's played history for the queue, so
   it survives a restart.
+- **The Night logo in the app.** The *afterglow* wordmark, its o a sun setting behind the baseline, heads the
+  screens you pass through: setting up and connecting ("Ready when you are." on the poster and on the track card)
+  and Settings → Status. Never on the now-playing or idle posters, which can stay on an OLED for hours, nor while
+  waiting connected for music. Read from `assets/brand/` once, on first use; a missing file draws nothing.
+- **The posters look like LG's.** Album and Lyrics now show the complete cover in a square at the left margin under
+  the place line ("This PS5"), on a dark ground with a touch of the artwork's colour, instead of a full-height crop
+  and two coloured fields. Album sets the title, artists and album in one plain column; Lyrics puts the song and
+  its artists under the cover and the line before, the line now and the line after in the column, centred, with
+  the rule under the line now still filling as it is sung. Up next names the song and its artists above one thin
+  progress line that runs the width of the screen between the times.
+- The track card over the visuals and One line's Box are LG's dark ink box with paper words, at LG's sizes, instead
+  of the artwork's colour. One line keeps the line after it and the rule that fills as it is sung.
 
 # 1.6.0 — First public release (unreleased)
 

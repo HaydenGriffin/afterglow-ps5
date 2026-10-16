@@ -252,7 +252,7 @@ TEST_F(AfterglowMain, NightRegisterStepsTheFieldsDownOnlyWhenAllowed)
     EXPECT_LT(hui::afterglow::field_b(s).b, day.b);
 }
 
-TEST_F(AfterglowMain, AlbumPosterListsTheNextTwoSongs)
+TEST_F(AfterglowMain, AlbumPosterNamesTheNextSongAndItsArtists)
 {
     playing_song();
     auto &s = presentation();
@@ -272,7 +272,7 @@ TEST_F(AfterglowMain, AlbumPosterListsTheNextTwoSongs)
     next.title = "Still Water";
     s.companion.next_up.push_back(next);
     s.companion.next_up.push_back(next);
-    EXPECT_EQ(drawn() - one, 10 + 7) << "the second title and artist, never a third";
+    EXPECT_EQ(drawn() - one, 0) << "one song and its artists, as LG's Up next line";
     const int plain = drawn();
     s.companion.track.quality_badge = "Lossless";
     s.companion.track.format = "flac / 44100 Hz / 16 bit";
