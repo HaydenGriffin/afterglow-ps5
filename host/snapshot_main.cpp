@@ -20,6 +20,7 @@
 #include "afterglow/presentation.hpp"
 #include "afterglow/home_assistant.hpp"
 #include "afterglow/milkdrop.hpp"
+#include "afterglow/spoken_word.hpp"
 #include "app/tour.hpp"
 #include "core/save_file.hpp"
 #include "demo/catalog.hpp"
@@ -239,6 +240,46 @@ hui::afterglow::CompanionTrack preview_recent(const char *title, const char *typ
     return item;
 }
 
+// Audiobooks and episodes in progress (Continue listening): a book with
+// chapters that resumes in its second, and an episode of a podcast.
+std::vector<hui::afterglow::CompanionTrack> preview_in_progress()
+{
+    auto book = preview_recent("The Lighthouse Year", "audiobook", 3);
+    book.subtitle = book.artist = "A. Demo Writer";
+    book.duration = 6 * 1500;
+    const char *names[] = {"Opening", "The Keeper", "", "Winter Light", "Fog", "The Long Night"};
+    for (int i = 0; i < 6; ++i)
+    {
+        hui::afterglow::CompanionChapter chapter;
+        chapter.name = names[i];
+        chapter.start = i * 1500;
+        book.chapters.push_back(chapter);
+    }
+    auto episode = preview_recent("Episode 12: Morning Light", "podcast_episode", 1);
+    episode.subtitle = "1 Oct 2026 · 25 min";
+    episode.duration = 1500;
+    episode.podcast_link = {"8", "library", "Quiet Hour", "library://podcast/8"};
+    return {book, episode};
+}
+// What Play now starts in the preview: a song carries its album and artist
+// (Details' Go to rows), a book resumes where it was left.
+void preview_play(hui::afterglow::Presentation &model, const hui::afterglow::CompanionTrack &item)
+{
+    auto &c = model.companion;
+    c.track = item;
+    c.track.artwork = "preview:now-playing";
+    c.elapsed = item.media_type == "audiobook" ? 1600 : 0;
+    if (!hui::afterglow::spoken_word(item))
+    {
+        c.track.artist = "Afterglow preview";
+        c.track.duration = 240;
+        c.track.album_link = {"12", "library", "Evening Light", "library://album/12"};
+        c.track.artist_links = {{"1", "library", "Afterglow preview", "library://artist/1"}};
+    }
+    model.title = item.title;
+    model.artist = c.track.artist;
+}
+
 // Play/Pause, Next and Play now as Music Assistant would answer them, for the
 // idle poster's tour steps: Cross pauses, Next while paused ends the queue,
 // and an idle Cross starts what it names.
@@ -265,17 +306,11 @@ void answer_afterglow_playback(hui::afterglow::Presentation &model)
     if (model.companion_action_pending &&
         model.companion_action.kind == hui::afterglow::CompanionActionKind::play_media)
     {
-        for (const auto &item : c.recent)
-            if (item.uri == model.companion_action.text)
-            {
-                c.track = item;
-                c.track.artwork = "preview:now-playing";
-                c.track.artist = "Afterglow preview";
-                c.track.duration = 240;
-                c.elapsed = 0;
-                model.title = item.title;
-                model.artist = c.track.artist;
-            }
+        const auto &uri = model.companion_action.text;
+        for (const auto *list : {&c.recent, &c.in_progress, &c.browse_items})
+            for (const auto &item : *list)
+                if (item.uri == uri && c.track.uri != uri)
+                    preview_play(model, item);
         set_playing(true);
     }
     if (std::exchange(model.recent_pending, false))
@@ -287,6 +322,7 @@ void answer_afterglow_playback(hui::afterglow::Presentation &model)
                     preview_recent("Still Water", "album", 4),
                     preview_recent("Harbour Songs", "album", 5)};
         c.recent_state = hui::afterglow::RecentState::ready;
+        c.in_progress = preview_in_progress();
     }
     // main.cpp loads the cover the idle poster names instead of the song's.
     const auto idle_cover = preview_covers.texture(model.idle_artwork);
@@ -331,6 +367,9 @@ void answer_afterglow_preview()
                  preview_item("Lighthouse", "Harbour Lamps", "track", 6, "", 187),
                  preview_item("Night Light Radio", "Radio station", "radio", 7),
                  preview_item("Light Reading", "Paper Lantern · 120 episodes", "podcast", 8)};
+        break;
+    case BrowseCategory::in_progress:
+        items = preview_in_progress();
         break;
     case BrowseCategory::artist_albums:
         items = {preview_item("Light Across the Ceiling", "Lightkeeper", "album", 9, "2024"),

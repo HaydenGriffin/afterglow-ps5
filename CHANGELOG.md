@@ -4,6 +4,19 @@ Afterglow for PS5. Builds before 1.6.0 were private builds for one console; they
 the version where one was set. "Checked on hardware" means on one PS5 on firmware 7.20; anything else was
 checked on a PC only (unit tests, mock servers and the off-screen preview).
 
+# Unreleased
+
+Built and tested on a PC only.
+
+- **Go to the album or artist.** Details offers Go to the album, Go to *artist* (up to three) and, for a podcast
+  episode, Go to the podcast, when Music Assistant gives their ids; Browse opens on that page and Circle returns to
+  Details.
+- **Audiobooks and podcasts.** Browse has **Continue listening** (after Search; Browse still opens on Recently
+  played). The idle poster offers up to three audiobooks or episodes in progress after the paused song ("Carry on").
+  While one plays, Details offers **Speed** (0.75× to 2×) and **Chapters** (Cross plays from a chapter's start);
+  Start radio and Retry lyrics are not offered for them. Empty Podcasts, Audiobooks and episode lists say so.
+- A playing audiobook names its authors where a song names its artist.
+
 # 1.6.0 — First public release (unreleased)
 
 Built and tested on a PC; not yet installed on a console.
