@@ -101,20 +101,23 @@ The request travels the same way as the tour's: one line in
 | `status` | `-` | Writes `dev/status.json`: version, fps, connected, playing, display size, refresh rate and mode, open page |
 | `screenshot` | a name (1 to 48 letters, digits, `-`, `_`) | Draws the frame once more off-screen at the display size and saves `dev/<name>.bmp` (24-bit, about 6 MB at 1080p) |
 | `quit` | `-` | Closes the app the way holding Circle does: preferences are flushed, then the system is asked to close the title |
+| `press` | a button: `up`, `down`, `left`, `right`, `cross`, `circle`, `triangle`, `square`, `l1`, `r1`, `l2`, `r2`, `options`, `touchpad`, `l3`, `r3` | Taps that button once in the next frame, as the controller would (no holds, and no PS button) |
 
 Each id is honoured once (the last one is kept in `dev/handled.txt`, so a
 request left behind does not repeat on the next launch). Every answer is a
 line `<id> ok <detail>` or `<id> error <detail>` in `dev/result.txt`. `dev/`
 is `/download0/hui/dev`, read from a PC as
 `/mnt/sandbox/<TITLE_ID>_000/download0/hui/dev` while the title runs.
-Screenshots stay there (the PC cannot delete them), so take a few, not a series.
+The app keeps its last 8 screenshots and deletes older ones it took. Requests are
+polled about once a second, so a press takes a second or so.
 
-`tools/afterglow-dev.py` does one request and fetches its answer:
+`tools/afterglow-dev.py` sends requests and fetches their answers:
 
 ```bash
 export PS5_HOST=<console address> AFTERGLOW_DEV_TOKEN=<token>
 tools/afterglow-dev.py status                     # prints status.json
 tools/afterglow-dev.py screenshot queue results/  # saves results/queue.bmp
+tools/afterglow-dev.py press options down cross   # taps, one after another
 tools/afterglow-dev.py quit                       # the app closes itself
 ```
 

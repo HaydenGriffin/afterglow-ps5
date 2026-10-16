@@ -7,11 +7,14 @@
 //
 //   <verb> <argument or -> <token> <id>
 //
-// verb is quit, screenshot (argument: a file name) or status. id names this
+// verb is quit, screenshot (argument: a file name), status or press
+// (argument: a button, as dev_press_action names them). id names this
 // request; each id is honoured once. Answers go to the title's storage
 // (/download0/hui/dev), which a PC can read over FTP while the title runs.
 
 #pragma once
+
+#include "core/input.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -28,9 +31,11 @@ struct DevRequest
     {
         quit,
         screenshot,
-        status
+        status,
+        press
     } verb = Verb::status;
-    // The screenshot's name (no extension); empty for the other verbs.
+    // The screenshot's name (no extension) or the button to press; empty for
+    // the other verbs.
     std::string argument;
     std::string id;
 };
@@ -42,6 +47,11 @@ bool valid_dev_name(std::string_view name);
 // The request in text (one line, trailing whitespace ignored) when it is well
 // formed and carries token; nullopt otherwise. An empty token never matches.
 std::optional<DevRequest> parse_dev_request(std::string_view text, std::string_view token);
+
+// The action a press request's button stands for: up, down, left, right,
+// cross, circle, triangle, square, l1, r1, l2, r2, options, touchpad, l3 or r3.
+// Cross and circle are the confirm and back actions, whatever the swap setting.
+std::optional<Action> dev_press_action(std::string_view button);
 
 // Screenshots the app keeps in its storage; older ones it took are deleted.
 constexpr std::size_t kMaxDevScreenshots = 8;

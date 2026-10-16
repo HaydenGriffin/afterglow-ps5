@@ -332,9 +332,33 @@ bool save_screenshot(hui::gfx::Renderer &renderer, const std::string &path, int 
                .empty();
 }
 
+// A press request as one tap in this frame's input, as the pad would give it.
+void press_dev_button(hui::InputFrame &input, hui::Action action)
+{
+    input.pressed |= hui::action_bit(action);
+    switch (action)
+    {
+    case hui::Action::up:
+        input.nav = hui::Direction::up;
+        break;
+    case hui::Action::down:
+        input.nav = hui::Direction::down;
+        break;
+    case hui::Action::left:
+        input.nav = hui::Direction::left;
+        break;
+    case hui::Action::right:
+        input.nav = hui::Direction::right;
+        break;
+    default:
+        break;
+    }
+}
+
 // Acts on one dev request. A screenshot is taken later, at the end of the frame.
 void handle_dev_request(DevChannel &dev, const hui::afterglow::DevRequest &request,
-                        hui::afterglow::Presentation &model, const hui::ps5::Display &display)
+                        hui::afterglow::Presentation &model, const hui::ps5::Display &display,
+                        hui::InputFrame &input)
 {
     using Verb = hui::afterglow::DevRequest::Verb;
     switch (request.verb)
@@ -354,6 +378,11 @@ void handle_dev_request(DevChannel &dev, const hui::afterglow::DevRequest &reque
     case Verb::screenshot:
         dev.screenshot = request.argument;
         dev.screenshot_id = request.id;
+        break;
+    case Verb::press:
+        if (const auto action = hui::afterglow::dev_press_action(request.argument))
+            press_dev_button(input, *action);
+        dev_answer(model, request.id, "ok pressed " + request.argument);
         break;
     }
 }
@@ -762,7 +791,7 @@ int main()
         }
         drive_lightbar(pad, lightbar_limiter, model, now, lightbar_lit);
         if (const auto request = poll_dev(dev, now))
-            handle_dev_request(dev, *request, model, display);
+            handle_dev_request(dev, *request, model, display, input);
         feedback.clear();
         screen->update(input, dt, feedback);
         sync_home(*home, model);

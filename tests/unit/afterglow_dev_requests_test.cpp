@@ -38,6 +38,22 @@ TEST(AfterglowDevRequests, ParsesEachVerb)
     EXPECT_EQ(shot->argument, "now_playing");
 }
 
+TEST(AfterglowDevRequests, PressNamesAButton)
+{
+    const auto press = parse_dev_request("press triangle abcdefgh12345678 r4", kToken);
+    ASSERT_TRUE(press);
+    EXPECT_EQ(press->verb, DevRequest::Verb::press);
+    EXPECT_EQ(press->argument, "triangle");
+    EXPECT_EQ(hui::afterglow::dev_press_action("cross"), hui::Action::confirm);
+    EXPECT_EQ(hui::afterglow::dev_press_action("circle"), hui::Action::back);
+    EXPECT_EQ(hui::afterglow::dev_press_action("r2"), hui::Action::jump_next);
+    EXPECT_EQ(hui::afterglow::dev_press_action("options"), hui::Action::menu);
+    EXPECT_FALSE(hui::afterglow::dev_press_action("ps"));
+    EXPECT_FALSE(hui::afterglow::dev_press_action("Cross"));
+    EXPECT_FALSE(parse_dev_request("press ps abcdefgh12345678 r4", kToken)) << "no PS button";
+    EXPECT_FALSE(parse_dev_request("press - abcdefgh12345678 r4", kToken));
+}
+
 TEST(AfterglowDevRequests, RejectsWrongTokenAndMalformedLines)
 {
     EXPECT_FALSE(parse_dev_request("quit - abcdefgh12345679 r1", kToken));

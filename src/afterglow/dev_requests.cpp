@@ -91,6 +91,14 @@ std::optional<DevRequest> parse_dev_request(std::string_view text, std::string_v
         request.argument = std::string(parts[1]);
         return request;
     }
+    if (parts[0] == "press")
+    {
+        if (!dev_press_action(parts[1]))
+            return std::nullopt;
+        request.verb = DevRequest::Verb::press;
+        request.argument = std::string(parts[1]);
+        return request;
+    }
     if (parts[1] != "-")
         return std::nullopt;
     if (parts[0] == "quit")
@@ -100,6 +108,27 @@ std::optional<DevRequest> parse_dev_request(std::string_view text, std::string_v
     else
         return std::nullopt;
     return request;
+}
+
+std::optional<Action> dev_press_action(std::string_view button)
+{
+    struct Name
+    {
+        std::string_view name;
+        Action action;
+    };
+    static constexpr Name kButtons[] = {
+        {"up", Action::up},          {"down", Action::down},      {"left", Action::left},
+        {"right", Action::right},    {"cross", Action::confirm},  {"circle", Action::back},
+        {"triangle", Action::north}, {"square", Action::west},    {"l1", Action::page_prev},
+        {"r1", Action::page_next},   {"l2", Action::jump_prev},   {"r2", Action::jump_next},
+        {"options", Action::menu},   {"touchpad", Action::touch}, {"l3", Action::l3},
+        {"r3", Action::r3},
+    };
+    for (const auto &entry : kButtons)
+        if (entry.name == button)
+            return entry.action;
+    return std::nullopt;
 }
 
 std::vector<std::uint8_t> encode_bmp(int width, int height, const std::uint8_t *rgba)
