@@ -102,6 +102,9 @@ struct Reply
 {
     bool ok = false;
     std::string result, error;
+    // No answer arrived (closed or timed out): unlike a refusal, the server
+    // may still have done what was asked.
+    bool lost = false;
 };
 // One request on an open, greeted API socket; tests substitute a fake server.
 using Call = std::function<Reply(const std::string &command, const std::string &args)>;

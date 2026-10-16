@@ -35,12 +35,13 @@ struct FakeServer
                 return reply;
             }
             const auto it = replies.find(command);
-            return it == replies.end() ? account_wire::Reply{false, {}, "unknown"} : it->second;
+            return it == replies.end() ? account_wire::Reply{false, {}, "unknown", false}
+                                       : it->second;
         };
     }
     void answer_once(const std::string &command, const std::string &result)
     {
-        once[command].push_back({true, result, {}});
+        once[command].push_back({true, result, {}, false});
     }
     std::vector<std::string> revoked() const
     {
@@ -55,7 +56,7 @@ struct FakeServer
     }
     void answer(const std::string &command, const std::string &result)
     {
-        replies[command] = {true, result, {}};
+        replies[command] = {true, result, {}, false};
     }
 };
 constexpr const char *kName = "Afterglow on PS5 (afterglow-ps5-232)";
@@ -369,6 +370,55 @@ TEST(AfterglowAccount, LogOutRevokesOnlyThisConsolesOwnToken)
     EXPECT_TRUE(outcome.ok) << "forgotten locally even when the server refuses";
     EXPECT_NE(outcome.message.find(kName), std::string::npos);
     EXPECT_TRUE(refused.revoked().empty());
+}
+
+TEST(AfterglowAccount, LogOutSaysWhenTheAccountDidNotRemoveTheToken)
+{
+    const auto listed =
+        "[" + token_json("a", kName, true, "2026-01-01T00:00:00Z", nullptr) + "]";
+    const auto removed = [](const account_wire::Outcome &outcome)
+    { return outcome.message.find("was removed from the account") != std::string::npos; };
+
+    FakeServer done;
+    done.answer("auth", "{\"authenticated\":true}");
+    done.answer("auth/tokens", listed);
+    done.answer("auth/token/revoke", "null");
+    auto outcome = account_wire::log_out(done.call(), "mine", kName, "a");
+    EXPECT_TRUE(outcome.ok);
+    EXPECT_TRUE(removed(outcome)) << outcome.message;
+
+    FakeServer refusing;
+    refusing.replies = done.replies;
+    refusing.replies["auth/token/revoke"] = {false, {}, "Not allowed", false};
+    outcome = account_wire::log_out(refusing.call(), "mine", kName, "a");
+    EXPECT_TRUE(outcome.ok) << "forgotten locally all the same";
+    EXPECT_FALSE(removed(outcome)) << outcome.message;
+    EXPECT_NE(outcome.message.find("refused"), std::string::npos) << outcome.message;
+    EXPECT_NE(outcome.message.find(kName), std::string::npos) << outcome.message;
+    EXPECT_NE(outcome.message.find("Settings"), std::string::npos) << outcome.message;
+
+    FakeServer silent;
+    silent.replies = done.replies;
+    silent.replies["auth/token/revoke"] = {false, {}, "No reply to auth/token/revoke", true};
+    outcome = account_wire::log_out(silent.call(), "mine", kName, "a");
+    EXPECT_TRUE(outcome.ok);
+    EXPECT_FALSE(removed(outcome)) << outcome.message;
+    EXPECT_NE(outcome.message.find("did not confirm"), std::string::npos) << outcome.message;
+    EXPECT_NE(outcome.message.find(kName), std::string::npos) << outcome.message;
+
+    // Our token is not in the list at all: nothing was removed.
+    FakeServer missing;
+    missing.replies = done.replies;
+    missing.answer("auth/tokens", "[]");
+    outcome = account_wire::log_out(missing.call(), "mine", kName, "a");
+    EXPECT_FALSE(removed(outcome)) << outcome.message;
+    EXPECT_TRUE(missing.revoked().empty());
+
+    FakeServer unanswered;
+    unanswered.replies["auth"] = {false, {}, "No reply to auth", true};
+    outcome = account_wire::log_out(unanswered.call(), "mine", kName, "a");
+    EXPECT_TRUE(outcome.ok);
+    EXPECT_NE(outcome.message.find("did not answer"), std::string::npos) << outcome.message;
 }
 
 TEST(AfterglowAccount, RenewalOnlyWithinThirtyDaysAndRetiresTheOldTokenAfterTheHandOver)

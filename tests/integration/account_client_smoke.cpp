@@ -98,5 +98,7 @@ int main(int argc, char **argv)
         return 9;
     std::printf("logged_out=1 file=%d message=%s\n", account_wire::load_auth(path).valid() ? 1 : 0,
                 result.message.c_str());
+    if (result.message.find("was removed from the account") == std::string::npos)
+        return 15;
     return account_wire::load_auth(path).valid() ? 10 : 0;
 }
