@@ -700,6 +700,48 @@ TEST_F(AfterglowPanel, SearchAsksTheKeyboardAndSendsTheQuery)
     EXPECT_EQ(s.browse_request.offset, 0);
 }
 
+TEST_F(AfterglowPanel, HeadingsAreNeverTakenForTheFirstResult)
+{
+    auto &s = presentation();
+    live();
+    panel_.open(Page::browse);
+    input(nav(Direction::up)); // past Continue listening
+    input(nav(Direction::up));
+    cross();
+    type(KeyboardPurpose::search, "light");
+    input(idle());
+    // The song is the first result (tag 0) but sorts last, under its heading.
+    deliver({item("A song", "1", "track"), item("The Band", "2", "artist"),
+             item("A record", "3", "album")});
+    input(idle());
+    down(2); // The Band, A record, A song
+    cross();
+    ASSERT_EQ(panel_.page(), Page::item_actions);
+
+    down(1); // Play next
+    cross();
+    ASSERT_EQ(s.companion_action.option, "next");
+    s.companion_action_pending = false;
+    s.companion.action_done = s.companion_action.id;
+    s.companion.action_done_ok = true;
+    input(idle());
+    input(idle());
+    ASSERT_EQ(panel_.page(), Page::search);
+    int headings = 0;
+    for (const auto &row : panel_.rows())
+    {
+        if (row.item.header)
+        {
+            ++headings;
+            EXPECT_FALSE(row.chosen) << row.item.title;
+            EXPECT_TRUE(row.item.subtitle.empty()) << row.item.title;
+        }
+        else if (row.item.title == "A song")
+            EXPECT_EQ(row.item.subtitle, "Plays next");
+    }
+    EXPECT_EQ(headings, 3);
+}
+
 TEST_F(AfterglowPanel, SearchCancelledOrForAnotherFieldSendsNothing)
 {
     auto &s = presentation();

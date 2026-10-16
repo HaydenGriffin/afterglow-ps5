@@ -218,6 +218,8 @@ constexpr int kVolumeTag = -100000;
 // Details' Go to rows carry this plus their index in details_rows(); the song
 // lyrics rows (song_lyrics.hpp) start above them at 300000.
 constexpr int kGoToTag = 200000;
+// Headings: apart from every row tag and from 0, which is also a list's first item.
+constexpr int kHeadingTag = -300;
 
 // The look the Display rows under "Lyrics over visuals" change: the chosen
 // overlay's; null while lyrics are off.
@@ -411,6 +413,7 @@ struct Rows
     {
         SheetRow row;
         row.item.title = std::move(title);
+        row.item.tag = kHeadingTag;
         row.item.header = true;
         list.push_back(std::move(row));
     }
