@@ -65,6 +65,12 @@ def exercise(binary):
                     continue  # never answered
                 reply["result"] = [{"item_id": "1", "name": "Recent", "uri": "library://track/1",
                                     "media_type": "track"}]
+            elif command == "music/in_progress_items":
+                # Rides along with recent music; unanswered the first time, it
+                # must be asked again with the next recent read.
+                if number == 1:
+                    continue
+                reply["result"] = []
             elif command == "auth/user/update":
                 if number == 1:
                     held_save = request["message_id"]
@@ -90,6 +96,7 @@ def exercise(binary):
         assert set(preferences["visualizer_favorites"]) == {"TV", "Native"}, preferences
         assert preferences["unrelated"] == {"keep": 42}
         assert counts.get("music/recently_played_items") == 2, counts
+        assert counts.get("music/in_progress_items") == 2, counts
         print("PASS: an unanswered account read, favourite save and recent read each time out on "
               "a busy socket, a late reply is ignored, the edit is kept and saved on a retry")
     finally:

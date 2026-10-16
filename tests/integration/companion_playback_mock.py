@@ -106,6 +106,10 @@ def exercise(binary):
                            "image": {"type": "thumb", "path": "x", "proxy_id": "ab12",
                                      "remotely_accessible": False}},
                           {"item_id": "9", "provider": "library", "name": "Unplayable"}]
+            elif command == "music/in_progress_items":
+                # Continue listening rides along with recent music.
+                assert args == {"limit": 5}, args
+                result = []
             elif command in ("player_queues/play", "player_queues/pause"):
                 seen["commands"].append((command, args["queue_id"]))
             elif command == "player_queues/play_media":
