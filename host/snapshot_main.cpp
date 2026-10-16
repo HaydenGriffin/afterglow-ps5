@@ -306,10 +306,13 @@ void answer_afterglow_playback(hui::afterglow::Presentation &model)
     if (model.companion_action_pending &&
         model.companion_action.kind == hui::afterglow::CompanionActionKind::play_media)
     {
+        // Play next and Add to the queue leave the playing song alone.
         const auto &uri = model.companion_action.text;
+        const auto &option = model.companion_action.option;
         for (const auto *list : {&c.recent, &c.in_progress, &c.browse_items})
             for (const auto &item : *list)
-                if (item.uri == uri && c.track.uri != uri)
+                if (item.uri == uri && c.track.uri != uri &&
+                    (option.empty() || option == "replace"))
                     preview_play(model, item);
         set_playing(true);
     }
@@ -355,6 +358,11 @@ std::string preview_answer(const hui::afterglow::ApiCall &call)
                      R"({"item_id":"23","name":"Daily mix","is_editable":true,"is_dynamic":true}])";
     if (command == "music/playlists/create_playlist")
         return R"({"item_id":"30"})";
+    // AFTERGLOW_SETUP=empty: nothing played yet, so no programme either.
+    const char *setup = std::getenv("AFTERGLOW_SETUP");
+    if (command == "music/recently_played_items" && setup != nullptr &&
+        std::string_view(setup) == "empty")
+        return "[]";
     if (command == "music/recently_played_items")
         return R"([{"uri":"library://track/66","name":"Lantern hour"},)"
                R"({"uri":"library://track/65","name":"Everything we said on the long drive back"},)"
@@ -427,6 +435,13 @@ void answer_afterglow_preview()
         break;
     case BrowseCategory::in_progress:
         items = preview_in_progress();
+        break;
+    // An album's songs (Details' Go to the album).
+    case BrowseCategory::tracks:
+        items = {preview_item("Slow Current", "Afterglow preview", "track", 15, "", 240),
+                 preview_item("Evening Light", "Afterglow preview", "track", 16, "", 231),
+                 preview_item("Paper Boats", "Afterglow preview", "track", 17, "", 198),
+                 preview_item("The Long Way Home", "Afterglow preview", "track", 18, "", 252)};
         break;
     case BrowseCategory::artist_albums:
         items = {preview_item("Light Across the Ceiling", "Lightkeeper", "album", 9, "2024"),
