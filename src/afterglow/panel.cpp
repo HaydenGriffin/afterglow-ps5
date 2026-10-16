@@ -500,7 +500,7 @@ const char *select_label(const SheetRow &row)
     }
     if (song_lyrics_tag(row.item.tag))
         return row.item.tag == try_again_row ? "Try again" : "Select";
-    if (row.item.tag >= kGroupTag)
+    if (row.item.tag >= kGroupTag && row.item.tag < kGoToTag)
         return row.item.value == "Grouped" ? "Ungroup" : "Group";
     return "Select";
 }
@@ -1020,7 +1020,9 @@ std::vector<SheetRow> Panel::sheet_rows() const
         rows.row(c.track.favorite ? "Remove from music favourites" : "Add to music favourites",
                  favourite)
             .item.disabled = !ready;
-        rows.list.push_back(add_playlist_row(c.track, ready));
+        // Songs only: a book, an episode or a station has no playlist row.
+        if (c.track.media_type == "track")
+            rows.list.push_back(add_playlist_row(c.track, ready));
         if (offers_radio(c.track))
             rows.row("Start radio from this song", radio, "Replaces the queue").item.disabled =
                 !ready;

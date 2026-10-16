@@ -239,7 +239,7 @@ TEST_F(AfterglowPanelPlaylists, DetailsOffersItOnlyForSongs)
     s.companion.track = song("Night Light Radio", "3");
     s.companion.track.media_type = "radio";
     panel_.open(Page::details);
-    EXPECT_TRUE(row("Add to a playlist")->item.disabled);
+    EXPECT_EQ(index_of("Add to a playlist"), -1);
 }
 
 TEST_F(AfterglowPanelPlaylists, BrowsePickerTakesTheActionsColumnAndTheSongsRowConfirms)

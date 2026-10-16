@@ -287,7 +287,8 @@ TEST_F(AfterglowDetails, GoToTheAlbumOpensItsSongsAndBackReturnsToDetails)
     panel_.open(Page::details);
     EXPECT_EQ(labels(), (std::vector<std::string>{
                             "Go to the album", "Go to Lightkeeper", "Go to Low Light Choir",
-                            "Add to music favourites", "Start radio from this song"}));
+                            "Add to music favourites", "Add to a playlist",
+                            "Start radio from this song"}));
     cross();
     ASSERT_EQ(panel_.page(), Page::collection);
     EXPECT_TRUE(panel_.covers_screen());
