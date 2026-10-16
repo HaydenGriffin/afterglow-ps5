@@ -105,7 +105,7 @@ constexpr app::TourStep kTour[] = {
     {0.1f, action_bit(Action::page_next)},
     {1.2f, 0, Direction::none, "idle-nothing"},
     {0.1f, action_bit(Action::confirm)},
-    {0.8f, 0, Direction::none, "idle-starting"},
+    {0.8f, 0, Direction::none, "idle-played"},
 };
 
 class Afterglow final : public app::Concept

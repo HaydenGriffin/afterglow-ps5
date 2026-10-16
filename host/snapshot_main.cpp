@@ -46,6 +46,7 @@ extern "C" void stbi_image_free(void *);
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace
@@ -164,11 +165,133 @@ hui::afterglow::CompanionTrack preview_item(const char *title, const char *subti
     item.uri = std::string("library://") + type + "/" + item.item_id;
     return item;
 }
+// Invented covers for the idle poster's recent music: flat fields, a sun and
+// a rule, drawn on the CPU so they stand upright like decoded artwork.
+struct PreviewCovers
+{
+    std::vector<std::uint32_t> covers;
+    std::uint32_t now_playing = 0; // the song's illustrative cover
+    std::uint32_t texture(const std::string &url) const
+    {
+        constexpr std::string_view prefix = "preview:cover/";
+        if (url == "preview:now-playing")
+            return now_playing;
+        if (!url.starts_with(prefix) || covers.empty())
+            return 0;
+        return covers[static_cast<std::size_t>(std::atoi(url.c_str() + prefix.size())) %
+                      covers.size()];
+    }
+};
+PreviewCovers preview_covers;
+
+void make_preview_covers(hui::gfx::Renderer &renderer)
+{
+    struct Palette
+    {
+        std::uint32_t ground, field, sun;
+    };
+    constexpr Palette kPalettes[] = {
+        {0x1d2b53, 0xd96c3b, 0xefebe3}, {0x23422f, 0x9cc28a, 0xf2d25c},
+        {0x3a1c3f, 0xc04d6e, 0xf5b971}, {0x14353c, 0x5fa8a2, 0xe8e2cf},
+        {0x4a3524, 0xc9a26b, 0x1e1a17}, {0x26262e, 0x7a7fb8, 0xe9e4f2}};
+    constexpr int kSide = 256;
+    std::vector<std::uint8_t> rgba(kSide * kSide * 4);
+    int index = 0;
+    for (const auto &palette : kPalettes)
+    {
+        const auto put = [&](int x, int y, std::uint32_t colour)
+        {
+            auto *pixel = &rgba[static_cast<std::size_t>((y * kSide + x) * 4)];
+            pixel[0] = static_cast<std::uint8_t>(colour >> 16);
+            pixel[1] = static_cast<std::uint8_t>(colour >> 8);
+            pixel[2] = static_cast<std::uint8_t>(colour);
+            pixel[3] = 255;
+        };
+        const int horizon = 120 + index * 14;
+        const int sun_x = 70 + index * 23, sun_r = 34 + index * 4;
+        for (int y = 0; y < kSide; ++y)
+            for (int x = 0; x < kSide; ++x)
+            {
+                const int dx = x - sun_x, dy = y - horizon;
+                std::uint32_t colour = y > horizon ? palette.field : palette.ground;
+                if (dy <= 0 && dx * dx + dy * dy <= sun_r * sun_r)
+                    colour = palette.sun;
+                if (y >= horizon + 40 && y < horizon + 46)
+                    colour = palette.sun;
+                put(x, y, colour);
+            }
+        preview_covers.covers.push_back(renderer.batch().create_texture(kSide, kSide, rgba.data()));
+        ++index;
+    }
+}
+
+hui::afterglow::CompanionTrack preview_recent(const char *title, const char *type, int cover)
+{
+    hui::afterglow::CompanionTrack item = preview_item(title, "", type, 40 + cover);
+    item.artwork = "preview:cover/" + std::to_string(cover);
+    return item;
+}
+
+// Play/Pause, Next and Play now as Music Assistant would answer them, for the
+// idle poster's tour steps: Cross pauses, Next while paused ends the queue,
+// and an idle Cross starts what it names.
+void answer_afterglow_playback(hui::afterglow::Presentation &model)
+{
+    auto &c = model.companion;
+    const auto set_playing = [&](bool playing)
+    {
+        model.playing = c.playing = playing;
+        c.queue_state = playing ? "playing" : c.track.title.empty() ? "idle" : "paused";
+    };
+    if (model.command == hui::afterglow::UiCommand::toggle)
+        set_playing(!c.playing);
+    else if (model.command == hui::afterglow::UiCommand::next && !c.playing)
+    {
+        c.track = {};
+        c.next_up.clear();
+        model.title.clear();
+        model.artist.clear();
+        model.album.clear();
+        set_playing(false);
+    }
+    model.command = hui::afterglow::UiCommand::none;
+    if (model.companion_action_pending &&
+        model.companion_action.kind == hui::afterglow::CompanionActionKind::play_media)
+    {
+        for (const auto &item : c.recent)
+            if (item.uri == model.companion_action.text)
+            {
+                c.track = item;
+                c.track.artwork = "preview:now-playing";
+                c.track.artist = "Afterglow preview";
+                c.track.duration = 240;
+                c.elapsed = 0;
+                model.title = item.title;
+                model.artist = c.track.artist;
+            }
+        set_playing(true);
+    }
+    if (std::exchange(model.recent_pending, false))
+    {
+        c.recent = {preview_recent("Evening Light", "album", 0),
+                    preview_recent("Paper Lantern Sessions", "playlist", 1),
+                    preview_recent("Night Light Radio", "radio", 2),
+                    preview_recent("First Light", "track", 3),
+                    preview_recent("Still Water", "album", 4),
+                    preview_recent("Harbour Songs", "album", 5)};
+        c.recent_state = hui::afterglow::RecentState::ready;
+    }
+    // main.cpp loads the cover the idle poster names instead of the song's.
+    const auto idle_cover = preview_covers.texture(model.idle_artwork);
+    model.artwork_texture = model.idle_showing ? idle_cover : preview_covers.now_playing;
+}
+
 void answer_afterglow_preview()
 {
     using hui::afterglow::BrowseCategory;
     using hui::afterglow::KeyboardPurpose;
     auto &model = hui::afterglow::presentation();
+    answer_afterglow_playback(model);
     model.companion_action_pending = false;
     model.queue_offset_request = -1;
     if (model.keyboard_pending && model.keyboard.purpose == KeyboardPurpose::search)
@@ -301,6 +424,13 @@ int main(int argc, char **argv)
         model.companion.track.title = model.title;
         model.companion.track.artist = model.artist;
         model.companion.track.album = model.album;
+        model.companion.track.uri = "library://track/7";
+        model.companion.track.media_type = "track";
+        model.companion.track.artwork = "preview:now-playing";
+        model.companion.playing = true;
+        model.companion.queue_state = "playing";
+        model.companion.queue_id = "preview-room";
+        model.companion.target_name = "Listening room";
         model.companion.track.lyrics = "Illustrative lyric preview\nThe room grows quiet\nLight "
                                        "moves across the ceiling\nA slow current carries us home";
         if (const char *lyrics = std::getenv("AFTERGLOW_LYRICS"))
@@ -314,6 +444,7 @@ int main(int argc, char **argv)
         model.companion.upcoming.push_back(next);
         next.title = "The Long Way Home";
         model.companion.upcoming.push_back(next);
+        model.companion.next_up = {model.companion.upcoming[0], model.companion.upcoming[1]};
         preview_home(model.home);
         for (std::size_t i = 0; i < model.spectrum.size(); ++i)
             model.spectrum[i] = 0.25f + 0.65f * static_cast<float>((i * 7 + 11) % 17) / 17;
@@ -405,6 +536,8 @@ int main(int argc, char **argv)
         model.presets = milkdrop_preview.names();
         model.artwork_texture =
             milkdrop_preview.texture(); // Illustrative cover for layout validation.
+        make_preview_covers(renderer);
+        model.thumbnail = [](const std::string &url) { return preview_covers.texture(url); };
         if (const char *cover = std::getenv("AFTERGLOW_COVER"))
         {
             int w = 0, h = 0, channels = 0;
@@ -419,6 +552,7 @@ int main(int argc, char **argv)
                 stbi_image_free(pixels);
             }
         }
+        preview_covers.now_playing = model.artwork_texture;
     }
 
     // HUI_ICON=<file.png>: draw the 512x512 launcher icon with the kit and stop.
