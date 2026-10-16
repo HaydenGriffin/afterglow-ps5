@@ -4,6 +4,7 @@
 
 #pragma once
 #include "afterglow/lrclib.hpp"
+#include "afterglow/song_store.hpp"
 #include <cstdint>
 #include <deque>
 #include <string>
@@ -48,6 +49,9 @@ struct LyricsSong
     // Which request ma answers; a retry waits for a later one.
     std::uint64_t ma_request = 0;
     std::string ma_plain, ma_lrc;
+    // The LRCLIB record chosen for the song (song_store.hpp), set only while
+    // Online lyrics is on: fetched instead of asking anyone else.
+    std::int64_t chosen = 0;
 };
 
 // The order of LG Afterglow's lyrics loading, without its threads:
@@ -83,6 +87,15 @@ class LyricsLookup
     void search_done(std::uint64_t ticket, SearchOutcome outcome, const std::string &plain,
                      const std::string &lrc);
     LyricsState state() const;
+    LyricsSource source() const
+    {
+        return source_;
+    }
+    // Choose other lyrics: show these now, for this song.
+    void use(const std::string &plain, const std::string &lrc);
+    // True once after the chosen record turned out gone from LRCLIB (the
+    // usual lookup then runs): the choice should be forgotten.
+    bool take_choice_gone();
     const std::string &plain() const
     {
         return plain_;
@@ -105,9 +118,10 @@ class LyricsLookup
     {
         std::string uri, plain, lrc;
         LyricsStatus status = LyricsStatus::missing;
+        LyricsSource source = LyricsSource::none;
     };
     void start(const LyricsSong &song, std::int64_t now_ms, bool again);
-    void finish(std::string plain, std::string lrc, bool failed);
+    void finish(std::string plain, std::string lrc, bool failed, LyricsSource source);
     void fail();
     Phase phase_ = Phase::idle;
     LyricsStatus status_ = LyricsStatus::idle;
@@ -117,6 +131,8 @@ class LyricsLookup
     std::uint64_t ma_after_ = 0, ticket_ = 0, issued_ = 0;
     int retries_ = 0;
     bool ma_failed_ = false, retry_wanted_ = false, ask_ma_ = false, search_due_ = false;
+    bool getting_ = false, choice_gone_ = false;
+    LyricsSource source_ = LyricsSource::none;
     std::deque<Cached> cache_;
 };
 } // namespace hui::afterglow

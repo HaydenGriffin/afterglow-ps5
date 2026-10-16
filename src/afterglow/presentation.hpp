@@ -180,6 +180,8 @@ struct Presentation
     // itself is in companion.track. lyrics_retry: the UI asks, the pump retries.
     LyricsState lyrics;
     bool lyrics_retry = false;
+    // Kept timings, chosen lyrics and Go to a line (song_lyrics.hpp).
+    SongLyricsState song_lyrics;
 };
 
 // Only the UI thread accesses this model. Audio reaches it through Analyzer.

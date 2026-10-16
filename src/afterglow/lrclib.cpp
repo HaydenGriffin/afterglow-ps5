@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "afterglow/lrclib.hpp"
+#include "afterglow/song_store.hpp"
 #include "afterglow/version.hpp"
 #include <algorithm>
 #include <cmath>
@@ -428,6 +429,12 @@ class Reader
                 ok = text_value(record.plain);
             else if (key == "duration" && (peek() == '-' || (peek() >= '0' && peek() <= '9')))
                 ok = number(&record.duration);
+            else if (key == "id" && peek() >= '0' && peek() <= '9')
+            {
+                double id = 0;
+                ok = number(&id);
+                record.id = id >= 1 && id < 9e15 ? static_cast<std::int64_t>(id) : 0;
+            }
             else if (key == "instrumental" && peek() == 't')
             {
                 ok = word("true");
@@ -444,6 +451,16 @@ class Reader
                 return false;
         }
     }
+  public:
+    bool single(Record &record)
+    {
+        blank();
+        if (peek() != '{' || !object(record))
+            return false;
+        return finished();
+    }
+
+  private:
     std::string_view text_;
     std::size_t at_ = 0;
 };
@@ -552,6 +569,68 @@ bool parse_results(std::string_view json, std::vector<Record> &records)
         return true;
     records.clear();
     return false;
+}
+
+std::string get_path(std::int64_t id)
+{
+    return id > 0 ? "/api/get/" + std::to_string(id) : std::string{};
+}
+
+bool parse_record(std::string_view json, Record &record)
+{
+    record = {};
+    if (json.size() > kMaxAnswer)
+        return false;
+    Reader reader(json);
+    if (reader.single(record))
+        return true;
+    record = {};
+    return false;
+}
+
+std::vector<Candidate> candidates(const std::vector<Record> &records, const Query &query)
+{
+    const auto want = base_title(query.title);
+    const auto who = lower(query.artist);
+    std::vector<Candidate> list;
+    for (const auto &r : records)
+    {
+        if (r.instrumental || r.id <= 0 || (r.synced.empty() && r.plain.empty()))
+            continue;
+        const auto sum = lyrics_fingerprint(r.synced.empty() ? r.plain : r.synced);
+        if (std::any_of(list.begin(), list.end(), [&](const Candidate &c) { return c.sum == sum; }))
+            continue;
+        Candidate c;
+        c.id = r.id;
+        c.title = r.track;
+        c.artist = r.artist;
+        c.album = r.album;
+        c.plain = r.plain;
+        c.lrc = r.synced;
+        c.sum = sum;
+        c.duration = r.duration > 0 ? r.duration : 0;
+        c.timed = !r.synced.empty();
+        c.same = base_title(r.track) == want &&
+                 (who.empty() || lower(r.artist).find(who) != std::string::npos);
+        list.push_back(std::move(c));
+    }
+    const auto gap = [&](const Candidate &c)
+    {
+        return query.duration > 0 && c.duration > 0 ? std::abs(c.duration - query.duration)
+                                                    : 1e9;
+    };
+    std::stable_sort(list.begin(), list.end(),
+                     [&](const Candidate &a, const Candidate &b)
+                     {
+                         if (a.same != b.same)
+                             return a.same;
+                         if (gap(a) != gap(b))
+                             return gap(a) < gap(b);
+                         return a.timed && !b.timed;
+                     });
+    if (list.size() > kCandidateLimit)
+        list.resize(kCandidateLimit);
+    return list;
 }
 
 std::string user_agent()

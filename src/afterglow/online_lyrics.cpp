@@ -4,6 +4,7 @@
 
 #include "afterglow/online_lyrics.hpp"
 #include "afterglow/presentation.hpp"
+#include "afterglow/song_lyrics.hpp"
 #include "platform/ps5/system.hpp"
 #include <unistd.h>
 
@@ -56,6 +57,26 @@ bool OnlineLyrics::take_result(std::uint64_t &ticket, LyricsLookup::SearchOutcom
     lrc = std::move(lrc_);
     return true;
 }
+void OnlineLyrics::find_candidates(std::uint64_t ticket, const lrclib::Query &query)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    candidates_ticket_ = ticket;
+    candidates_request_ = query;
+    has_candidates_request_ = true;
+    candidates_wanted_ = ticket;
+}
+bool OnlineLyrics::take_candidates(std::uint64_t &ticket, bool &failed,
+                                   std::vector<lrclib::Candidate> &candidates)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!has_candidates_)
+        return false;
+    has_candidates_ = false;
+    ticket = candidates_result_ticket_;
+    failed = candidates_failed_;
+    candidates = std::move(candidates_);
+    return true;
+}
 std::string OnlineLyrics::status() const
 {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -84,7 +105,7 @@ void OnlineLyrics::run()
 {
     while (!stopping_)
     {
-        std::uint64_t ticket = 0;
+        std::uint64_t ticket = 0, candidates = 0;
         lrclib::Query query;
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -94,23 +115,59 @@ void OnlineLyrics::run()
                 ticket = request_ticket_;
                 query = request_;
             }
+            else if (has_candidates_request_)
+            {
+                has_candidates_request_ = false;
+                candidates = candidates_ticket_;
+                query = candidates_request_;
+            }
         }
-        if (ticket == 0)
-        {
+        if (ticket != 0)
+            answer(ticket, query);
+        else if (candidates != 0)
+            answer_candidates(candidates, query);
+        else
             usleep(50000);
-            continue;
-        }
-        answer(ticket, query);
     }
 }
 void OnlineLyrics::answer(std::uint64_t ticket, const lrclib::Query &query)
 {
     using Outcome = LyricsLookup::SearchOutcome;
-    const auto path = lrclib::search_path(query);
+    const bool get = query.record > 0;
+    const auto path = get ? lrclib::get_path(query.record) : lrclib::search_path(query);
     Outcome outcome = Outcome::none;
     std::string plain, lrc, status;
     if (path.empty())
         status = "Online lyrics: nothing to search for";
+    else if (get)
+    {
+        // The lyrics chosen for this song: 404 means LRCLIB no longer has them.
+        const auto result =
+            fetch_(path, [&] { return stopping_.load() || wanted_.load() != ticket; });
+        lrclib::Record record;
+        if (result.ok && result.status == 404)
+            status = "Chosen lyrics: gone from LRCLIB";
+        else if (!result.ok || result.status != 200)
+        {
+            outcome = Outcome::failed;
+            status = "Chosen lyrics unavailable (" +
+                     (result.ok ? std::to_string(result.status) : result.error) + ")";
+        }
+        else if (!lrclib::parse_record(result.body, record))
+        {
+            outcome = Outcome::failed;
+            status = "Chosen lyrics: unreadable answer";
+        }
+        else if (!record.instrumental && (!record.synced.empty() || !record.plain.empty()))
+        {
+            outcome = Outcome::found;
+            plain = record.plain;
+            lrc = record.synced;
+            status = "Chosen lyrics found";
+        }
+        else
+            status = "Chosen lyrics: no words";
+    }
     else
     {
         const auto result =
@@ -153,6 +210,26 @@ void OnlineLyrics::answer(std::uint64_t ticket, const lrclib::Query &query)
     has_result_ = true;
 }
 
+void OnlineLyrics::answer_candidates(std::uint64_t ticket, const lrclib::Query &query)
+{
+    const auto path = lrclib::search_path(query);
+    std::vector<lrclib::Record> records;
+    bool failed = true;
+    if (!path.empty())
+    {
+        const auto result = fetch_(
+            path, [&] { return stopping_.load() || candidates_wanted_.load() != ticket; });
+        failed = !result.ok || result.status != 200 || !lrclib::parse_results(result.body, records);
+    }
+    auto list = failed ? std::vector<lrclib::Candidate>{} : lrclib::candidates(records, query);
+    sys::log("[Afterglow] Other lyrics: %s", failed ? "lrclib.net busy" : std::to_string(list.size()).c_str());
+    std::lock_guard<std::mutex> lock(mutex_);
+    candidates_result_ticket_ = ticket;
+    candidates_failed_ = failed;
+    candidates_ = std::move(list);
+    has_candidates_ = true;
+}
+
 bool lyrics_wanted(const Presentation &model)
 {
     const auto &p = model.preferences;
@@ -178,6 +255,8 @@ void pump_lyrics(Presentation &model, LyricsLookup &lookup, OnlineLyrics &online
     song.ma_request = track.lyrics_request;
     song.ma_plain = track.lyrics;
     song.ma_lrc = track.lrc_lyrics;
+    if (model.preferences.online_lyrics)
+        song.chosen = chosen_lyrics(model.preferences.songs, track.uri);
 
     if (model.lyrics_retry)
     {
@@ -189,12 +268,16 @@ void pump_lyrics(Presentation &model, LyricsLookup &lookup, OnlineLyrics &online
     std::string plain, lrc;
     if (online.take_result(ticket, outcome, plain, lrc))
         lookup.search_done(ticket, outcome, plain, lrc);
+    pump_song_lyrics(model, lookup, online);
     lookup.update(song, lyrics_wanted(model), model.preferences.online_lyrics, now_ms);
     if (lookup.take_ma_retry() && ask_again)
         ask_again();
     lrclib::Query query;
     if (lookup.take_search(query, ticket))
         online.search(ticket, query);
+    if (lookup.take_choice_gone())
+        clear_choice(model.preferences.songs, track.uri, epoch_ms());
+    model.song_lyrics.source = lookup.source();
     model.lyrics = lookup.state();
     track.lyrics = lookup.plain();
     track.lrc_lyrics = lookup.lrc();
