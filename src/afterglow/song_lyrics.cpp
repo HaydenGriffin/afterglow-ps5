@@ -152,8 +152,8 @@ void add_timing_rows(const Presentation &s, std::vector<SheetRow> &rows)
         rows.push_back(make_row("Not now", not_now_row));
     }
     if (kept_lyrics_timing(s))
-        rows.push_back(
-            make_row("Forget timing for this song", forget_timing_row, "Timing: kept for this song"));
+        rows.push_back(make_row("Forget timing for this song", forget_timing_row,
+                                "Timing: kept for this song"));
 }
 
 void add_choose_row(const Presentation &s, std::vector<SheetRow> &rows)
@@ -195,8 +195,8 @@ std::vector<SheetRow> lyrics_choice_rows(const Presentation &s)
     const auto &list = s.song_lyrics.candidates;
     for (std::size_t i = 0; i < list.size(); ++i)
     {
-        auto row = make_row(list[i].title + " · " + list[i].artist,
-                            candidate_row + static_cast<int>(i));
+        auto row =
+            make_row(list[i].title + " · " + list[i].artist, candidate_row + static_cast<int>(i));
         row.item.subtitle = candidate_detail(list[i], s.companion.track.duration);
         row.chosen = list[i].id == chosen;
         rows.push_back(std::move(row));
@@ -314,7 +314,8 @@ SongLyricsStep confirm_song_lyrics(Presentation &s, int tag)
             return SongLyricsStep::stay;
         CompanionAction action;
         action.kind = CompanionActionKind::seek;
-        action.value = line_seek_position(lines[line].seconds, lyrics_offset_ms(s), c.track.duration);
+        action.value =
+            line_seek_position(lines[line].seconds, lyrics_offset_ms(s), c.track.duration);
         s.companion_action = std::move(action);
         s.companion_action_pending = true;
         return SongLyricsStep::leave;

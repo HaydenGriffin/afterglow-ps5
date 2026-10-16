@@ -385,7 +385,8 @@ class AfterglowSongSheets : public hui::testing::ConceptFixture
         s.companion.track.queue_item_id = "q1";
         s.companion.track.media_type = "track";
         s.companion.track.duration = 200;
-        s.companion.track.lrc_lyrics = "[00:00]First line\n[00:10]\n[00:20]Second line\n[00:35]Third line";
+        s.companion.track.lrc_lyrics =
+            "[00:00]First line\n[00:10]\n[00:20]Second line\n[00:35]Third line";
         s.lyrics.status = LyricsStatus::timed;
         s.song_lyrics.source = LyricsSource::music_assistant;
         follow_song_lyrics(s);
@@ -472,7 +473,8 @@ TEST_F(AfterglowSongSheets, ChangingTheTimingOffersToKeepItForThisSong)
     s.companion.track.lrc_lyrics = "[00:00]Other words";
     follow_song_lyrics(s);
     EXPECT_EQ(lyrics_offset_ms(s), 200);
-    s.companion.track.lrc_lyrics = "[00:00]First line\n[00:10]\n[00:20]Second line\n[00:35]Third line";
+    s.companion.track.lrc_lyrics =
+        "[00:00]First line\n[00:10]\n[00:20]Second line\n[00:35]Third line";
     follow_song_lyrics(s);
     panel_.open(Page::lyrics_timing);
     pick("Forget timing for this song");
@@ -566,7 +568,8 @@ TEST_F(AfterglowSongSheets, GoToALineSeeksToThePickedLineAfterTheTiming)
     ASSERT_EQ(panel_.rows().size(), 3u) << "the blank line is left out";
     EXPECT_EQ(panel_.rows()[0].item.title, "First line");
     EXPECT_EQ(panel_.rows()[1].item.value, "0:21");
-    EXPECT_TRUE(panel_.rows()[0].chosen) << "21 s with lyrics 1.5 s later: a gap after the first line";
+    EXPECT_TRUE(panel_.rows()[0].chosen)
+        << "21 s with lyrics 1.5 s later: a gap after the first line";
     EXPECT_EQ(lyrics_lines_note(s), "Low Tide · plays from the line you pick");
     input(nav(Direction::down));
     input(nav(Direction::down));

@@ -22,8 +22,9 @@ bool valid_id(std::string_view id)
 }
 bool valid_sum(std::string_view sum)
 {
-    return sum.size() == 8 && std::all_of(sum.begin(), sum.end(), [](char c)
-                                          { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); });
+    return sum.size() == 8 &&
+           std::all_of(sum.begin(), sum.end(),
+                       [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); });
 }
 bool valid_ms(long long ms)
 {
@@ -235,7 +236,8 @@ class Reader
 std::string lyrics_fingerprint(std::string_view text)
 {
     std::size_t first = 0, last = text.size();
-    const auto blank = [](char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v'; };
+    const auto blank = [](char c)
+    { return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v'; };
     while (first < last && blank(text[first]))
         ++first;
     while (last > first && blank(text[last - 1]))
@@ -298,8 +300,8 @@ bool forget_timing(SongStore &songs, std::string_view id, std::int64_t now_ms)
     return settle(songs, it, std::move(entry), now_ms);
 }
 
-bool choose_lyrics(SongStore &songs, std::string_view id, std::int64_t lrclib,
-                   std::string_view sum, std::int64_t now_ms)
+bool choose_lyrics(SongStore &songs, std::string_view id, std::int64_t lrclib, std::string_view sum,
+                   std::int64_t now_ms)
 {
     if (!valid_id(id) || !valid_sum(sum) || lrclib <= 0)
         return false;
@@ -327,18 +329,21 @@ void trim_songs(SongStore &songs)
 {
     SongStore unique;
     for (auto &e : songs)
-        if (std::none_of(unique.begin(), unique.end(), [&](const SongEntry &u) { return u.id == e.id; }))
+        if (std::none_of(unique.begin(), unique.end(),
+                         [&](const SongEntry &u) { return u.id == e.id; }))
             unique.push_back(std::move(e));
     songs = std::move(unique);
     while (songs.size() > kSongLimit)
         songs.erase(std::min_element(songs.begin(), songs.end(),
-                                     [](const SongEntry &a, const SongEntry &b) { return a.at < b.at; }));
+                                     [](const SongEntry &a, const SongEntry &b)
+                                     { return a.at < b.at; }));
 }
 
 std::string encode_song_line(const SongEntry &entry)
 {
     return std::to_string(entry.at) + "," + (entry.ms ? std::to_string(*entry.ms) : "-") + "," +
-           (entry.lrclib > 0 ? std::to_string(entry.lrclib) : "-") + "," + entry.sum + "," + entry.id;
+           (entry.lrclib > 0 ? std::to_string(entry.lrclib) : "-") + "," + entry.sum + "," +
+           entry.id;
 }
 
 bool decode_song_line(std::string_view value, SongEntry &entry)

@@ -451,6 +451,7 @@ class Reader
                 return false;
         }
     }
+
   public:
     bool single(Record &record)
     {
@@ -615,10 +616,7 @@ std::vector<Candidate> candidates(const std::vector<Record> &records, const Quer
         list.push_back(std::move(c));
     }
     const auto gap = [&](const Candidate &c)
-    {
-        return query.duration > 0 && c.duration > 0 ? std::abs(c.duration - query.duration)
-                                                    : 1e9;
-    };
+    { return query.duration > 0 && c.duration > 0 ? std::abs(c.duration - query.duration) : 1e9; };
     std::stable_sort(list.begin(), list.end(),
                      [&](const Candidate &a, const Candidate &b)
                      {

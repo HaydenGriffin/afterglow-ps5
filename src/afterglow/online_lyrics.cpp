@@ -217,12 +217,13 @@ void OnlineLyrics::answer_candidates(std::uint64_t ticket, const lrclib::Query &
     bool failed = true;
     if (!path.empty())
     {
-        const auto result = fetch_(
-            path, [&] { return stopping_.load() || candidates_wanted_.load() != ticket; });
+        const auto result =
+            fetch_(path, [&] { return stopping_.load() || candidates_wanted_.load() != ticket; });
         failed = !result.ok || result.status != 200 || !lrclib::parse_results(result.body, records);
     }
     auto list = failed ? std::vector<lrclib::Candidate>{} : lrclib::candidates(records, query);
-    sys::log("[Afterglow] Other lyrics: %s", failed ? "lrclib.net busy" : std::to_string(list.size()).c_str());
+    sys::log("[Afterglow] Other lyrics: %s",
+             failed ? "lrclib.net busy" : std::to_string(list.size()).c_str());
     std::lock_guard<std::mutex> lock(mutex_);
     candidates_result_ticket_ = ticket;
     candidates_failed_ = failed;

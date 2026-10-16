@@ -41,8 +41,8 @@ std::int64_t chosen_lyrics(const SongStore &songs, std::string_view id);
 bool keep_timing(SongStore &songs, std::string_view id, std::string_view sum, int ms,
                  std::int64_t now_ms);
 bool forget_timing(SongStore &songs, std::string_view id, std::int64_t now_ms);
-bool choose_lyrics(SongStore &songs, std::string_view id, std::int64_t lrclib,
-                   std::string_view sum, std::int64_t now_ms);
+bool choose_lyrics(SongStore &songs, std::string_view id, std::int64_t lrclib, std::string_view sum,
+                   std::int64_t now_ms);
 bool clear_choice(SongStore &songs, std::string_view id, std::int64_t now_ms);
 
 // The preference file's line value: "<at>,<ms|->,<lrclib|->,<sum>,<id>".

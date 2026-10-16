@@ -522,10 +522,10 @@ bool Panel::browse_page() const
 const char *Panel::page_name() const
 {
     constexpr const char *kNames[] = {
-        "browse",   "collection", "item_actions", "queue",   "queue_actions", "details", "display",
-        "settings", "source",     "visuals",      "presets", "lyrics_timing", "status",  "search",
-        "artist",   "players",    "sync",         "account", "home",          "lyrics_choice",
-        "lyrics_lines"};
+        "browse",  "collection",    "item_actions", "queue",   "queue_actions", "details",
+        "display", "settings",      "source",       "visuals", "presets",       "lyrics_timing",
+        "status",  "search",        "artist",       "players", "sync",          "account",
+        "home",    "lyrics_choice", "lyrics_lines"};
     const auto index = static_cast<std::size_t>(page_);
     return index < std::size(kNames) ? kNames[index] : "";
 }
