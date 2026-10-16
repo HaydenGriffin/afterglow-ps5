@@ -559,8 +559,17 @@ class Afterglow final : public app::Concept
             return;
         }
         const auto offer = programme_offer(state, !was_showing);
-        idle_tiles_ = afterglow::idle_tiles(paused ? &c.track : nullptr, c.recent, c.recent_state,
-                                            c.in_progress, true, offer ? &*offer : nullptr);
+        const auto *paused_track = paused ? &c.track : nullptr;
+        const auto *offered = offer ? &*offer : nullptr;
+        // Built again only when what it shows changed, not every frame.
+        const auto key = afterglow::idle_tiles_key(paused_track, c.recent, c.recent_state,
+                                                   c.in_progress, true, offered);
+        if (idle_tiles_.empty() || key != idle_tiles_key_)
+        {
+            idle_tiles_ = afterglow::idle_tiles(paused_track, c.recent, c.recent_state,
+                                                c.in_progress, true, offered);
+            idle_tiles_key_ = key;
+        }
         const auto &tile = idle_tiles_[static_cast<std::size_t>(
             std::clamp(idle_.focus(), 0, static_cast<int>(idle_tiles_.size()) - 1))];
         const bool has_recent =
@@ -1125,6 +1134,7 @@ class Afterglow final : public app::Concept
     Panel panel_;
     afterglow::IdlePoster idle_;
     std::vector<afterglow::IdleTile> idle_tiles_;
+    std::uint64_t idle_tiles_key_ = 0;
     afterglow::IdleView idle_view_;
     afterglow::ProgrammePage programme_page_;
     afterglow::SceneClock clock_;

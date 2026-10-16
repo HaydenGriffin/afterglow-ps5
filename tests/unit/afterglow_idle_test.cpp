@@ -26,6 +26,64 @@ std::vector<CompanionTrack> recent(int count)
     return list;
 }
 
+TEST(AfterglowIdleTiles, TilesKeepWhatThePosterDrawsAndNotTheLyrics)
+{
+    auto paused = item("Slow Current", "library://track/7");
+    paused.artist = "The Tides";
+    paused.year = "2019";
+    paused.duration = 241;
+    paused.artwork = "http://10.0.0.2/cover.jpg";
+    paused.lyrics = std::string(20000, 'l');
+    paused.lrc_lyrics = std::string(20000, 'r');
+    paused.chapters.push_back({"One", 0});
+    const auto tiles = idle_tiles(&paused, {}, RecentState::ready);
+    const auto &kept = tiles[0].item;
+    EXPECT_EQ(kept.title, paused.title);
+    EXPECT_EQ(kept.artist, paused.artist);
+    EXPECT_EQ(kept.year, paused.year);
+    EXPECT_EQ(kept.duration, paused.duration);
+    EXPECT_EQ(kept.media_type, paused.media_type);
+    EXPECT_EQ(kept.uri, paused.uri);
+    EXPECT_EQ(kept.artwork, paused.artwork);
+    EXPECT_TRUE(kept.lyrics.empty());
+    EXPECT_TRUE(kept.lrc_lyrics.empty());
+    EXPECT_TRUE(kept.chapters.empty());
+    EXPECT_EQ(idle_text(tiles[0], RecentState::ready, false).detail,
+              idle_text(IdleTile{IdleTileKind::resume, paused, {}, {}}, RecentState::ready, false)
+                  .detail);
+}
+
+TEST(AfterglowIdleTiles, TheKeyChangesExactlyWhenTheStripWould)
+{
+    auto paused = item("Slow Current", "library://track/7");
+    auto list = recent(3);
+    std::vector<CompanionTrack> carried{item("Book", "library://audiobook/1", "audiobook")};
+    const IdleOffer offer{"Tonight", "14 songs since 19:40"};
+    const auto key = [&](const CompanionTrack *p, const IdleOffer *o = nullptr)
+    { return idle_tiles_key(p, list, RecentState::ready, carried, true, o); };
+    const auto base = key(&paused, &offer);
+    EXPECT_EQ(key(&paused, &offer), base);
+    paused.lyrics = "new words";
+    paused.lyrics_reply = 1;
+    EXPECT_EQ(key(&paused, &offer), base) << "lyrics are not on the strip";
+    EXPECT_NE(key(nullptr, &offer), base);
+    EXPECT_NE(key(&paused), base);
+    const IdleOffer later{"Tonight", "15 songs since 19:40"};
+    EXPECT_NE(key(&paused, &later), base);
+    paused.artwork = "http://10.0.0.2/other.jpg";
+    EXPECT_NE(key(&paused, &offer), base);
+    paused.artwork.clear();
+    const auto plain = key(&paused, &offer);
+    list[1].title = "Renamed";
+    EXPECT_NE(key(&paused, &offer), plain);
+    list.pop_back();
+    const auto shorter = key(&paused, &offer);
+    carried[0].duration = 3600;
+    EXPECT_NE(key(&paused, &offer), shorter);
+    EXPECT_NE(idle_tiles_key(&paused, list, RecentState::error, carried, true, &offer),
+              key(&paused, &offer));
+}
+
 TEST(AfterglowIdleTiles, PausedSongFirstRecentWithoutItThenBrowseLast)
 {
     auto paused = item("Slow Current", "library://track/1");
