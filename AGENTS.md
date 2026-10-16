@@ -7,8 +7,19 @@ guessing.
 
 ## What this is
 
-A reference for building console-grade user interfaces for PS5 homebrew with
-OpenGL 4.6, and one native app ("Homebrew UI Lab") that shows all of it.
+**Afterglow for PS5**: a native Music Assistant player and MilkDrop visualiser
+(`src/concepts/afterglow.cpp`, `src/afterglow/`, `host/` previews), built on a
+fork of BlackBearReloaded's ps5-homebrew-ui. `make app` builds Afterglow; the
+kit's gallery of designs stays in the repository for the PC preview and the
+tests but is not in the console binary. What Afterglow does, its settings and
+its limits: [docs/AFTERGLOW.md](docs/AFTERGLOW.md), [PRODUCT.md](PRODUCT.md),
+[DESIGN.md](DESIGN.md). Installing it: [docs/install.md](docs/install.md).
+History: [CHANGELOG.md](CHANGELOG.md).
+
+The rest of this file describes the kit underneath (its front page is
+[docs/UI_KIT.md](docs/UI_KIT.md)): a reference for building console-grade user
+interfaces for PS5 homebrew with OpenGL 4.6, and the gallery app ("Homebrew UI
+Lab") that shows all of it.
 
 <!-- BEGIN:counts -->
 Right now: **21 designs**, **30 themes**, **99 components**.
@@ -218,8 +229,9 @@ navigation with a controller in hand.
 - Home-screen assets live in `sce_sys/`: `icon0.png` (512 x 512), `pic0.dds`
   (shown while the title is selected), `pic1.dds` (shown while it starts),
   `snd0.at9` (music while selected, under 2 MiB). `tools/validate-assets.sh`
-  checks them. These are the owner's artwork and music: do not replace them
-  unasked.
+  checks them. The icon and backgrounds are Afterglow's logo
+  ([docs/brand/README.md](docs/brand/README.md)); `snd0.at9` is the upstream
+  kit's music and is not packaged. Do not replace any of them unasked.
 - `docs/media` is generated. Do not edit files there by hand.
 - Anything third-party goes into `THIRD_PARTY_NOTICES.md` with its licence.
 
