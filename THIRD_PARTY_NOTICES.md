@@ -175,9 +175,16 @@ Jonathan Dummer's public-domain DXT routines. License texts and upstream
 notices are in `third_party/projectm/licenses`; source-level notices remain
 in the pinned source tree.
 
-The 349 bundled community presets retain author names in `assets/presets/index.tsv`.
+The 395 bundled community presets retain author names in `assets/presets/index.tsv`.
 Their origin and the limits of the available licensing information are recorded
 in `third_party/presets/README.md`, alongside the upstream repository's MIT text.
+
+No MilkDrop texture images are bundled. The images some presets sample (from
+MilkDrop's textures folder, as collected in projectM's
+presets-milkdrop-texture-pack and in butterchurn-presets' image data) carry no
+licence that permits redistribution; see `third_party/presets/README.md`. Those
+presets get a cloud texture the app generates itself
+(`src/afterglow/cloud_texture.cpp`, GPL-3.0-or-later).
 
 ## Archivo
 
