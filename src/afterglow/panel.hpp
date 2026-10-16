@@ -93,6 +93,8 @@ class Panel
     {
         return sheet_.rows();
     }
+    // What the footer says Cross does on the focused row, or null for no Cross hint.
+    const char *select_hint() const;
     // How many times the rows have been built: a focus move builds none, so
     // holding a direction through 2000 Browse rows stays cheap.
     int rebuilds() const
@@ -171,6 +173,7 @@ class Panel
     void draw_home(ui::Canvas &canvas) const;
     void draw_sync_figure(ui::Canvas &canvas, float top) const;
     void draw_footer(ui::Canvas &canvas, float x) const;
+    const SheetRow *footer_row() const;
     gfx::Rect home_area() const;
 
     // The right column: every sheet's rows, or Browse's collection and actions.

@@ -981,6 +981,7 @@ TEST_F(AfterglowPanel, PlayersChooseASpeakerAndToggleItsGroup)
     cross();
     EXPECT_EQ(s.preferences.player, "room");
     down(2); // past the Speakers together heading and the leader to Kitchen
+    EXPECT_STREQ(panel_.select_hint(), "Group");
     cross();
     ASSERT_TRUE(s.companion_action_pending);
     EXPECT_EQ(s.companion_action.kind, CompanionActionKind::group_add);
@@ -989,6 +990,7 @@ TEST_F(AfterglowPanel, PlayersChooseASpeakerAndToggleItsGroup)
     s.companion_action_pending = false;
     s.companion.players[0].group_members = {"room", "kitchen"};
     input(idle());
+    EXPECT_STREQ(panel_.select_hint(), "Ungroup") << "Kitchen is in the group now";
     cross();
     EXPECT_EQ(s.companion_action.kind, CompanionActionKind::group_remove);
     s.companion_action_pending = false;

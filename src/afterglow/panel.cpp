@@ -500,8 +500,9 @@ const char *select_label(const SheetRow &row)
     }
     if (song_lyrics_tag(row.item.tag))
         return row.item.tag == try_again_row ? "Try again" : "Select";
+    // A speaker in the group is ticked (chosen); Cross takes it out.
     if (row.item.tag >= kGroupTag && row.item.tag < kGoToTag)
-        return row.item.value == "Grouped" ? "Ungroup" : "Group";
+        return row.chosen ? "Ungroup" : "Group";
     return "Select";
 }
 } // namespace
@@ -2458,20 +2459,32 @@ void Panel::update(const InputFrame &input, float dt, ui::Feedback &feedback, bo
     categories_.update(dt);
 }
 
+const SheetRow *Panel::footer_row() const
+{
+    const bool browse = browse_page();
+    const SheetList &column = browse && !browse_right_ ? categories_ : sheet_;
+    return page_ == Page::home || (browse && !presentation().companion_configured)
+               ? nullptr
+               : column.focused();
+}
+
+const char *Panel::select_hint() const
+{
+    const SheetRow *row = footer_row();
+    return row != nullptr && !row->item.disabled ? select_label(*row) : nullptr;
+}
+
 void Panel::draw_footer(ui::Canvas &canvas, float x) const
 {
     const auto &s = presentation();
-    const bool browse = browse_page();
-    const SheetList &column = browse && !browse_right_ ? categories_ : sheet_;
-    const SheetRow *row =
-        page_ == Page::home || (browse && !s.companion_configured) ? nullptr : column.focused();
+    const SheetRow *row = footer_row();
     ui::Hint hints[7];
     int count = 0;
     hints[count++] = {ui::Button::l1, "Sections", ui::Button::r1};
     if (row != nullptr && row->adjustable && !row->item.disabled)
         hints[count++] = {ui::Button::dpad, "Adjust"};
-    if (row != nullptr && !row->item.disabled && select_label(*row) != nullptr)
-        hints[count++] = {ui::Button::cross, select_label(*row)};
+    if (const char *label = select_hint())
+        hints[count++] = {ui::Button::cross, label};
     if (page_ == Page::home)
         hints[count++] = {ui::Button::cross, "Select"};
     if (page_ == Page::search && s.companion_configured)
