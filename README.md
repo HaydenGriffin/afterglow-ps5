@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/hero.jpg" alt="Afterglow on a PS5: the artwork slab, the song's title and the current lyric line sung word by word, with MilkDrop visuals behind" width="100%">
+  <img src="docs/images/hero.jpg" alt="Afterglow on a PS5, captured on the console: the artwork of Flower In A Hurricane, its current lyric line underlined as it is sung, and the song and up next below" width="100%">
 </p>
 
 # Afterglow for PS5
@@ -48,7 +48,7 @@ GPL-3.0-or-later.
 - **Light bar and Home.** The DualSense light bar takes the artwork's colour, and an optional Home section shows a
   few Home Assistant sensors and switches.
 
-<img src="docs/images/views.jpg" alt="Four views: the Album poster, the idle poster with recent music, Browse and Playing on" width="100%">
+<img src="docs/images/views.jpg" alt="Four console captures: the Album poster, One line lyrics over MilkDrop, Stage lyrics over MilkDrop, and the Display settings with the lyric overlay rows" width="100%">
 
 ## Requirements
 
@@ -60,11 +60,12 @@ GPL-3.0-or-later.
 - For following, speakers Music Assistant streams to itself (Sonos, Chromecast, AirPlay, Squeezelite, ...). A
   speaker playing on its own, such as Spotify straight from the Spotify app, carries nothing to draw.
 
-> **Status:** Afterglow has run on one PS5, on system software 7.20. Playback through the console, artwork, the
-> title and MilkDrop at 59.9–60 fps with no audio dropouts were checked there on an earlier build. Everything added
-> since, including the controls in this README, sign-in, the light bar, 120 Hz and the Home section, has been
-> tested on a PC (unit tests, mock servers and the off-screen preview) but not yet on a console. Other consoles,
-> firmware versions and homebrew enablers haven't been tried. Reports either way are very welcome.
+> **Status:** Afterglow has run on one PS5, on system software 7.20; the pictures here are screenshots from it.
+> Checked there with 1.6.0: playback through the console at 59.9–60 fps, artwork, online lyrics, Browse, the
+> controls, the queue, the Display settings and lyric overlays, and the Home section. Signing in with the system
+> keyboard, the light bar and 120 Hz have been tested on a PC (unit tests, mock servers and the off-screen preview)
+> but not yet on a console. Other consoles, firmware versions and homebrew enablers haven't been tried. Reports
+> either way are very welcome.
 
 ## Install
 

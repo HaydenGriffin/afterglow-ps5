@@ -44,6 +44,13 @@ Built and tested on a PC; not yet installed on a console.
 - The PS5 home screen shows the Afterglow poster block: a new icon, and selection and start-up backgrounds.
 - Publishing: README, [install guide](docs/install.md), this changelog, issue and pull request templates,
   GitHub Actions for tests, lint and a release ZIP per version tag.
+- Fixed on the console: muted text and rules (section headings, "Saved on this PS5", the time and status lines)
+  were invisible on the PS5 while they drew on a PC; the poster colours are now compile-time constants.
+- The song's artists read "Justice, Tame Impala, SZA" from Music Assistant's queue instead of Sendspin's
+  slash-joined line.
+- Online lyrics read the console's own certificate list (its CRLF lines and titles had made every lookup fail).
+- Dev requests can tap controller buttons (`tools/afterglow-dev.py press options right cross`), so a PC can drive
+  the app for console screenshots. Off unless `afterglow.conf` sets `dev_requests`.
 
 # 1.5.0 — Everything from the LG parity review (15 October 2026)
 
