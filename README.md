@@ -60,7 +60,7 @@ GPL-3.0-or-later.
 - For following, speakers Music Assistant streams to itself (Sonos, Chromecast, AirPlay, Squeezelite, ...). A
   speaker playing on its own, such as Spotify straight from the Spotify app, carries nothing to draw.
 
-> **Status:** Afterglow has run on one PS5, on system software 7.61. Playback through the console, artwork, the
+> **Status:** Afterglow has run on one PS5, on system software 7.20. Playback through the console, artwork, the
 > title and MilkDrop at 59.9–60 fps with no audio dropouts were checked there on an earlier build. Everything added
 > since, including the controls in this README, sign-in, the light bar, 120 Hz and the Home section, has been
 > tested on a PC (unit tests, mock servers and the off-screen preview) but not yet on a console. Other consoles,

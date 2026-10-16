@@ -1,6 +1,6 @@
 # Afterglow PS5
 
-An unofficial native Music Assistant companion for a jailbroken PS5, used from the sofa with a DualSense and a TV or HDMI sound system. The user's firmware is 7.61. This is version 1.6.0, the first public release. The LG webOS Afterglow is the user-authorized visual and functional reference: both releases share a concert-poster identity and roughly equivalent core music controls, while remaining separate installations.
+An unofficial native Music Assistant companion for a jailbroken PS5, used from the sofa with a DualSense and a TV or HDMI sound system. The user's firmware is 7.20. This is version 1.6.0, the first public release. The LG webOS Afterglow is the user-authorized visual and functional reference: both releases share a concert-poster identity and roughly equivalent core music controls, while remaining separate installations.
 
 ## Platform and scope
 

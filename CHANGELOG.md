@@ -1,7 +1,7 @@
 # Changelog
 
 Afterglow for PS5. Builds before 1.6.0 were private builds for one console; they are listed by milestone, with
-the version where one was set. "Checked on hardware" means on one PS5 on firmware 7.61; anything else was
+the version where one was set. "Checked on hardware" means on one PS5 on firmware 7.20; anything else was
 checked on a PC only (unit tests, mock servers and the off-screen preview).
 
 # 1.6.0 — First public release (unreleased)

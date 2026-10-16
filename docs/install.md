@@ -29,7 +29,7 @@ time: most of it is the preset scan running on its own.
   against: it registers a folder about ten seconds after it stops changing. You also need an FTP server on the
   console (port 2121 is the usual one) to copy the folder across.
 
-  Afterglow has been run on **one console, on system software 7.61**. The packaging it inherits from
+  Afterglow has been run on **one console, on system software 7.20**. The packaging it inherits from
   ps5-native-app-boilerplate was checked on 6.02 and 12.70, but Afterglow itself has not been tried on any other
   firmware or enabler.
   For reference, that console runs Y2JB with the PLK ps5-unified-autoloader, kstuff-lite, ShadowMount Plus
