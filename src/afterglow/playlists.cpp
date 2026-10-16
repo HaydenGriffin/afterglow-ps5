@@ -17,20 +17,26 @@ namespace hui::afterglow
 {
 namespace js = json_slice;
 
+// The console's libc has no gmtime_r, so the date is worked out here
+// (Howard Hinnant's civil_from_days).
 LocalTime local_time_at(std::int64_t utc, std::int64_t local)
 {
     LocalTime out;
     out.utc = utc;
     out.local = local;
-    const auto seconds = static_cast<time_t>(local);
-    std::tm parts{};
-    if (gmtime_r(&seconds, &parts) == nullptr)
-        return out;
-    out.year = parts.tm_year + 1900;
-    out.month = parts.tm_mon + 1;
-    out.day = parts.tm_mday;
-    out.hour = parts.tm_hour;
-    out.minute = parts.tm_min;
+    const std::int64_t days = (local >= 0 ? local : local - 86399) / 86400;
+    const std::int64_t second = local - days * 86400;
+    out.hour = static_cast<int>(second / 3600);
+    out.minute = static_cast<int>(second % 3600 / 60);
+    const std::int64_t z = days + 719468;
+    const std::int64_t era = (z >= 0 ? z : z - 146096) / 146097;
+    const std::int64_t doe = z - era * 146097;
+    const std::int64_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    const std::int64_t doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    const std::int64_t mp = (5 * doy + 2) / 153;
+    out.day = static_cast<int>(doy - (153 * mp + 2) / 5 + 1);
+    out.month = static_cast<int>(mp < 10 ? mp + 3 : mp - 9);
+    out.year = static_cast<int>(yoe + era * 400 + (out.month <= 2 ? 1 : 0));
     return out;
 }
 
