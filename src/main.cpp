@@ -570,6 +570,7 @@ int main()
     { return renderer.batch().create_texture(w, h, rgba); };
     const auto thumb_release = [](std::uint32_t texture) { glDeleteTextures(1, &texture); };
     std::string applied_preferences, applied_player = "\x01", artwork_url;
+    std::string submitted_quality = model.preferences.quality;
     std::uint64_t artwork_generation = 0, favorite_revision = 0;
     bool favorites_received = false;
     std::vector<std::string> synced_favorites = model.preferences.favorites;
@@ -1022,7 +1023,15 @@ int main()
             milkdrop->set_scanning(model.scanning);
             client->set_output_enabled(!model.preferences.follow);
             companion->set_relay_enabled(model.preferences.follow);
-            preference_store.submit(preferences);
+            // A scan checkpoint (begin, measured, paused) skips the debounce:
+            // until it is on disk, a kill would quarantine a preset that was fine.
+            if (model.preferences.quality != submitted_quality)
+            {
+                submitted_quality = model.preferences.quality;
+                preference_store.submit_now(preferences);
+            }
+            else
+                preference_store.submit(preferences);
         }
         std::string desired_player =
             model.preferences.follow ? model.preferences.player : config.ma_player_id;

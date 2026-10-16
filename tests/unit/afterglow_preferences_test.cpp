@@ -191,6 +191,40 @@ TEST(AfterglowPreferenceStore, StopFlushesLatestPayloadInCheckedContainer)
     EXPECT_EQ(store.status(), "Preferences saved");
 }
 
+TEST(AfterglowPreferenceStore, ACheckpointIsWrittenAtOnceAndOrdinaryChangesWait)
+{
+    char path[] = "/tmp/afterglow-preferences-XXXXXX";
+    const int fd = mkstemp(path);
+    ASSERT_GE(fd, 0);
+    close(fd);
+    // A clock that never moves: the half-second debounce never passes.
+    hui::afterglow::PreferenceStore store([] { return std::int64_t{1}; });
+    ASSERT_TRUE(store.start(path));
+    const auto saved_within = [&](int milliseconds)
+    {
+        for (int waited = 0; waited < milliseconds; waited += 10)
+        {
+            if (store.status() == "Preferences saved")
+                return true;
+            usleep(10000);
+        }
+        return store.status() == "Preferences saved";
+    };
+    store.submit("brightness=50\n");
+    EXPECT_FALSE(saved_within(300)) << "an ordinary change waits for the debounce";
+    store.submit_now("brightness=50\nquality={\"pending\":\"P\"}\n");
+    EXPECT_TRUE(saved_within(5000)) << "a checkpoint does not";
+    std::string bytes;
+    ASSERT_TRUE(hui::save::read_file(path, &bytes));
+    EXPECT_EQ(hui::save::decode(hui::save::Kind::prefs, bytes).payload,
+              "brightness=50\nquality={\"pending\":\"P\"}\n");
+    store.submit("brightness=60\n");
+    EXPECT_FALSE(saved_within(300)) << "the next ordinary change waits again";
+    store.stop();
+    store.join();
+    unlink(path);
+}
+
 TEST(AfterglowPreferenceStore, FailedWriteIsReportedAndShutdownCompletes)
 {
     hui::afterglow::PreferenceStore store;
