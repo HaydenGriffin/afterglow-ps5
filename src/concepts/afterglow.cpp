@@ -94,6 +94,10 @@ constexpr app::TourStep kTour[] = {
     {0.1f, 0, Direction::down},
     {0.1f, action_bit(Action::confirm)},
     {0.8f, 0, Direction::none, "artist"},
+    {0.1f, action_bit(Action::confirm)},
+    {0.1f, 0, Direction::down},
+    {0.1f, action_bit(Action::confirm)},
+    {0.6f, 0, Direction::none, "browse-added"},
 };
 
 class Afterglow final : public app::Concept
@@ -123,6 +127,7 @@ class Afterglow final : public app::Concept
         if (!p.reduce_motion)
             clock_.time += dt;
         state.toast_age += dt;
+        seek_age_ += dt;
         follow_lyrics(state);
         if (state.title != shown_track_)
         {
@@ -552,6 +557,9 @@ class Afterglow final : public app::Concept
             return;
         }
         panel_.update(input, dt, feedback, context_.settings.reduced_motion);
+        // Play now started the music: back to Now playing, as on LG.
+        if (panel_.take_leave())
+            close_all();
     }
 
     void activate_tile(Tile tile, app::Feedback &feedback)
@@ -649,15 +657,26 @@ class Afterglow final : public app::Concept
             state.show_toast(state.title.empty() ? "Nothing playing" : "This stream can't seek");
             return;
         }
-        const int target =
-            std::clamp(static_cast<int>(state.companion.elapsed) + seconds, 0, track.duration);
-        if (send_action(afterglow::CompanionActionKind::seek, false, target))
+        if (!state.companion.connected)
         {
-            char text[48];
-            std::snprintf(text, sizeof(text), "%s 10 s · %d:%02d", seconds < 0 ? "Back" : "Ahead",
-                          target / 60, target % 60);
-            state.show_toast(text);
+            state.show_toast("Needs Music Assistant");
+            return;
         }
+        // Quick presses add up (Companion::seek_by); the toast names where they
+        // land, counted from the last one while the report catches up.
+        const bool recent = seek_age_ < 4 && seek_track_ == track.uri;
+        const double from = recent ? seek_target_ + (state.companion.playing ? seek_age_ : 0)
+                                   : state.companion.elapsed;
+        const int target =
+            std::clamp(static_cast<int>(std::lround(from)) + seconds, 0, track.duration);
+        state.seek_seconds += seconds;
+        seek_target_ = target;
+        seek_track_ = track.uri;
+        seek_age_ = 0;
+        char text[48];
+        std::snprintf(text, sizeof(text), "%s 10 s · %d:%02d", seconds < 0 ? "Back" : "Ahead",
+                      target / 60, target % 60);
+        state.show_toast(text);
     }
     // Sends one action to Music Assistant; false (with a toast) when it can't go.
     bool send_action(afterglow::CompanionActionKind kind, bool enabled = false, int value = 0)
@@ -728,6 +747,10 @@ class Afterglow final : public app::Concept
     float volume_wait_ = 0;
     float preset_wait_ = 0;
     int volume_seen_ = -1;
+    // The last seek's target, for the toast while quick presses add up.
+    int seek_target_ = 0;
+    float seek_age_ = 99;
+    std::string seek_track_;
 };
 } // namespace
 

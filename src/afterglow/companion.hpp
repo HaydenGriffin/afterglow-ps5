@@ -92,6 +92,8 @@ struct CompanionAction
     int value = 0;
     std::string text, option;
     bool enabled = false;
+    // Non-zero: CompanionSnapshot::action_done reports this id once it settles.
+    std::uint64_t id = 0;
 };
 struct CompanionSnapshot
 {
@@ -133,6 +135,10 @@ struct CompanionSnapshot
     double elapsed = 0;
     double clock_rtt_ms = 0;
     std::size_t buffered_frames = 0;
+    // The id of the last action that settled (accepted, refused, timed out or
+    // lost to a disconnect) and whether Music Assistant accepted it.
+    std::uint64_t action_done = 0;
+    bool action_done_ok = false;
 };
 
 namespace companion_wire
@@ -207,6 +213,31 @@ std::string merge_device_preferences(std::string_view preferences, std::string_v
 // config/players/get result: finds sendspin_static_delay (value, else default).
 bool decode_static_delay(std::string_view config, std::string &key, int &milliseconds);
 Request static_delay_request(std::string_view player_id, std::string_view key, int milliseconds);
+// The volume a press changes. A group player, or a sync leader with members,
+// moves the whole group with players/cmd/group_volume and reads group_volume
+// (LG playback.js isGroupPlayer); any other player sets its own level.
+struct VolumeTarget
+{
+    std::string player_id;
+    bool group = false;
+    int level = 100;
+};
+VolumeTarget volume_target(std::string_view player);
+Request volume_request(const VolumeTarget &target, int level);
+// What the open visualizer relay needs while its queue plays (LG 1.4.4
+// follow.js watchFrames). Frames that stop for 10 s without stream/end get a
+// fresh socket, so the server taps the player afresh; a socket that has
+// streamed nothing (or ended) for 10 s is skipped for a while instead, which
+// is what keeps a silent speaker from reconnecting every 10 s.
+enum class RelayCheck
+{
+    keep,
+    reconnect,
+    skip
+};
+constexpr std::int64_t kRelayStallUs = 10000000;
+RelayCheck relay_check(std::int64_t now_us, std::int64_t opened_us, std::int64_t last_wave_us,
+                       bool streaming);
 } // namespace companion_wire
 
 class Companion
@@ -248,6 +279,13 @@ class Companion
     std::uint64_t account_revision() const;
     // UI consumer only. Returns each due waveform once, normalized stereo PCM.
     std::vector<float> take_pcm(int trim_ms = 0);
+    // Seeks by seconds. Quick presses add up into one seek from the last
+    // position sent, instead of being dropped while one is in flight.
+    void seek_by(int seconds);
+    // A renewed token: every login from here on uses it, so the open sockets
+    // move over before the old token is revoked. A refusal of the replaced
+    // token logs in again with this one rather than giving up.
+    void set_token(const std::string &token);
 
   private:
     struct Impl;

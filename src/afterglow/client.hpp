@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
+#include "afterglow/controls.hpp"
 #include "afterglow/protocol.hpp"
 #include <atomic>
 #include <mutex>
@@ -78,6 +79,8 @@ class Client
     std::atomic<std::int64_t> clock_offset_{0};
     std::array<Command, 32> commands_{};
     std::size_t command_read_ = 0, command_write_ = 0;
+    // The volume last sent (mutex_).
+    Assumed volume_sent_;
     int socket_ = -1;
     const char *failure_stage_ = "connection";
     int failure_errno_ = 0;

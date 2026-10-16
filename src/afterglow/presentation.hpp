@@ -166,6 +166,9 @@ struct Presentation
     std::string dev_status;
     // The open sheet's page name ("" when none), reported by the dev status request.
     std::string page;
+    // Seconds to seek by, added up by quick presses; main.cpp hands it to
+    // Companion::seek_by and clears it.
+    int seek_seconds = 0;
 };
 
 // Only the UI thread accesses this model. Audio reaches it through Analyzer.

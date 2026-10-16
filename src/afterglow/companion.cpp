@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "afterglow/companion.hpp"
+#include "afterglow/controls.hpp"
 #include "afterglow/ma_socket.hpp"
 #include "platform/ps5/system.hpp"
 #include <algorithm>
@@ -391,6 +392,9 @@ CompanionTrack parse_track(std::string_view item)
     auto album = field(media, "album");
     out.album = text_field(album, "name");
     int year = number(album, "year");
+    // An album item carries its own year; a song's comes from its album.
+    if (out.media_type == "album")
+        year = number(media, "year", year);
     if (year > 0)
         out.year = std::to_string(year);
     auto metadata = field(media, "metadata");
@@ -756,9 +760,12 @@ Request action_request(const CompanionAction &action, const CompanionSnapshot &t
         action.kind == CompanionActionKind::group_remove)
         return group_request(action, target);
     // A player setting, not a queue command: no playing queue is needed.
+    // text/option name the player and key the value was set for, so a change
+    // still waiting when this PS5's player changes goes to its own player.
     if (action.kind == CompanionActionKind::static_delay)
-        return static_delay_request(target.static_delay_player, target.static_delay_key,
-                                    action.value);
+        return action.text.empty() ? static_delay_request(target.static_delay_player,
+                                                          target.static_delay_key, action.value)
+                                   : static_delay_request(action.text, action.option, action.value);
     if (!target.connected || target.queue_id.empty())
         return {{}, {}, "No connected player. Choose a playback source."};
     if (action.text.size() > 4096 || action.option.size() > 32)
@@ -986,6 +993,37 @@ Request static_delay_request(std::string_view player_id, std::string_view key, i
                 std::to_string(std::clamp(milliseconds, 0, 5000)) + "}}",
             {}};
 }
+VolumeTarget volume_target(std::string_view player)
+{
+    VolumeTarget target;
+    target.player_id = text_field(player, "player_id");
+    // A sync leader lists itself among its members; only the others make a group.
+    for (auto member : elements(field(player, "group_members"), 64))
+        if (string_value(member) != target.player_id)
+            target.group = true;
+    target.group = target.group || text_field(player, "type") == "group";
+    // A group's own volume_level is null; group_volume is the level it shows.
+    const int own = number(player, "volume_level", 100);
+    target.level = std::clamp(target.group ? number(player, "group_volume", own) : own, 0, 100);
+    return target;
+}
+Request volume_request(const VolumeTarget &target, int level)
+{
+    if (target.player_id.empty() || target.player_id.size() > 256)
+        return {{}, {}, "No speaker to set the volume on"};
+    return {target.group ? "players/cmd/group_volume" : "players/cmd/volume_set",
+            "{\"player_id\":" + json_quote(target.player_id) +
+                ",\"volume_level\":" + std::to_string(std::clamp(level, 0, 100)) + "}",
+            {}};
+}
+RelayCheck relay_check(std::int64_t now_us, std::int64_t opened_us, std::int64_t last_wave_us,
+                       bool streaming)
+{
+    if (streaming)
+        return now_us - last_wave_us >= kRelayStallUs ? RelayCheck::reconnect : RelayCheck::keep;
+    return now_us - std::max(last_wave_us, opened_us) > kRelayStallUs ? RelayCheck::skip
+                                                                      : RelayCheck::keep;
+}
 } // namespace companion_wire
 
 struct Companion::Impl
@@ -994,7 +1032,9 @@ struct Companion::Impl
     {
         std::string id, name, synced, group, source;
         bool available = false;
+        // The level a volume press moves: group_volume for a group or sync leader.
         int volume = 100;
+        bool grouped = false;
     };
     struct Queue
     {
@@ -1026,7 +1066,6 @@ struct Companion::Impl
     std::map<std::string, Player> players;
     std::map<std::string, Queue> queues;
     std::map<std::string, std::int64_t> skipped;
-    std::deque<Command> commands;
     BrowseRequest browse_wanted;
     bool browse_pending = false;
     std::uint64_t browse_generation = 0;
@@ -1060,12 +1099,50 @@ struct Companion::Impl
     bool delay_reading = false, delay_refresh = false;
     std::int64_t next_delay_read = 0;
     int delay_requested = -1;
+    // The player a static delay save went to, and which read a reply answers:
+    // a delay never lands on another player than its own (LG 1.4.3).
+    std::string delay_requested_player;
+    std::uint64_t delay_generation = 0;
     std::deque<Wave> waves;
     companion_wire::WaveResampler resampler;
     std::int64_t offset = 0, best_rtt = 10000000, clock_sample = 0;
     bool clock_ready = false;
     std::int64_t relay_opened = 0, last_wave = 0, next_ping = 0, next_poll = 0;
     Socket api{stopping}, relay{stopping};
+    // Frames arrived on this relay socket and no stream/end followed; relay_stalls
+    // counts the sockets replaced because frames stopped (LG 1.4.4).
+    bool relay_streaming = false;
+    int relay_stalls = 0;
+    // Transport presses (mutex): one command in flight, the rest combined.
+    ControlQueue controls;
+    std::string control_inflight;
+    Assumed volume_sent, position_sent, playing_sent;
+    // The settling action's id (CompanionAction::id), reported in action_done.
+    std::uint64_t action_inflight_id = 0;
+    // The token the last auth on the API socket carried; a refusal of a token
+    // replaced since (set_token) is not a refusal of this PS5's sign-in.
+    std::string auth_sent;
+
+    std::string current_token()
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        return token;
+    }
+    bool send_auth()
+    {
+        auth_sent = current_token();
+        return call("auth", "auth", "{\"token\":" + json_quote(auth_sent) + "}");
+    }
+    // Caller holds the mutex. An action settled: report it once by its id.
+    void action_settled(bool ok)
+    {
+        if (action_inflight_id != 0)
+        {
+            state.action_done = action_inflight_id;
+            state.action_done_ok = ok;
+        }
+        action_inflight_id = 0;
+    }
 
     bool call(const std::string &id, const std::string &command, const std::string &args = "{}")
     {
@@ -1095,7 +1172,9 @@ struct Companion::Impl
         p.group = text_field(raw, "active_group");
         p.source = text_field(raw, "active_source");
         p.available = field(raw, "available") == "true";
-        p.volume = number(raw, "volume_level", 100);
+        const auto volume = companion_wire::volume_target(raw);
+        p.volume = volume.level;
+        p.grouped = volume.group;
         players[p.id] = p;
     }
     void read_queue(std::string_view raw)
@@ -1248,6 +1327,7 @@ struct Companion::Impl
                 std::lock_guard<std::mutex> lock(mutex);
                 state.action_busy = false;
                 state.action_error = state.action_status = "Favourite was not found in the library";
+                action_settled(false);
                 action_inflight.clear();
                 return true;
             }
@@ -1256,7 +1336,9 @@ struct Companion::Impl
             state.action_error =
                 field(raw, "error_code").empty() ? "" : "Music Assistant rejected this action";
             state.action_status = state.action_error.empty() ? "Done" : state.action_error;
-            if (delay_requested >= 0 && state.action_error.empty())
+            action_settled(state.action_error.empty());
+            if (delay_requested >= 0 && state.action_error.empty() &&
+                delay_requested_player == state.static_delay_player)
                 state.static_delay_ms = delay_requested;
             delay_requested = -1;
             action_inflight.clear();
@@ -1264,8 +1346,15 @@ struct Companion::Impl
             enrichment_key.clear();
             return true;
         }
+        if (!control_inflight.empty() && id == control_inflight)
+        {
+            control_inflight.clear();
+            std::lock_guard<std::mutex> lock(mutex);
+            controls.settle();
+            return true;
+        }
         if (!field(raw, "server_version").empty() && id.empty())
-            return call("auth", "auth", "{\"token\":" + json_quote(token) + "}");
+            return send_auth();
         if (id == "auth")
         {
             authenticated = field(result, "authenticated") == "true";
@@ -1276,7 +1365,8 @@ struct Companion::Impl
             if (!authenticated)
             {
                 std::lock_guard<std::mutex> lock(mutex);
-                state.token_rejected = true;
+                // A token renewed since is no sign-out: reconnect with the fresh one.
+                state.token_rejected = auth_sent == token;
                 state.status = "Music Assistant token rejected";
                 return false;
             }
@@ -1501,17 +1591,22 @@ struct Companion::Impl
         }
         next_delay_read = now + 60000000;
         delay_probe = 0;
+        ++delay_generation;
         delay_reading = !delay_candidates.empty();
         return !delay_reading || call_delay();
     }
+    std::string delay_id() const
+    {
+        return "delay-" + std::to_string(delay_generation) + "-" + std::to_string(delay_probe);
+    }
     bool call_delay()
     {
-        return call("delay-" + std::to_string(delay_probe), "config/players/get",
+        return call(delay_id(), "config/players/get",
                     "{\"player_id\":" + json_quote(delay_candidates[delay_probe]) + "}");
     }
     void read_delay(const std::string &id, std::string_view result)
     {
-        if (id != "delay-" + std::to_string(delay_probe))
+        if (id != delay_id())
             return;
         std::string key;
         int milliseconds = 0;
@@ -1554,6 +1649,7 @@ struct Companion::Impl
             waves.push_back(w);
             state.streaming = true;
             last_wave = now;
+            relay_streaming = true;
             return true;
         }
         if (opcode != 1)
@@ -1566,7 +1662,11 @@ struct Companion::Impl
             next_ping = 0;
         }
         else if (type == "stream/clear" || type == "stream/end")
+        {
+            // A new track (clear) keeps the stream; only an end stops the stall watch.
+            relay_streaming = relay_streaming && type == "stream/clear";
             clear_wave();
+        }
         else if (type == "error")
         {
             clear_wave();
@@ -1657,15 +1757,23 @@ struct Companion::Impl
         }
         if (relay_for == current)
         {
-            if (now - std::max(last_wave, relay_opened) > 10000000)
+            const auto check =
+                companion_wire::relay_check(now, relay_opened, last_wave, relay_streaming);
+            if (check == companion_wire::RelayCheck::keep)
+                return;
+            if (check == companion_wire::RelayCheck::skip)
             {
                 skipped[current] = now + 15000000;
                 close_relay();
+                return;
             }
-            return;
+            // Frames stopped mid-stream: a fresh socket, opened below.
+            sys::log("[Afterglow] relay: no frames for 10 s while playing; reconnecting (%d)",
+                     ++relay_stalls);
         }
         close_relay();
         relay_authenticated = false;
+        relay_streaming = false;
         relay_opened = now;
         last_wave = 0;
         {
@@ -1674,7 +1782,7 @@ struct Companion::Impl
             best_rtt = 10000000;
         }
         if (relay.open(host, port, "/milkdrop_visualizer?player=" + url_encode(current)) &&
-            relay.send_text("{\"type\":\"auth\",\"token\":" + json_quote(token) + "}"))
+            relay.send_text("{\"type\":\"auth\",\"token\":" + json_quote(current_token()) + "}"))
             relay_for = current;
         else
         {
@@ -1809,36 +1917,92 @@ struct Companion::Impl
         const auto wire = companion_wire::queue_items_request(current, items_offset);
         return call(items_request, wire.command, wire.args);
     }
-    bool send_command(Command command)
+    // The queue and the speaker transport presses act on.
+    const std::string &control_queue() const
     {
-        if (current.empty())
+        return current;
+    }
+    const std::string &control_player() const
+    {
+        return displayed_player;
+    }
+    // Sends the next waiting press once the one before it has been answered.
+    bool pump_controls(std::int64_t now)
+    {
+        std::optional<ControlJob> job;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            job = controls.take(now);
+        }
+        if (!job)
             return true;
-        std::string name;
-        switch (command)
+        const auto request = control_request(*job, now);
+        if (request.command.empty())
         {
-        case Command::toggle:
-            name = queues[current].state == "playing" ? "pause" : "play";
-            break;
-        case Command::next:
-            name = "next";
-            break;
-        case Command::previous:
-            name = "previous";
-            break;
-        case Command::volume_up:
-        case Command::volume_down:
+            std::lock_guard<std::mutex> lock(mutex);
+            controls.settle();
+            return true;
+        }
+        control_inflight = "control-" + std::to_string(++sequence);
+        return call(control_inflight, request.command, request.args);
+    }
+    // A press's command, worked out when it is sent so that steps build on
+    // the value sent before (LG playback.js build()). Empty: nothing to send.
+    companion_wire::Request control_request(const ControlJob &job, std::int64_t now)
+    {
+        const auto &queue_id = control_queue();
+        const auto q = queues.find(queue_id);
+        if (queue_id.empty() || q == queues.end())
+            return {};
+        const auto &queue = q->second;
+        const bool playing = queue.state == "playing";
+        const std::string target = "{\"queue_id\":" + json_quote(queue_id);
+        switch (job.kind)
         {
-            const int before =
-                players.contains(displayed_player) ? players[displayed_player].volume : 100;
-            return call("control", "players/cmd/volume_set",
-                        "{\"player_id\":" + json_quote(displayed_player) + ",\"volume_level\":" +
-                            std::to_string(std::clamp(
-                                before + (command == Command::volume_up ? 5 : -5), 0, 100)) +
-                            "}");
+        case Control::toggle:
+        {
+            // A second press before the queue reports the first one undoes it.
+            const bool was = playing_sent.value_or(queue_id, playing ? 1 : 0, now) != 0;
+            playing_sent.sent(queue_id, was ? 0 : 1, now);
+            return {was ? "player_queues/pause" : "player_queues/play", target + "}", {}};
+        }
+        case Control::next:
+            return {"player_queues/next", target + "}", {}};
+        case Control::previous:
+            return {"player_queues/previous", target + "}", {}};
+        case Control::volume:
+        {
+            const auto p = players.find(control_player());
+            if (job.amount == 0 || p == players.end())
+                return {};
+            companion_wire::VolumeTarget volume;
+            volume.player_id = p->first;
+            volume.group = p->second.grouped;
+            volume.level = p->second.volume;
+            const int level =
+                std::clamp(volume_sent.value_or(p->first, volume.level, now) + job.amount, 0, 100);
+            volume_sent.sent(p->first, level, now);
+            return companion_wire::volume_request(volume, level);
+        }
+        case Control::seek:
+        {
+            if (job.amount == 0 || queue.track.duration <= 0)
+                return {};
+            const auto key = queue_id + ":" + queue.item_id;
+            const auto since = [&](std::int64_t at)
+            { return playing ? static_cast<double>(now - at) / 1000000.0 : 0.0; };
+            const double base = position_sent.fresh(key, now)
+                                    ? position_sent.value() + since(position_sent.sent_at())
+                                    : queue.elapsed + since(queue.elapsed_at);
+            const int position = std::clamp(static_cast<int>(std::lround(base)) + job.amount, 0,
+                                            queue.track.duration);
+            position_sent.sent(key, position, now);
+            return {"player_queues/seek",
+                    target + ",\"position\":" + std::to_string(position) + "}",
+                    {}};
         }
         }
-        return call("control", "player_queues/" + name,
-                    "{\"queue_id\":" + json_quote(current) + "}");
+        return {};
     }
     void run()
     {
@@ -1902,10 +2066,10 @@ struct Companion::Impl
                         (now >= next_account || favorites_pending || device_save_due(now)))
                     {
                         account_pending = true;
-                        okay =
-                            okay && call("auth", "auth", "{\"token\":" + json_quote(token) + "}");
+                        okay = okay && send_auth();
                     }
-                    if (!delay_reading && (now >= next_delay_read || delay_refresh_wanted()))
+                    // A new own player pre-empts a read in progress (its reply is then ignored).
+                    if (delay_refresh_wanted() || (!delay_reading && now >= next_delay_read))
                         okay = okay && request_delay(now);
                     choose(now);
                     follow_playing_index();
@@ -1943,13 +2107,7 @@ struct Companion::Impl
                             next_ping = now + (now - relay_opened < 2000000 ? 250000 : 5000000);
                         }
                     }
-                    std::deque<Command> pending;
-                    {
-                        std::lock_guard<std::mutex> lock(mutex);
-                        pending.swap(commands);
-                    }
-                    for (auto c : pending)
-                        okay = okay && send_command(c);
+                    okay = okay && pump_controls(now);
                     companion_wire::Request browse_request, action_request;
                     std::string browse_id, action_id;
                     {
@@ -1995,6 +2153,7 @@ struct Companion::Impl
                             state.action_error =
                                 "No action confirmation. Check playback before retrying.";
                             state.action_status = state.action_error;
+                            action_settled(false);
                             action_inflight.clear();
                         }
                     }
@@ -2019,8 +2178,11 @@ struct Companion::Impl
                     state.action_error = state.action_status =
                         "Disconnected before confirmation. Check playback before retrying.";
                 state.action_busy = false;
+                action_settled(false);
                 action_pending = {};
                 action_inflight.clear();
+                controls.clear();
+                control_inflight.clear();
                 if (state.browse_loading)
                     state.browse_error = "Music Assistant disconnected. Try again.";
                 state.browse_loading = false;
@@ -2028,8 +2190,8 @@ struct Companion::Impl
                 browse_inflight.clear();
                 ++browse_generation;
             }
-            // A refused token stays refused: wait for stop() and a fresh start().
-            while (rejected && !stopping)
+            // A refused token stays refused until stop() or a renewed token (set_token).
+            while (rejected && !stopping && current_token() == auth_sent)
                 poll(nullptr, 0, 100);
             for (int i = 0; i < 30 && !stopping; ++i)
                 poll(nullptr, 0, 100);
@@ -2150,8 +2312,35 @@ void Companion::restore_pending_favorites(std::string_view journal)
 void Companion::command(Command command)
 {
     std::lock_guard<std::mutex> lock(impl_->mutex);
-    if (impl_->commands.size() < 32)
-        impl_->commands.push_back(command);
+    switch (command)
+    {
+    case Command::toggle:
+        impl_->controls.press(Control::toggle);
+        break;
+    case Command::next:
+        impl_->controls.press(Control::next);
+        break;
+    case Command::previous:
+        impl_->controls.press(Control::previous);
+        break;
+    case Command::volume_up:
+    case Command::volume_down:
+        impl_->controls.press(Control::volume, command == Command::volume_up ? 5 : -5);
+        break;
+    }
+}
+void Companion::seek_by(int seconds)
+{
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    impl_->controls.press(Control::seek, std::clamp(seconds, -3600, 3600));
+}
+void Companion::set_token(const std::string &token)
+{
+    if (token.empty() || token.size() > 8192)
+        return;
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    impl_->token = token;
+    impl_->state.token_rejected = false;
 }
 void Companion::browse(const BrowseRequest &request)
 {
@@ -2173,17 +2362,30 @@ void Companion::browse(const BrowseRequest &request)
 bool Companion::action(const CompanionAction &action)
 {
     std::lock_guard<std::mutex> lock(impl_->mutex);
-    if (impl_->state.action_busy)
+    // A refused action settles at once, so whoever waits on its id hears of it.
+    const auto refuse = [&]
+    {
+        if (action.id != 0)
+        {
+            impl_->state.action_done = action.id;
+            impl_->state.action_done_ok = false;
+        }
         return false;
+    };
+    if (impl_->state.action_busy)
+        return refuse();
     auto request = companion_wire::action_request(action, impl_->state);
     impl_->state.action_error = request.error;
     impl_->state.action_status = request.error.empty() ? "Working" : request.error;
     if (!request.error.empty())
-        return false;
+        return refuse();
     impl_->delay_requested =
         action.kind == CompanionActionKind::static_delay ? std::clamp(action.value, 0, 5000) : -1;
+    impl_->delay_requested_player =
+        action.text.empty() ? impl_->state.static_delay_player : action.text;
     impl_->action_pending = std::move(request);
     impl_->state.action_busy = true;
+    impl_->action_inflight_id = action.id;
     return true;
 }
 void Companion::set_queue_offset(int offset)
@@ -2228,6 +2430,10 @@ void Companion::set_own_player(const std::string &sendspin_id, const std::string
     impl_->own_player = player_id;
     impl_->state.own_player_id = player_id;
     impl_->delay_refresh = true;
+    // The new player's own delay is read afresh; until then there is none to show.
+    impl_->state.static_delay_ms = -1;
+    impl_->state.static_delay_player.clear();
+    impl_->state.static_delay_key.clear();
 }
 void Companion::set_account_device(const std::string &device_id)
 {
