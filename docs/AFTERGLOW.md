@@ -472,6 +472,8 @@ AFTERGLOW_PREVIEW=1 AFTERGLOW_NIGHT=1 tools/host-snapshots.sh build/afterglow-ni
 AFTERGLOW_PREVIEW=1 AFTERGLOW_LYRICS=karaoke tools/host-snapshots.sh build/afterglow-karaoke afterglow
 AFTERGLOW_PREVIEW=1 AFTERGLOW_VISUAL=1 AFTERGLOW_BEAT=1 tools/host-snapshots.sh build/afterglow-halo afterglow
 AFTERGLOW_PREVIEW=1 AFTERGLOW_TINT=100 tools/host-snapshots.sh build/afterglow-tint afterglow
+# Join, Move here, what each speaker plays and Volume for each speaker.
+AFTERGLOW_PREVIEW=1 AFTERGLOW_SPEAKERS=1 HUI_ONLY=queue,players tools/host-snapshots.sh build/afterglow-speakers afterglow
 tools/host-snapshots.sh build/afterglow-offline afterglow
 CXX=clang++-18 bash tests/integration/run-sendspin-smoke.sh
 CXX=clang++-18 bash tests/integration/run-companion-smoke.sh

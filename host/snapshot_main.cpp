@@ -347,6 +347,42 @@ void answer_afterglow_preview()
     model.companion.browse_has_more = false;
 }
 
+// Join, Move here, what each speaker plays and one speaker's volume: the
+// listening room plays with the kitchen, this PS5 can join it or take it, the
+// hallway's volume is fixed and the den is paused on a song of its own.
+void preview_speakers(hui::afterglow::CompanionSnapshot &c)
+{
+    const auto speaker = [](const char *id, const char *name, const char *activity, int volume)
+    {
+        hui::afterglow::CompanionPlayer p{id, name};
+        p.type = "player";
+        p.provider = "preview";
+        p.activity = activity;
+        p.volume = volume;
+        p.volume_settable = volume >= 0;
+        return p;
+    };
+    const char *song = "Slow Current — Afterglow preview";
+    auto room = speaker("preview-room", "Listening room", song, 60);
+    room.can_set_members = true;
+    room.can_group_with = {"preview"};
+    room.group_members = {"preview-room", "preview-kitchen", "preview-hall"};
+    auto kitchen = speaker("preview-kitchen", "Kitchen", song, 35);
+    kitchen.synced_to = "preview-room";
+    auto hall = speaker("preview-hall", "Hallway", song, -1);
+    hall.synced_to = "preview-room";
+    auto den = speaker("preview-den", "Den", "Paused · Evening Light — Afterglow preview", 40);
+    den.provider = "other";
+    auto own = speaker("preview-ps5", "Afterglow PS5", "Idle", 75);
+    own.takes_music = true;
+    c.players = {den, hall, kitchen, room, own};
+    c.own_player_id = "preview-ps5";
+    c.can_move_here = true;
+    c.can_join = true;
+    c.join_leader = "preview-room";
+    c.join_leader_name = "Listening room";
+}
+
 // An illustrative Home glance for previews; AFTERGLOW_HOME=connecting, offline,
 // auth or unset shows that state instead.
 void preview_home(hui::afterglow::HomeSnapshot &home)
@@ -444,6 +480,12 @@ int main(int argc, char **argv)
             model.preferences.visual_style = std::atoi(visual);
         model.companion.players = {{"preview-room", "Listening room"},
                                    {"preview-kitchen", "Kitchen"}};
+        // AFTERGLOW_SPEAKERS=1: a house to join, move from and set volumes in.
+        if (std::getenv("AFTERGLOW_SPEAKERS") != nullptr)
+        {
+            preview_speakers(model.companion);
+            model.preferences.follow = true;
+        }
         model.companion.track.title = model.title;
         model.companion.track.artist = model.artist;
         model.companion.track.album = model.album;
