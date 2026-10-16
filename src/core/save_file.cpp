@@ -108,10 +108,13 @@ Decoded decode(Kind kind, std::string_view data)
     return result;
 }
 
-std::string write_atomic(const std::string &path, std::string_view data)
+std::string write_atomic(const std::string &path, std::string_view data, unsigned mode)
 {
     const std::string temporary = path + ".tmp";
-    const int fd = ::open(temporary.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    // A temporary left by an interrupted write keeps its old mode: start afresh.
+    ::unlink(temporary.c_str());
+    const int fd =
+        ::open(temporary.c_str(), O_WRONLY | O_CREAT | O_TRUNC, static_cast<mode_t>(mode));
     if (fd < 0)
         return errno_text("open");
     std::size_t written = 0;

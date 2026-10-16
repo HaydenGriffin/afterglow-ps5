@@ -340,7 +340,8 @@ std::string save_auth(const std::string &path, const StoredAuth &auth)
     const auto slash = path.rfind('/');
     if (slash != std::string::npos && slash > 0)
         save::ensure_directory(path.substr(0, slash));
-    return save::write_atomic(path, save::encode(save::Kind::prefs, kAuthVersion, payload));
+    // The token signs in as this user: readable by the owner only.
+    return save::write_atomic(path, save::encode(save::Kind::prefs, kAuthVersion, payload), 0600);
 }
 std::string remove_auth(const std::string &path)
 {
