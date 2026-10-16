@@ -232,17 +232,22 @@ std::vector<SheetRow> lyrics_line_rows(const Presentation &s, int &focus)
     // The line on screen: read the lyrics at an earlier time when they show later.
     const int current = current_lyric(lines, s.companion.elapsed - offset / 1000.0);
     focus = 0;
+    int sung = -1; // the row of the line on screen, or of the last one sung before a gap
     for (std::size_t i = 0; i < lines.size() && i < 100000; ++i)
     {
         if (lines[i].text.find_first_not_of(" \t") == std::string::npos)
             continue;
         if (static_cast<int>(i) <= current)
-            focus = static_cast<int>(rows.size());
+            sung = static_cast<int>(rows.size());
         auto row = make_row(lines[i].text, lyric_line_row + static_cast<int>(i),
                             clock_label(line_seek_position(lines[i].seconds, offset, t.duration)));
-        row.chosen = static_cast<int>(i) == current;
         row.item.disabled = !s.companion.connected;
         rows.push_back(std::move(row));
+    }
+    if (sung >= 0)
+    {
+        focus = sung;
+        rows[static_cast<std::size_t>(sung)].chosen = true;
     }
     return rows;
 }
