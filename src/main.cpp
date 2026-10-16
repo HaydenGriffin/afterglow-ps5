@@ -801,8 +801,8 @@ int main()
                     renderer.batch().create_texture(image.width, image.height, image.rgba.data());
         }
         milkdrop->set_album_colours(model.artwork_color, model.artwork_secondary);
-        milkdrop->set_song(afterglow::song_key(model.companion.track.queue_item_id, model.title,
-                                               model.artist));
+        milkdrop->set_song(
+            afterglow::song_key(model.companion.track.queue_item_id, model.title, model.artist));
         thumbnails->pump(thumb_upload, thumb_release);
         const auto count = pad.read(samples);
         auto input = tracker.update(std::span<const PadSample>(samples.data(), count),

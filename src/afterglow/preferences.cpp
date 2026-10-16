@@ -202,7 +202,8 @@ constexpr std::array<std::string_view, 37> kSyncedKeys = {
     "lyrics_offset_ms", "trim_ms",        "preset_seconds", "track_info",       "sequential",
     "skip_slow",        "minimum_fps",    "tint_strength",  "beat_sensitivity", "night_register",
     "karaoke",          "lightbar",       "lightbar_beat",  "online_lyrics",    "line_position",
-    "line_background",  "line_size",      "stage_position", "stage_background", "stage_size", "cover_art", "preset_change"};
+    "line_background",  "line_size",      "stage_position", "stage_background", "stage_size",
+    "cover_art",        "preset_change"};
 bool synced_key(std::string_view key)
 {
     return std::find(kSyncedKeys.begin(), kSyncedKeys.end(), key) != kSyncedKeys.end();

@@ -40,24 +40,22 @@ float sample(const std::vector<std::uint8_t> &rgba, int width, int height, float
     return top + (bottom - top) * fy;
 }
 
-// A kCoverSize picture from the square at (left, top, side) of the source;
-// flip puts the first source row at the bottom.
+// A kCoverSize picture from the square at (left, top, side) of the source.
 std::vector<std::uint8_t> scaled(const std::vector<std::uint8_t> &rgba, int width, int height,
-                                 float left, float top, float side, bool wrap, bool flip)
+                                 float left, float top, float side, bool wrap)
 {
     std::vector<std::uint8_t> out(kCoverBytes);
     const float step = side / kCoverSize;
     for (int y = 0; y < kCoverSize; ++y)
     {
-        const int row = flip ? kCoverSize - 1 - y : y;
         const float sy = top + (static_cast<float>(y) + 0.5f) * step - 0.5f;
         for (int x = 0; x < kCoverSize; ++x)
         {
             const float sx = left + (static_cast<float>(x) + 0.5f) * step - 0.5f;
-            auto *pixel = out.data() + static_cast<std::size_t>((row * kCoverSize + x) * 4);
+            auto *pixel = out.data() + static_cast<std::size_t>((y * kCoverSize + x) * 4);
             for (int c = 0; c < 3; ++c)
-                pixel[c] = static_cast<std::uint8_t>(
-                    std::lround(std::clamp(sample(rgba, width, height, sx, sy, c, wrap), 0.0f, 255.0f)));
+                pixel[c] = static_cast<std::uint8_t>(std::lround(
+                    std::clamp(sample(rgba, width, height, sx, sy, c, wrap), 0.0f, 255.0f)));
             pixel[3] = 255;
         }
     }
@@ -65,21 +63,20 @@ std::vector<std::uint8_t> scaled(const std::vector<std::uint8_t> &rgba, int widt
 }
 } // namespace
 
-std::vector<std::uint8_t> cover_pixels(const std::vector<std::uint8_t> &rgba, int width,
-                                       int height)
+std::vector<std::uint8_t> cover_pixels(const std::vector<std::uint8_t> &rgba, int width, int height)
 {
     if (width <= 0 || height <= 0 ||
         rgba.size() != static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4)
         return {};
     const int side = std::min(width, height);
     return scaled(rgba, width, height, static_cast<float>(width - side) / 2,
-                  static_cast<float>(height - side) / 2, static_cast<float>(side), false, true);
+                  static_cast<float>(height - side) / 2, static_cast<float>(side), false);
 }
 
 std::vector<std::uint8_t> cover_clouds()
 {
     return scaled(cloud_texture(), kCloudTextureSize, kCloudTextureSize, 0, 0,
-                  static_cast<float>(kCloudTextureSize), true, false);
+                  static_cast<float>(kCloudTextureSize), true);
 }
 
 void blend_pixels(const std::vector<std::uint8_t> &from, const std::vector<std::uint8_t> &to,

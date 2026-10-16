@@ -464,6 +464,10 @@ void Milkdrop::load(std::size_t index, bool smooth)
         switch_pending_ = true;
         return;
     }
+    // A recolour reloads the same preset; only another one starts the gaps of
+    // Each song and On big moments.
+    if (index != current_)
+        changer_.changed(now_ms());
     current_ = index;
     applied_ = wanted_colouring();
     if (applied_.strength > 0)
@@ -471,7 +475,6 @@ void Milkdrop::load(std::size_t index, bool smooth)
     const auto started = sys::monotonic_us();
     projectm_load_preset_data(handle_, data.c_str(), smooth);
     loaded_at_ = sys::monotonic_us();
-    changer_.changed(now_ms());
     timing_first_frame_ = true;
     if (!switch_pending_)
         failures_in_row_ = 0;

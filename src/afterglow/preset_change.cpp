@@ -68,8 +68,9 @@ bool step_preset_change(Preferences &preferences, int direction)
         preferences.preset_change = 1;
         return true;
     }
-    const int next = std::clamp(preferences.preset_seconds + (direction > 0 ? kTimerStep : -kTimerStep),
-                                kTimerMin, kTimerMax);
+    const int next =
+        std::clamp(preferences.preset_seconds + (direction > 0 ? kTimerStep : -kTimerStep),
+                   kTimerMin, kTimerMax);
     if (next == preferences.preset_seconds)
         return false;
     preferences.preset_seconds = next;

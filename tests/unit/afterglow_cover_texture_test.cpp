@@ -17,7 +17,7 @@ std::uint8_t red_at(const std::vector<std::uint8_t> &pixels, int x, int y)
 }
 } // namespace
 
-TEST(AfterglowCoverTexture, MiddleSquareScaledWithTheTopRowLast)
+TEST(AfterglowCoverTexture, MiddleSquareScaledWithTheTopRowFirst)
 {
     // 300 x 200: red 0 in the left and right 50 columns, the top half of the
     // middle square red 200, the bottom half red 100.
@@ -28,8 +28,9 @@ TEST(AfterglowCoverTexture, MiddleSquareScaledWithTheTopRowLast)
             rgba[static_cast<std::size_t>((y * w + x) * 4)] = y < 100 ? 200 : 100;
     const auto pixels = cover_pixels(rgba, w, h);
     ASSERT_EQ(pixels.size(), kBytes);
-    EXPECT_EQ(red_at(pixels, kCoverSize / 2, kCoverSize - 1), 200) << "the picture's top is the last row";
-    EXPECT_EQ(red_at(pixels, kCoverSize / 2, 0), 100);
+    EXPECT_EQ(red_at(pixels, kCoverSize / 2, 0), 200) << "the picture's top is the first row";
+    EXPECT_EQ(red_at(pixels, kCoverSize / 2, kCoverSize - 1), 100);
+    EXPECT_EQ(red_at(pixels, 2, 2), 200) << "the side columns are cropped away";
     EXPECT_EQ(pixels[3], 255);
     EXPECT_TRUE(cover_pixels(rgba, w, h + 1).empty());
     EXPECT_TRUE(cover_pixels({}, 0, 0).empty());

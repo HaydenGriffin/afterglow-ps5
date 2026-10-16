@@ -16,9 +16,12 @@ namespace hui::afterglow
 // LG Afterglow does the same with the same numbers (src/cover-art.js).
 constexpr int kCoverSize = 512;
 
-// RGBA8 kCoverSize x kCoverSize: the middle square of an RGBA picture (first
-// row at the top), scaled bilinearly, first row at the BOTTOM as OpenGL and
-// projectM expect. Empty for an empty or malformed picture.
+// RGBA8 kCoverSize x kCoverSize: the middle square of an RGBA picture, scaled
+// bilinearly, first row still at the top. projectM's header asks for the
+// bottom row first, but it loads the presets' own pictures from files without
+// flipping them (stbi_load), so presets were written for top-first and an
+// upright cover only looks upright that way (as in Butterchurn on LG). Empty
+// for an empty or malformed picture.
 std::vector<std::uint8_t> cover_pixels(const std::vector<std::uint8_t> &rgba, int width,
                                        int height);
 // The generated clouds at kCoverSize, scaled up so they still tile.
