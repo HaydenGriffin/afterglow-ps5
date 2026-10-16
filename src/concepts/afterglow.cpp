@@ -323,6 +323,8 @@ class Afterglow final : public app::Concept
         if (state.scanning && !was_scanning_)
             close_all();
         was_scanning_ = state.scanning;
+        // The key that stops a scan does only that, not its shortcut too.
+        InputFrame keys = input;
         if (state.scanning &&
             (input.is_pressed(Action::back) || input.is_pressed(Action::menu) ||
              input.is_pressed(Action::jump_prev) || input.is_pressed(Action::jump_next) ||
@@ -330,6 +332,8 @@ class Afterglow final : public app::Concept
         {
             state.scanning = false;
             state.show_toast("Preset scan stopped");
+            keys.pressed = 0;
+            keys.nav = Direction::none;
         }
 
         close_hold_ = input.is_held(Action::back) ? close_hold_ + dt : 0;
@@ -339,13 +343,13 @@ class Afterglow final : public app::Concept
         // A delay step taken just before the sheet closed still saves.
         panel_.tick(dt);
         if (sheet_open_)
-            update_sheet(input, dt, feedback);
+            update_sheet(keys, dt, feedback);
         else if (transport_open_)
-            update_transport(input, dt, feedback);
-        else if (!idle_input(input, feedback))
-            update_listening(input, feedback);
+            update_transport(keys, dt, feedback);
+        else if (!idle_input(keys, feedback))
+            update_listening(keys, feedback);
         if (!sheet_open_)
-            update_shortcuts(input, feedback);
+            update_shortcuts(keys, feedback);
         state.page = sheet_open_ ? panel_.page_name() : "";
 
         update_layers(dt);
