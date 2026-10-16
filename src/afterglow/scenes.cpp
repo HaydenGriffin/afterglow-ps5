@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <string_view>
 
 namespace hui::afterglow
 {
@@ -294,7 +295,14 @@ IdleCopy idle_copy(const Presentation &state)
         return {"Ready when you are.", "Add your Music Assistant server",
                 "Press Options, then Settings, Account, Sign in."};
     if (!state.connected)
-        return {"Ready when you are.", "Connecting to Music Assistant…", state.status};
+    {
+        // The connection's own status adds a reason (a rejected token, a retry
+        // time); when it only says it is connecting, the line already says so.
+        constexpr std::string_view kConnecting = "Connecting to Music Assistant";
+        const bool repeats = state.status.empty() || state.status.rfind(kConnecting, 0) == 0;
+        return {"Ready when you are.", std::string(kConnecting) + "…",
+                repeats ? std::string() : state.status};
+    }
     return {"Ready when you are.", "Choose Afterglow PS5 in Music Assistant",
             state.companion_configured ? "Or press Options to browse your music." : ""};
 }
