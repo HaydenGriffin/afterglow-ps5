@@ -40,6 +40,9 @@ GPL-3.0-or-later.
 - **Queue.** Play, move and remove upcoming songs; shuffle, repeat, crossfade, keep playing when the queue ends,
   volume and sleep timer. **Playing on** picks the speaker, and picking a silent one moves the music there
   (**Play on this PS5** brings it to the console). **Speakers together** joins or leaves a sync group.
+- **Playlists and tonight's programme.** Save the queue as a playlist, or add a song to one, named without a
+  keyboard. With nothing playing, the idle poster offers the evening's songs set as a concert programme, which can
+  be kept as a playlist.
 - **Presets.** 395 MilkDrop presets (393 enabled) through [projectM](https://github.com/projectM-visualizer/projectm). A preset
   scan measures each one on your console and keeps the ones that run smoothly. Presets can take their colours from
   the artwork, and favourites are shared with Music Assistant and your LG TVs.
