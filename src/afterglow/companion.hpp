@@ -194,6 +194,23 @@ struct CompanionSnapshot
     bool action_done_ok = false;
 };
 
+// A plain Music Assistant command for flows that keep their own state
+// (playlists.hpp, programme.hpp): args is a JSON object. The reply carries the
+// raw JSON result, or MA's error_code (kApiNoAnswer when none came in time
+// or the connection dropped) and details.
+constexpr int kApiNoAnswer = -1;
+struct ApiCall
+{
+    std::uint64_t id = 0;
+    std::string command, args;
+};
+struct ApiReply
+{
+    std::uint64_t id = 0;
+    int error_code = 0;
+    std::string result, details;
+};
+
 namespace companion_wire
 {
 // Bounded decoders also used by fixture tests; malformed frames are discarded.
@@ -351,6 +368,11 @@ class Companion
     void set_token(const std::string &token);
     // Retry lyrics: the playing song's details and lyrics are asked for again.
     void retry_lyrics();
+    // Plain calls (ApiCall). Each is answered once by take_replies(): by Music
+    // Assistant, or with kApiNoAnswer after kApiCallSeconds or a disconnect.
+    void call(const ApiCall &call);
+    std::vector<ApiReply> take_replies();
+    static constexpr int kApiCallSeconds = 20;
 
   private:
     struct Impl;

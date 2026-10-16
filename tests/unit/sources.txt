@@ -28,6 +28,9 @@ src/afterglow/ma_socket.cpp
 src/afterglow/night.cpp
 src/afterglow/preset_colour.cpp
 src/afterglow/preferences.cpp
+src/afterglow/playlists.cpp
+src/afterglow/programme.cpp
+src/afterglow/json_slice.cpp
 src/afterglow/preset_quality.cpp
 src/afterglow/preference_store.cpp
 src/afterglow/presentation.cpp
