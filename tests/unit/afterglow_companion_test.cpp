@@ -244,22 +244,23 @@ TEST(AfterglowCompanion, RelayClockRefusesValuesThatWouldOverflow)
     ASSERT_TRUE(companion_wire::relay_clock(now / 1000 - 40, now - 20000 + 1000000, now, clock));
     EXPECT_EQ(clock.rtt_us, 40000);
     EXPECT_EQ(clock.offset_us, 1000000);
-    for (const auto client : {max, min, max / 1000, -1LL, now / 1000 + 1})
+    for (const std::int64_t client : {max, min, max / 1000, std::int64_t{-1}, now / 1000 + 1})
     {
         clock = {};
         EXPECT_FALSE(companion_wire::relay_clock(client, now, now, clock)) << client;
         EXPECT_EQ(clock.offset_us, 0) << client;
     }
-    for (const auto server : {max, min, 0LL, -1LL, companion_wire::kMaxRelayClockUs + 1})
+    for (const std::int64_t server :
+         {max, min, std::int64_t{0}, std::int64_t{-1}, companion_wire::kMaxRelayClockUs + 1})
         EXPECT_FALSE(companion_wire::relay_clock(now / 1000, server, now, clock)) << server;
-    for (const auto at : {min, -1LL, max})
+    for (const std::int64_t at : {min, std::int64_t{-1}, max})
         EXPECT_FALSE(companion_wire::relay_clock(0, 1, at, clock)) << at;
     // Stale: answered more than 10 s after it was sent.
     EXPECT_FALSE(companion_wire::relay_clock(now / 1000 - 10001, now, now, clock));
     EXPECT_TRUE(companion_wire::relay_clock(now / 1000 - 10000, now, now, clock));
     // The extremes still accepted give an offset the monotonic clock can take.
-    ASSERT_TRUE(companion_wire::relay_clock(now / 1000, companion_wire::kMaxRelayClockUs, now,
-                                            clock));
+    ASSERT_TRUE(
+        companion_wire::relay_clock(now / 1000, companion_wire::kMaxRelayClockUs, now, clock));
     EXPECT_LE(clock.offset_us, companion_wire::kMaxRelayClockUs);
     ASSERT_TRUE(companion_wire::relay_clock(now / 1000, 1, now, clock));
     EXPECT_GE(clock.offset_us, -now);

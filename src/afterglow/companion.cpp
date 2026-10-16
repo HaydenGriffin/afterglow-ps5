@@ -1085,8 +1085,8 @@ bool relay_clock(std::int64_t client_ms, std::int64_t server_us, std::int64_t no
     // arithmetic, so no value the server sends can overflow (undefined
     // behaviour): the echo must be a time we could have sent, and the server
     // clock is bounded the way the Sendspin client bounds its own (client.cpp).
-    if (now_us < 0 || now_us > kMaxRelayClockUs || client_ms < 0 || client_ms > now_us / 1000 || server_us <= 0 ||
-        server_us > kMaxRelayClockUs)
+    if (now_us < 0 || now_us > kMaxRelayClockUs || client_ms < 0 || client_ms > now_us / 1000 ||
+        server_us <= 0 || server_us > kMaxRelayClockUs)
         return false;
     const auto sent_us = client_ms * 1000;
     const auto rtt = now_us - sent_us;

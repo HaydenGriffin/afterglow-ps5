@@ -209,10 +209,10 @@ TEST(AfterglowHttpResponse, CapsTheWireNotJustTheBody)
     EXPECT_EQ(http::parse_response(padded, false, max_body).state, State::too_large);
     // A complete response is not refused for bytes after its Content-Length.
     const std::string sized = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]";
-    EXPECT_EQ(http::parse_response(sized + std::string(http::max_wire(max_body), ' '), false,
-                                   max_body)
-                  .state,
-              State::complete);
+    EXPECT_EQ(
+        http::parse_response(sized + std::string(http::max_wire(max_body), ' '), false, max_body)
+            .state,
+        State::complete);
     const auto partial = http::parse_response(sized.substr(0, sized.size() - 1), false, max_body);
     EXPECT_EQ(partial.state, State::incomplete);
     EXPECT_EQ(partial.complete_at, sized.size());

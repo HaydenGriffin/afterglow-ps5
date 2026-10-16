@@ -374,8 +374,7 @@ TEST(AfterglowAccount, LogOutRevokesOnlyThisConsolesOwnToken)
 
 TEST(AfterglowAccount, LogOutSaysWhenTheAccountDidNotRemoveTheToken)
 {
-    const auto listed =
-        "[" + token_json("a", kName, true, "2026-01-01T00:00:00Z", nullptr) + "]";
+    const auto listed = "[" + token_json("a", kName, true, "2026-01-01T00:00:00Z", nullptr) + "]";
     const auto removed = [](const account_wire::Outcome &outcome)
     { return outcome.message.find("was removed from the account") != std::string::npos; };
 
