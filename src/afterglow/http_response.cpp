@@ -60,8 +60,11 @@ State dechunk(std::string_view payload, std::size_t max_body, std::string &body)
         const auto end = payload.find("\r\n");
         if (end == std::string_view::npos)
             return payload.size() > 64 ? State::malformed : State::incomplete;
+        // Extensions are looked for on the size line alone: searching the rest
+        // of the payload for every chunk would make many chunks quadratic.
+        const auto line = payload.substr(0, end);
         std::size_t count = 0;
-        if (!number(payload.substr(0, std::min(end, payload.find(';'))), count, 16))
+        if (!number(line.substr(0, line.find(';')), count, 16))
             return State::malformed;
         payload.remove_prefix(end + 2);
         if (count == 0)
@@ -79,7 +82,9 @@ State dechunk(std::string_view payload, std::size_t max_body, std::string &body)
 }
 } // namespace
 
-Response parse_response(std::string_view wire, bool closed, std::size_t max_body)
+namespace
+{
+Response parse_framed(std::string_view wire, bool closed, std::size_t max_body)
 {
     Response out;
     const auto boundary = wire.find("\r\n\r\n");
@@ -108,6 +113,12 @@ Response parse_response(std::string_view wire, bool closed, std::size_t max_body
     const auto coding = header(head, "Transfer-Encoding", found);
     if (found && chunked(coding))
     {
+        // Checked even when the last chunk is in: the framing itself is the cost.
+        if (wire.size() > max_wire(max_body))
+        {
+            out.state = State::too_large;
+            return out;
+        }
         out.state = dechunk(payload, max_body, out.body);
         if (out.state == State::incomplete && closed)
             out.state = State::malformed;
@@ -129,7 +140,10 @@ Response parse_response(std::string_view wire, bool closed, std::size_t max_body
             out.body.assign(payload.substr(0, length));
         }
         else
+        {
             out.state = closed ? State::malformed : State::incomplete;
+            out.complete_at = boundary + 4 + length;
+        }
         return out;
     }
     if (payload.size() > max_body)
@@ -138,6 +152,18 @@ Response parse_response(std::string_view wire, bool closed, std::size_t max_body
     {
         out.state = State::complete;
         out.body.assign(payload);
+    }
+    return out;
+}
+} // namespace
+
+Response parse_response(std::string_view wire, bool closed, std::size_t max_body)
+{
+    auto out = parse_framed(wire, closed, max_body);
+    if (out.state != State::complete && wire.size() > max_wire(max_body))
+    {
+        out.state = State::too_large;
+        out.body.clear();
     }
     return out;
 }

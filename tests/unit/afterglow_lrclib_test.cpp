@@ -185,6 +185,40 @@ TEST(AfterglowHttpResponse, FramesByLengthOrChunksWithoutWaitingForClose)
     EXPECT_EQ(r.body, "[]");
 }
 
+TEST(AfterglowHttpResponse, CapsTheWireNotJustTheBody)
+{
+    using State = http::Response::State;
+    const std::size_t max_body = 65536;
+    const std::string chunked = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
+    // A body within its limit, sent one byte per chunk: six wire bytes for each.
+    std::string tiny = chunked;
+    for (std::size_t i = 0; i < max_body; ++i)
+        tiny += "1\r\nx\r\n";
+    ASSERT_GT(tiny.size(), http::max_wire(max_body));
+    EXPECT_EQ(http::parse_response(tiny, false, max_body).state, State::too_large);
+    EXPECT_EQ(http::parse_response(tiny + "0\r\n\r\n", false, max_body).state, State::too_large);
+    // The same body in a few ordinary chunks is fine.
+    std::string normal = chunked;
+    for (int i = 0; i < 64; ++i)
+        normal += "400\r\n" + std::string(1024, 'x') + "\r\n";
+    const auto r = http::parse_response(normal + "0\r\n\r\n", false, max_body);
+    EXPECT_EQ(r.state, State::complete);
+    EXPECT_EQ(r.body.size(), max_body);
+    // Framing that never ends: a chunk-size line padded with extensions.
+    const auto padded = chunked + "1;" + std::string(http::max_wire(max_body), 'x') + "\r\n";
+    EXPECT_EQ(http::parse_response(padded, false, max_body).state, State::too_large);
+    // A complete response is not refused for bytes after its Content-Length.
+    const std::string sized = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n[]";
+    EXPECT_EQ(http::parse_response(sized + std::string(http::max_wire(max_body), ' '), false,
+                                   max_body)
+                  .state,
+              State::complete);
+    const auto partial = http::parse_response(sized.substr(0, sized.size() - 1), false, max_body);
+    EXPECT_EQ(partial.state, State::incomplete);
+    EXPECT_EQ(partial.complete_at, sized.size());
+    EXPECT_EQ(http::max_wire(static_cast<std::size_t>(-1)), static_cast<std::size_t>(-1));
+}
+
 TEST(AfterglowHttpResponse, StatusLimitsAndTheRequest)
 {
     using State = http::Response::State;

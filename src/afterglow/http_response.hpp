@@ -10,6 +10,16 @@
 namespace hui::afterglow::http
 {
 inline constexpr std::size_t kMaxHeader = 16384;
+// The most a response may take on the wire: its header, its body and an
+// allowance for chunk framing. Real servers add a few bytes per chunk of
+// kilobytes; a body sent in tiny chunks would otherwise cost many times its
+// size to receive, so it is refused as too large instead.
+constexpr std::size_t max_wire(std::size_t max_body)
+{
+    return max_body > (static_cast<std::size_t>(-1) - kMaxHeader - 4096) / 2
+               ? static_cast<std::size_t>(-1)
+               : kMaxHeader + max_body + max_body / 8 + 4096;
+}
 
 // What the bytes received so far amount to. A response framed by
 // Content-Length or chunked transfer coding is complete as soon as its last
@@ -25,8 +35,10 @@ struct Response
         malformed,
         too_large
     } state = State::incomplete;
-    int status = 0;
+    int status = 0; // 0 until the whole header has arrived
     std::string body;
+    // Incomplete with a Content-Length: the wire size that completes it.
+    std::size_t complete_at = 0;
 };
 Response parse_response(std::string_view wire, bool closed, std::size_t max_body);
 // The GET request line and headers, ending in the blank line.
