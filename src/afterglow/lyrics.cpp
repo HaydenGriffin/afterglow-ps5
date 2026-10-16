@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdio>
 #include <charconv>
+#include <cstdlib>
 namespace hui::afterglow
 {
 namespace
@@ -84,8 +85,10 @@ std::vector<LyricLine> parse_lyrics(std::string_view text, bool timed)
             int milliseconds = 0;
             const auto parsed =
                 std::from_chars(value.data(), value.data() + value.size(), milliseconds);
+            // The LRC format defines a positive offset as "lyrics sooner": it
+            // is subtracted from every timestamp (LG 1.4.3 fixed the same sign).
             if (parsed.ec == std::errc{} && parsed.ptr == value.data() + value.size())
-                offset = std::clamp(milliseconds, -600000, 600000) / 1000.0;
+                offset = -std::clamp(milliseconds, -600000, 600000) / 1000.0;
         }
     }
     while (!text.empty() && result.size() < 500)
@@ -188,5 +191,21 @@ std::vector<std::size_t> sung_per_row(const std::vector<std::string> &rows, std:
         cursor = at + body.size();
     }
     return out;
+}
+std::string lyrics_timing_label(int offset_ms)
+{
+    if (offset_ms == 0)
+        return "With the music";
+    const int tenths = (std::abs(offset_ms) + 50) / 100;
+    return std::to_string(tenths / 10) + "." + std::to_string(tenths % 10) + " s " +
+           (offset_ms > 0 ? "later" : "earlier");
+}
+int step_lyrics_offset(int offset_ms, int direction)
+{
+    const int moved = offset_ms + (direction > 0 ? 1 : -1) * kLyricsOffsetStepMs;
+    // Division truncates toward zero, so an off-grid value snaps toward
+    // where it was going without skipping zero.
+    const int snapped = moved / kLyricsOffsetStepMs * kLyricsOffsetStepMs;
+    return std::clamp(snapped, -kLyricsOffsetLimitMs, kLyricsOffsetLimitMs);
 }
 } // namespace hui::afterglow

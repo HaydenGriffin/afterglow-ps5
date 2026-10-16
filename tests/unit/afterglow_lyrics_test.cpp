@@ -13,11 +13,15 @@ using hui::afterglow::sung_per_row;
 
 TEST(AfterglowLyrics, AppliesSignedOffsetAndStripsOnlyWordTimestamps)
 {
-    const auto lines = parse_lyrics("[offset:-500]\n[00:01]A <00:01.20>line <live>\n", true);
+    // A positive [offset:] brings the lyrics sooner, as the LRC format defines.
+    const auto lines = parse_lyrics("[offset:+500]\n[00:01]A <00:01.20>line <live>\n", true);
     ASSERT_EQ(lines.size(), 1U);
     EXPECT_DOUBLE_EQ(lines[0].seconds, 0.5);
     EXPECT_EQ(lines[0].text, "A line <live>");
-    EXPECT_DOUBLE_EQ(parse_lyrics("[offset:+250]\n[00:01]One", true)[0].seconds, 1.25);
+    EXPECT_DOUBLE_EQ(parse_lyrics("[offset:-250]\n[00:01]One", true)[0].seconds, 1.25);
+    EXPECT_DOUBLE_EQ(parse_lyrics("[offset:250]\n[00:01]One", true)[0].seconds, 0.75);
+    EXPECT_DOUBLE_EQ(parse_lyrics("[offset:+5000]\n[00:01]One", true)[0].seconds, 0)
+        << "never before the start";
 }
 
 TEST(AfterglowLyrics, ExpandsRepeatedTimestampsAndSortsStably)
@@ -79,7 +83,7 @@ TEST(AfterglowLyrics, PlainLyricsPreserveBracketedWordsAndBoundLength)
 TEST(AfterglowLyrics, EnhancedTagsBecomeWordTimingsOverTheCleanText)
 {
     const auto lines = parse_lyrics(
-        "[offset:+500]\n[00:10.00]<00:10.00>Hold <00:10.50>on  <00:11.25>tight\n", true);
+        "[offset:-500]\n[00:10.00]<00:10.00>Hold <00:10.50>on  <00:11.25>tight\n", true);
     ASSERT_EQ(lines.size(), 1U);
     const auto &line = lines[0];
     EXPECT_EQ(line.text, "Hold on  tight");
@@ -133,4 +137,22 @@ TEST(AfterglowLyrics, SungBytesSplitAcrossWrappedRows)
     EXPECT_EQ(sung_per_row(cut, text, 13), (std::vector<std::size_t>{7, 5}));
     EXPECT_EQ(sung_per_row(cut, text, text.size())[1], cut[1].size());
     EXPECT_EQ(sung_per_row({"unrelated"}, text, 3), (std::vector<std::size_t>{0}));
+}
+
+TEST(AfterglowLyrics, TimingLabelsAndStepsFollowLg)
+{
+    using hui::afterglow::lyrics_timing_label;
+    using hui::afterglow::step_lyrics_offset;
+    EXPECT_EQ(lyrics_timing_label(0), "With the music");
+    EXPECT_EQ(lyrics_timing_label(300), "0.3 s later");
+    EXPECT_EQ(lyrics_timing_label(-1200), "1.2 s earlier");
+    EXPECT_EQ(lyrics_timing_label(10000), "10.0 s later");
+    EXPECT_EQ(step_lyrics_offset(0, 1), 100);
+    EXPECT_EQ(step_lyrics_offset(0, -1), -100);
+    EXPECT_EQ(step_lyrics_offset(9950, 1), 10000);
+    EXPECT_EQ(step_lyrics_offset(10000, 1), 10000);
+    EXPECT_EQ(step_lyrics_offset(-10000, -1), -10000);
+    EXPECT_EQ(step_lyrics_offset(50, -1), 0) << "an old 50 ms value meets zero";
+    EXPECT_EQ(step_lyrics_offset(-50, -1), -100);
+    EXPECT_EQ(step_lyrics_offset(150, 1), 200);
 }

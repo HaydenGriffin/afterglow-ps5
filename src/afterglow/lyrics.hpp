@@ -36,4 +36,11 @@ std::size_t sung_bytes(const LyricLine &line, double elapsed);
 // ellipsis row) counts as sung only when everything before it was.
 std::vector<std::size_t> sung_per_row(const std::vector<std::string> &rows, std::string_view text,
                                       std::size_t sung);
+// The words-only lyric timing (preferences.lyrics_offset_ms), LG's range and steps.
+constexpr int kLyricsOffsetLimitMs = 10000, kLyricsOffsetStepMs = 100;
+// "With the music", or "0.3 s later" / "1.2 s earlier" (LG player-view.js).
+std::string lyrics_timing_label(int offset_ms);
+// One step later (direction > 0) or earlier, onto the 100 ms grid (a value
+// saved in the old 50 ms steps lands on it), within the limit.
+int step_lyrics_offset(int offset_ms, int direction);
 } // namespace hui::afterglow
