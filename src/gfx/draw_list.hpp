@@ -25,20 +25,20 @@ struct Color
     float b = 0.0f;
     float a = 1.0f;
 
-    static Color rgb(std::uint32_t hex, float alpha = 1.0f)
+    static constexpr Color rgb(std::uint32_t hex, float alpha = 1.0f)
     {
         return {static_cast<float>((hex >> 16) & 0xff) / 255.0f,
                 static_cast<float>((hex >> 8) & 0xff) / 255.0f,
                 static_cast<float>(hex & 0xff) / 255.0f, alpha};
     }
-    Color with_alpha(float alpha) const
+    constexpr Color with_alpha(float alpha) const
     {
         return {r, g, b, a * alpha};
     }
 };
 
 // Linear blend of two colours (alpha included).
-inline Color mix(Color a, Color b, float t)
+constexpr Color mix(Color a, Color b, float t)
 {
     return {a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t,
             a.a + (b.a - a.a) * t};

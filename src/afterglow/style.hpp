@@ -14,16 +14,16 @@
 // transient hints may use kTypeTransient.
 namespace hui::afterglow::style
 {
-inline const gfx::Color kInk = gfx::Color::rgb(0x121417);
-inline const gfx::Color kPaper = gfx::Color::rgb(0xefebe3);
-inline const gfx::Color kMuted = kPaper.with_alpha(0.68f);
-inline const gfx::Color kFaint = kPaper.with_alpha(0.5f);
-inline const gfx::Color kRule = kPaper.with_alpha(0.22f);
+inline constexpr gfx::Color kInk = gfx::Color::rgb(0x121417);
+inline constexpr gfx::Color kPaper = gfx::Color::rgb(0xefebe3);
+inline constexpr gfx::Color kMuted = kPaper.with_alpha(0.68f);
+inline constexpr gfx::Color kFaint = kPaper.with_alpha(0.5f);
+inline constexpr gfx::Color kRule = kPaper.with_alpha(0.22f);
 // A focused row that refuses Cross: rule fill with paper text, never muted on paper.
-inline const gfx::Color kDisabledFill = gfx::Color::rgb(0x34363a);
+inline constexpr gfx::Color kDisabledFill = gfx::Color::rgb(0x34363a);
 // Before artwork arrives the fields are neutral, never a white slab on an OLED.
-inline const gfx::Color kNeutralA = gfx::Color::rgb(0x3e4248);
-inline const gfx::Color kNeutralB = gfx::Color::rgb(0x26292e);
+inline constexpr gfx::Color kNeutralA = gfx::Color::rgb(0x3e4248);
+inline constexpr gfx::Color kNeutralB = gfx::Color::rgb(0x26292e);
 
 // Title-safe area: 5 % of the canvas.
 constexpr float kSafeLeft = 96;
