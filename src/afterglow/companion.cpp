@@ -4,6 +4,7 @@
 
 #include "afterglow/companion.hpp"
 #include "afterglow/ma_socket.hpp"
+#include "afterglow/speakers.hpp"
 #include "platform/ps5/system.hpp"
 #include <algorithm>
 #include <array>
@@ -714,21 +715,32 @@ std::vector<CompanionPlayer> decode_players(std::string_view players)
     };
     for (auto p : elements(players))
     {
+        // Sync groups are speakers too (LG speakersOf), listed before the rest.
         const auto type = text_field(p, "type");
-        if ((type == "player" || type == "stereo_pair") && field(p, "available") == "true" &&
-            field(p, "enabled") != "false" && field(p, "hide_in_ui") != "true")
+        if ((type == "player" || type == "stereo_pair" || type == "group") &&
+            field(p, "available") == "true" && field(p, "enabled") != "false" &&
+            field(p, "hide_in_ui") != "true")
         {
             CompanionPlayer player(text_field(p, "player_id"), text_field(p, "name"));
             player.type = type;
             player.group_members = ids(field(p, "group_members"));
             player.can_group_with = ids(field(p, "can_group_with"));
+            player.static_members = ids(field(p, "static_group_members"));
+            player.provider = text_field(p, "provider");
+            const auto features = ids(field(p, "supported_features"));
+            player.can_set_members =
+                std::find(features.begin(), features.end(), "set_members") != features.end();
             player.synced_to = text_field(p, "synced_to");
             player.available = true;
             list.push_back(std::move(player));
         }
     }
     std::sort(list.begin(), list.end(),
-              [](const auto &a, const auto &b) { return a.name < b.name; });
+              [](const auto &a, const auto &b)
+              {
+                  const bool ga = a.type == "group", gb = b.type == "group";
+                  return ga != gb ? ga : a.name < b.name;
+              });
     return list;
 }
 
@@ -750,11 +762,46 @@ Request group_request(const CompanionAction &action, const CompanionSnapshot &ta
             {}};
 }
 
+Request transfer_request(std::string_view from, std::string_view to, bool auto_play)
+{
+    if (from.empty() || to.empty() || from == to)
+        return {{}, {}, "Choose another speaker"};
+    if (from.size() > 256 || to.size() > 256)
+        return {{}, {}, "Speaker id is too long"};
+    return {"player_queues/transfer",
+            "{\"source_queue_id\":" + json_quote(from) + ",\"target_queue_id\":" + json_quote(to) +
+                (auto_play ? ",\"auto_play\":true}" : "}"),
+            {}};
+}
+
+Request recent_request()
+{
+    // Music Assistant counts partly played songs too, as LG asks.
+    return {"music/recently_played_items",
+            "{\"limit\":" + std::to_string(kRecentLimit + 2) + ",\"fully_played_only\":false}",
+            {}};
+}
+
+std::vector<CompanionTrack> decode_recent(std::string_view result)
+{
+    std::vector<CompanionTrack> items;
+    for (auto &item : decode_items(result, kRecentLimit + 2))
+        if (!item.uri.empty() && items.size() < static_cast<std::size_t>(kRecentLimit))
+            items.push_back(std::move(item));
+    return items;
+}
+
 Request action_request(const CompanionAction &action, const CompanionSnapshot &target)
 {
     if (action.kind == CompanionActionKind::group_add ||
         action.kind == CompanionActionKind::group_remove)
         return group_request(action, target);
+    if (action.kind == CompanionActionKind::transfer)
+    {
+        if (!target.connected)
+            return {{}, {}, "Connect Music Assistant to move the music"};
+        return transfer_request(target.queue_id, action.text, action.enabled);
+    }
     // A player setting, not a queue command: no playing queue is needed.
     if (action.kind == CompanionActionKind::static_delay)
         return static_delay_request(target.static_delay_player, target.static_delay_key,
@@ -768,6 +815,9 @@ Request action_request(const CompanionAction &action, const CompanionSnapshot &t
     switch (action.kind)
     {
     case CompanionActionKind::seek:
+        // The drawn song's length says nothing about a silent chosen speaker.
+        if (target.target_elsewhere)
+            return {{}, {}, "Nothing is playing on " + target.target_name};
         if (target.track.duration <= 0)
             return {{}, {}, "Seeking is unavailable for this stream"};
         command = "seek";
@@ -879,6 +929,7 @@ Request action_request(const CompanionAction &action, const CompanionSnapshot &t
     case CompanionActionKind::static_delay:
     case CompanionActionKind::group_add:
     case CompanionActionKind::group_remove:
+    case CompanionActionKind::transfer:
         // Handled before this switch: they need no playing queue.
         return {{}, {}, "Not a queue command"};
     }
@@ -990,15 +1041,9 @@ Request static_delay_request(std::string_view player_id, std::string_view key, i
 
 struct Companion::Impl
 {
-    struct Player
+    struct Queue : QueueInfo
     {
-        std::string id, name, synced, group, source;
-        bool available = false;
-        int volume = 100;
-    };
-    struct Queue
-    {
-        std::string id, state, item_id;
+        std::string item_id;
         CompanionTrack track, next;
         int index = 0, total = 0;
         double elapsed = 0;
@@ -1016,14 +1061,20 @@ struct Companion::Impl
     std::uint16_t port = 0;
     pthread_t thread{};
     bool started = false, authenticated = false, relay_authenticated = false;
-    // current is what the poster shows and commands target; relay_for is the
-    // queue whose visualizer relay is open, only while that queue plays.
+    // current is what the poster shows; relay_for is the queue whose
+    // visualizer relay is open, only while that queue plays. target is what
+    // commands act on (speakers.hpp command_target); last outlives reconnects.
     std::string relay_for;
     std::string current, displayed_player, enriched_uri, enrichment_id, enrichment_key;
+    TargetPick target;
+    std::string last, window_key;
+    // Idle poster: a recently played read asked for by load_recent().
+    bool recent_wanted = false;
+    std::string recent_inflight;
     CompanionTrack enriched_track;
     std::vector<CompanionTrack> upcoming;
     std::uint64_t sequence = 0;
-    std::map<std::string, Player> players;
+    Speakers players;
     std::map<std::string, Queue> queues;
     std::map<std::string, std::int64_t> skipped;
     std::deque<Command> commands;
@@ -1086,17 +1137,32 @@ struct Companion::Impl
     }
     void read_player(std::string_view raw)
     {
-        Player p;
+        SpeakerInfo p;
         p.id = text_field(raw, "player_id");
         if (p.id.empty())
             return;
         p.name = text_field(raw, "name");
-        p.synced = text_field(raw, "synced_to");
-        p.group = text_field(raw, "active_group");
-        p.source = text_field(raw, "active_source");
+        p.type = text_field(raw, "type");
+        p.synced_to = text_field(raw, "synced_to");
+        p.active_group = text_field(raw, "active_group");
+        p.active_source = text_field(raw, "active_source");
         p.available = field(raw, "available") == "true";
+        p.enabled = field(raw, "enabled") != "false";
+        p.hidden = field(raw, "hide_in_ui") == "true";
         p.volume = number(raw, "volume_level", 100);
-        players[p.id] = p;
+        p.group_volume = number(raw, "group_volume", -1);
+        for (auto id : elements(field(raw, "group_members"), 64))
+            if (auto text = string_value(id); !text.empty() && text.size() <= 256)
+                p.group_members.push_back(std::move(text));
+        players[p.id] = std::move(p);
+    }
+    QueueLookup queue_lookup() const
+    {
+        return [this](const std::string &id) -> const QueueInfo *
+        {
+            const auto it = queues.find(id);
+            return it == queues.end() ? nullptr : &it->second;
+        };
     }
     void read_queue(std::string_view raw)
     {
@@ -1107,7 +1173,9 @@ struct Companion::Impl
         q.state = text_field(raw, "state");
         q.track = parse_track(field(raw, "current_item"));
         q.next = parse_track(field(raw, "next_item"));
-        q.item_id = text_field(field(raw, "current_item"), "queue_item_id");
+        const auto item = field(raw, "current_item");
+        q.has_item = !item.empty() && item != "null";
+        q.item_id = text_field(item, "queue_item_id");
         q.elapsed = decimal(raw, "elapsed_time");
         q.elapsed_at = sys::monotonic_us();
         q.index = number(raw, "current_index", -1);
@@ -1125,27 +1193,7 @@ struct Companion::Impl
     }
     std::string audible(const std::string &id)
     {
-        std::string next = id;
-        for (int hops = 0; hops < 32; ++hops)
-        {
-            auto it = players.find(next);
-            if (it == players.end() || !it->second.available)
-                return {};
-            const auto &p = it->second;
-            if (!p.synced.empty() && p.synced != next)
-            {
-                next = p.synced;
-                continue;
-            }
-            if (!p.group.empty() && p.group != next)
-            {
-                next = p.group;
-                continue;
-            }
-            const auto source = p.source.empty() ? next : p.source;
-            return queues.contains(source) ? source : std::string{};
-        }
-        return {};
+        return audible_queue(id, players, queue_lookup());
     }
     // An empty library artist first looks itself up (id + "-artist"), then
     // retries on a provider mapping under the same id.
@@ -1262,6 +1310,7 @@ struct Companion::Impl
             action_inflight.clear();
             next_poll = 0;
             enrichment_key.clear();
+            window_key.clear();
             return true;
         }
         if (!field(raw, "server_version").empty() && id.empty())
@@ -1353,6 +1402,8 @@ struct Companion::Impl
             if (lines.size() > 1)
                 enriched_track.lrc_lyrics = string_value(lines[1]);
         }
+        else if (id == recent_inflight && !recent_inflight.empty())
+            read_recent(raw, result);
         else if (id == items_request && !items_request.empty())
         {
             upcoming.clear();
@@ -1594,10 +1645,9 @@ struct Companion::Impl
         }
         return true;
     }
-    // Nothing usable plays here: follow the newest playing queue, else keep a
-    // paused target so the poster stays and Cross resumes the right room.
-    void choose_silent(std::int64_t now, const std::string &wanted, std::string &pick,
-                       std::string &speaker)
+    // Nothing usable plays here: follow the newest playing queue, else draw
+    // the command target, so the poster shows what Cross acts on.
+    void choose_silent(std::int64_t now, std::string &pick, std::string &speaker)
     {
         std::int64_t newest = -1;
         std::string playing;
@@ -1614,25 +1664,15 @@ struct Companion::Impl
             speaker = playing;
             return;
         }
-        const auto preferred_queue = audible(wanted);
-        if (!wanted.empty() && queues.contains(preferred_queue))
-        {
-            pick = preferred_queue;
-            speaker = wanted;
-            return;
-        }
-        if (queues.contains(pick))
-            return;
-        pick.clear();
-        speaker.clear();
-        newest = -1;
-        for (const auto &[id, q] : queues)
-            if (q.started > newest)
-            {
-                pick = id;
-                speaker = id;
-                newest = q.started;
-            }
+        pick = target.queue_id;
+        speaker = target.player_id;
+    }
+    // speakers.hpp command_target. This PS5's own player only stands in while
+    // it is the one sounding (Source: This PS5); otherwise its output is off.
+    void pick_target(const std::string &wanted, const std::string &own)
+    {
+        target = command_target(players, queue_lookup(), wanted, current, last,
+                                relay_enabled.load() ? std::string{} : own);
     }
     void close_relay()
     {
@@ -1684,10 +1724,11 @@ struct Companion::Impl
     }
     void choose(std::int64_t now)
     {
-        std::string wanted;
+        std::string wanted, own;
         {
             std::lock_guard<std::mutex> lock(mutex);
             wanted = preferred;
+            own = own_player;
         }
         auto playable = [&](const std::string &id)
         {
@@ -1695,13 +1736,14 @@ struct Companion::Impl
             return q != queues.end() && q->second.state == "playing" &&
                    (!skipped.contains(id) || now >= skipped[id]);
         };
+        pick_target(wanted, own);
         std::string pick = audible(wanted), speaker = wanted;
         if (!playable(pick) && (relay_enabled.load() || wanted.empty()))
         {
             pick = current;
             speaker = displayed_player;
             if (!playable(pick) && now - last_wave > 3000000)
-                choose_silent(now, wanted, pick, speaker);
+                choose_silent(now, pick, speaker);
         }
         if (pick != current || relay_enabled.load() != last_relay_enabled)
         {
@@ -1710,80 +1752,130 @@ struct Companion::Impl
             displayed_player = speaker;
             last_relay_enabled = relay_enabled.load();
         }
+        if (!current.empty())
+            last = current;
+        // Again with the queue just chosen: "following" is the one drawn now.
+        pick_target(wanted, own);
         update_relay(now);
         std::lock_guard<std::mutex> lock(mutex);
-        state.queue_id = current;
+        publish_drawn(now);
+        publish_target(own);
+        state.status =
+            current.empty() ? "Waiting for a playing speaker" : "Following " + state.player_name;
+    }
+    // Caller holds the mutex. Relative imageproxy paths become absolute URLs
+    // the artwork fetcher can open; anything else it cannot fetch is dropped.
+    void absolute_artwork(CompanionTrack &track) const
+    {
+        if (track.artwork.starts_with("/imageproxy/"))
+            track.artwork = "http://" + host + ":" + std::to_string(port) + track.artwork;
+        else if (!track.artwork.starts_with("http://") && !track.artwork.starts_with("https://"))
+            track.artwork.clear();
+    }
+    std::string name_of(const std::string &player_id)
+    {
+        const auto it = players.find(player_id);
+        return it != players.end() && !it->second.name.empty() ? it->second.name : player_id;
+    }
+    // Caller holds the mutex. What the poster shows: the drawn queue's song.
+    void publish_drawn(std::int64_t now)
+    {
         state.player_id = displayed_player;
         state.player_name =
             players.contains(displayed_player) ? players[displayed_player].name : displayed_player;
-        if (queues.contains(current))
-        {
-            const auto &q = queues[current];
-            state.track = q.track;
-            state.playing = q.state == "playing";
-            state.elapsed =
-                std::max(0.0, q.elapsed + (state.playing
-                                               ? static_cast<double>(now - q.elapsed_at) / 1000000.0
-                                               : 0.0));
-            if (q.track.duration > 0)
-                state.elapsed = std::min(state.elapsed, static_cast<double>(q.track.duration));
-            state.shuffle = q.shuffle;
-            state.autoplay = q.autoplay;
-            state.crossfade = q.crossfade;
-            state.repeat = q.repeat.empty() ? "off" : q.repeat;
-            if (enriched_uri == q.track.uri && !enriched_track.title.empty())
-                state.track = enriched_track;
-            state.track.queue_item_id = q.item_id;
-            if (state.track.format.empty())
-                state.track.format = q.track.format;
-            // Stream details exist only on the queue item, not the enriched library copy.
-            state.track.content_type = q.track.content_type;
-            state.track.sample_rate = q.track.sample_rate;
-            state.track.bit_depth = q.track.bit_depth;
-            state.track.bit_rate = q.track.bit_rate;
-            state.track.quality = q.track.quality;
-            state.track.quality_badge = q.track.quality_badge;
-            state.upcoming = upcoming;
-            state.queue_offset = upcoming.empty() ? std::max(0, q.index + 1) : upcoming_offset;
-            state.queue_total = q.total;
-            state.queue_index = q.index;
-            if (state.upcoming.empty() && !q.next.title.empty())
-                state.upcoming.push_back(q.next);
-            auto normalize_image = [&](CompanionTrack &track)
-            {
-                if (track.artwork.starts_with("/imageproxy/"))
-                    track.artwork = "http://" + host + ":" + std::to_string(port) + track.artwork;
-                else if (!track.artwork.starts_with("http://") &&
-                         !track.artwork.starts_with("https://"))
-                    track.artwork.clear();
-            };
-            normalize_image(state.track);
-            for (auto &track : state.upcoming)
-                normalize_image(track);
-            state.volume =
-                players.contains(displayed_player) ? players[displayed_player].volume : 100;
-        }
-        else
+        const auto drawn = queues.find(current);
+        if (drawn == queues.end())
         {
             state.track = {};
             state.playing = false;
             state.elapsed = 0;
+            state.queue_state.clear();
+            state.next_up.clear();
+            return;
+        }
+        const auto &q = drawn->second;
+        state.queue_state = q.state;
+        state.track = q.track;
+        state.playing = q.state == "playing";
+        state.elapsed = std::max(
+            0.0, q.elapsed +
+                     (state.playing ? static_cast<double>(now - q.elapsed_at) / 1000000.0 : 0.0));
+        if (q.track.duration > 0)
+            state.elapsed = std::min(state.elapsed, static_cast<double>(q.track.duration));
+        if (enriched_uri == q.track.uri && !enriched_track.title.empty())
+            state.track = enriched_track;
+        state.track.queue_item_id = q.item_id;
+        if (state.track.format.empty())
+            state.track.format = q.track.format;
+        // Stream details exist only on the queue item, not the enriched library copy.
+        state.track.content_type = q.track.content_type;
+        state.track.sample_rate = q.track.sample_rate;
+        state.track.bit_depth = q.track.bit_depth;
+        state.track.bit_rate = q.track.bit_rate;
+        state.track.quality = q.track.quality;
+        state.track.quality_badge = q.track.quality_badge;
+        absolute_artwork(state.track);
+        // The Up next window belongs to the target; it extends Next only while
+        // it is this queue's default window, the songs straight after this one.
+        state.next_up.clear();
+        if (target.queue_id == current && upcoming_offset == q.index + 1)
+            for (std::size_t i = 0; i < upcoming.size() && i < 2; ++i)
+                state.next_up.push_back(upcoming[i]);
+        if (state.next_up.empty() && !q.next.title.empty())
+            state.next_up.push_back(q.next);
+        for (auto &track : state.next_up)
+            absolute_artwork(track);
+    }
+    // Caller holds the mutex. What commands and the Queue sheet act on.
+    void publish_target(const std::string &own)
+    {
+        state.queue_id = target.queue_id;
+        state.target_player_id = target.player_id;
+        state.target_name = target.player_id.empty() ? "" : name_of(target.player_id);
+        state.target_reason = target.reason;
+        state.target_elsewhere = !target.queue_id.empty() && target.queue_id != current;
+        const auto lookup = queue_lookup();
+        state.can_move_here = !own.empty() && target.queue_id != own &&
+                              moves_music(players, lookup, target.queue_id, own, true);
+        for (auto &player : state.players)
+            player.takes_music = moves_music(players, lookup, target.queue_id, player.id, false);
+        const auto leader = players.find(target.queue_id);
+        state.volume = leader == players.end() ? 100
+                       : group_player(leader->second) && leader->second.group_volume >= 0
+                           ? leader->second.group_volume
+                           : leader->second.volume;
+        const auto it = queues.find(target.queue_id);
+        if (it == queues.end())
+        {
             state.upcoming.clear();
             state.queue_offset = state.queue_total = 0;
             state.queue_index = -1;
             state.shuffle = state.autoplay = state.crossfade = false;
             state.repeat = "off";
+            return;
         }
-        state.status =
-            current.empty() ? "Waiting for a playing speaker" : "Following " + state.player_name;
+        const auto &q = it->second;
+        state.shuffle = q.shuffle;
+        state.autoplay = q.autoplay;
+        state.crossfade = q.crossfade;
+        state.repeat = q.repeat.empty() ? "off" : q.repeat;
+        state.upcoming = upcoming;
+        state.queue_offset = upcoming.empty() ? std::max(0, q.index + 1) : upcoming_offset;
+        state.queue_total = q.total;
+        state.queue_index = q.index;
+        if (state.upcoming.empty() && !q.next.title.empty())
+            state.upcoming.push_back(q.next);
+        for (auto &track : state.upcoming)
+            absolute_artwork(track);
     }
-    // Up next follows the song after the playing one: a paged window is
-    // dropped when the playing item's index moves, and the default one asked for.
+    // Up next follows the song after the target's playing one: a paged window
+    // is dropped when its index moves, and the default one asked for.
     void follow_playing_index()
     {
-        if (!queues.contains(current) || queues[current].index == playing_index)
+        const auto it = queues.find(target.queue_id);
+        if (it == queues.end() || it->second.index == playing_index)
             return;
-        playing_index = queues[current].index;
+        playing_index = it->second.index;
         std::lock_guard<std::mutex> lock(mutex);
         if (queue_window < 0)
             return;
@@ -1798,26 +1890,74 @@ struct Companion::Impl
     // Each request gets its own id so a reply for an older window is ignored.
     bool request_queue_items()
     {
+        const auto &id = target.queue_id;
         int window = -1;
         {
             std::lock_guard<std::mutex> lock(mutex);
-            if (window_queue == current)
+            if (window_queue == id)
                 window = queue_window;
         }
-        items_offset = window >= 0 ? window : std::max(0, queues[current].index + 1);
-        items_request = "items-" + enrichment_id + "-" + std::to_string(++sequence);
-        const auto wire = companion_wire::queue_items_request(current, items_offset);
+        items_offset = window >= 0 ? window : std::max(0, queues[id].index + 1);
+        items_request = "items-" + std::to_string(++sequence);
+        const auto wire = companion_wire::queue_items_request(id, items_offset);
         return call(items_request, wire.command, wire.args);
+    }
+    // A new target, or a new song on it: its Up next is read afresh.
+    bool follow_window()
+    {
+        const auto it = queues.find(target.queue_id);
+        if (it == queues.end())
+        {
+            // A late reply for the old target must not fill the empty window.
+            window_key.clear();
+            items_request.clear();
+            upcoming.clear();
+            return true;
+        }
+        const auto key = target.queue_id + ":" + it->second.item_id;
+        if (key == window_key)
+            return true;
+        window_key = key;
+        upcoming.clear();
+        return request_queue_items();
+    }
+    bool request_recent()
+    {
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (!std::exchange(recent_wanted, false) || !recent_inflight.empty())
+                return true;
+            state.recent_state = RecentState::loading;
+        }
+        recent_inflight = "recent-" + std::to_string(++sequence);
+        const auto wire = companion_wire::recent_request();
+        return call(recent_inflight, wire.command, wire.args);
+    }
+    void read_recent(std::string_view raw, std::string_view result)
+    {
+        auto items = companion_wire::decode_recent(result);
+        std::lock_guard<std::mutex> lock(mutex);
+        recent_inflight.clear();
+        if (!field(raw, "error_code").empty())
+        {
+            state.recent_state = RecentState::error;
+            return;
+        }
+        for (auto &item : items)
+            absolute_artwork(item);
+        state.recent = std::move(items);
+        state.recent_state = RecentState::ready;
     }
     bool send_command(Command command)
     {
-        if (current.empty())
+        const auto &id = target.queue_id;
+        if (id.empty())
             return true;
         std::string name;
         switch (command)
         {
         case Command::toggle:
-            name = queues[current].state == "playing" ? "pause" : "play";
+            name = queues.contains(id) && queues[id].state == "playing" ? "pause" : "play";
             break;
         case Command::next:
             name = "next";
@@ -1828,17 +1968,21 @@ struct Companion::Impl
         case Command::volume_up:
         case Command::volume_down:
         {
-            const int before =
-                players.contains(displayed_player) ? players[displayed_player].volume : 100;
-            return call("control", "players/cmd/volume_set",
-                        "{\"player_id\":" + json_quote(displayed_player) + ",\"volume_level\":" +
+            // The queue's own player leads: a group or sync leader takes the
+            // group's volume (players/cmd/group_volume), as LG sets it.
+            const auto it = players.find(id);
+            const bool group = it != players.end() && group_player(it->second);
+            const int before = it == players.end()                     ? 100
+                               : group && it->second.group_volume >= 0 ? it->second.group_volume
+                                                                       : it->second.volume;
+            return call("control", group ? "players/cmd/group_volume" : "players/cmd/volume_set",
+                        "{\"player_id\":" + json_quote(id) + ",\"volume_level\":" +
                             std::to_string(std::clamp(
                                 before + (command == Command::volume_up ? 5 : -5), 0, 100)) +
                             "}");
         }
         }
-        return call("control", "player_queues/" + name,
-                    "{\"queue_id\":" + json_quote(current) + "}");
+        return call("control", "player_queues/" + name, "{\"queue_id\":" + json_quote(id) + "}");
     }
     void run()
     {
@@ -1864,6 +2008,9 @@ struct Companion::Impl
             next_delay_read = 0;
             close_relay();
             current.clear();
+            target = {};
+            window_key.clear();
+            recent_inflight.clear();
             players.clear();
             queues.clear();
             skipped.clear();
@@ -1886,13 +2033,13 @@ struct Companion::Impl
                         if (!current.empty())
                             okay = okay && call("queue", "player_queues/get",
                                                 "{\"queue_id\":" + json_quote(current) + "}");
-                        if (!enrichment_id.empty() && queues.contains(current))
+                        if (!window_key.empty() && queues.contains(target.queue_id))
                             okay = okay && request_queue_items();
                         next_poll = now + 4000000;
                     }
-                    else if (take_window_move() && !enrichment_id.empty() &&
-                             queues.contains(current))
+                    else if (take_window_move() && queues.contains(target.queue_id))
                         okay = okay && request_queue_items();
+                    okay = okay && request_recent();
                     bool favorites_pending = false;
                     {
                         std::lock_guard<std::mutex> lock(mutex);
@@ -1917,14 +2064,13 @@ struct Companion::Impl
                         enrichment_key = current + ":" + q.item_id + ":" + q.track.uri;
                         enriched_uri = q.track.uri;
                         enriched_track = {};
-                        upcoming.clear();
                         enrichment_id = std::to_string(++sequence);
                         if (!enriched_uri.empty())
                             okay = okay && call("item-" + enrichment_id, "music/item_by_uri",
                                                 "{\"uri\":" + json_quote(enriched_uri) +
                                                     ",\"allow_update_metadata\":false}");
-                        okay = okay && request_queue_items();
                     }
+                    okay = okay && follow_window();
                     if (!relay_for.empty())
                     {
                         if (!relay.tick())
@@ -2012,6 +2158,8 @@ struct Companion::Impl
             {
                 std::lock_guard<std::mutex> lock(mutex);
                 state.connected = false;
+                if (state.recent_state == RecentState::loading)
+                    state.recent_state = RecentState::error;
                 rejected = state.token_rejected;
                 state.status =
                     rejected ? "Music Assistant token rejected" : "Music Assistant disconnected";
@@ -2193,6 +2341,14 @@ void Companion::set_queue_offset(int offset)
     impl_->queue_window = offset < 0 ? -1 : std::clamp(offset, 0, std::max(0, total - 1));
     impl_->window_queue = impl_->state.queue_id;
     impl_->queue_window_dirty = true;
+}
+void Companion::load_recent()
+{
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    if (impl_->state.connected)
+        impl_->recent_wanted = true;
+    else
+        impl_->state.recent_state = RecentState::error;
 }
 std::vector<float> Companion::take_pcm(int trim_ms)
 {

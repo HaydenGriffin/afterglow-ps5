@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "afterglow/panel.hpp"
+#include "afterglow/speakers.hpp"
 #include "afterglow/style.hpp"
 #include "afterglow/version.hpp"
 #include "ui/glyphs.hpp"
@@ -183,6 +184,7 @@ enum Row : int
     sign_in,
     log_out,
     account_sync,
+    move_here,
 };
 // "Group with" rows carry this plus the speaker's index in players.
 constexpr int kGroupTag = 100000;
@@ -279,6 +281,9 @@ std::string speaker_name(const Presentation &s)
     const auto &p = s.preferences;
     if (!p.follow)
         return "This PS5";
+    // What commands act on: the chosen speaker, else the one followed (speakers.hpp).
+    if (!s.companion.target_name.empty())
+        return s.companion.target_name;
     for (const auto &player : s.companion.players)
         if (!p.player.empty() && player.id == p.player)
             return player.name;
@@ -288,6 +293,8 @@ std::string speaker_name(const Presentation &s)
 }
 std::string plays_on(const Presentation &s)
 {
+    if (!s.companion.target_name.empty())
+        return "Plays on " + s.companion.target_name;
     if (!s.companion.player_name.empty())
         return "Plays on " + s.companion.player_name;
     return s.preferences.follow ? "Plays on the active speaker" : "Plays on this PS5";
@@ -296,20 +303,24 @@ bool companion_ready(const Presentation &s)
 {
     return s.companion.connected && !s.companion.action_busy && !s.companion_action_pending;
 }
-// The followed speaker, when one is chosen by name; null otherwise.
-const CompanionPlayer *chosen_player(const Presentation &s)
+const CompanionPlayer *player_named(const Presentation &s, const std::string &id)
 {
-    if (!s.preferences.follow || s.preferences.player.empty())
-        return nullptr;
     for (const auto &player : s.companion.players)
-        if (player.id == s.preferences.player)
+        if (player.id == id)
             return &player;
     return nullptr;
 }
-bool in_group(const CompanionPlayer &leader, const std::string &id)
+// Playing on: what a speaker is, and whether picking it moves the music.
+std::string speaker_detail(const Presentation &s, const CompanionPlayer &player)
 {
-    return std::find(leader.group_members.begin(), leader.group_members.end(), id) !=
-           leader.group_members.end();
+    if (!player.available)
+        return "Unavailable";
+    const std::string kind = player.id == s.companion.own_player_id ? "This PS5"
+                             : player.type == "group"               ? "Group"
+                             : !player.synced_to.empty() || !player.group_members.empty()
+                                 ? "Grouped"
+                                 : "Speaker";
+    return player.takes_music && s.companion.connected ? kind + " · moves the music here" : kind;
 }
 std::string account_summary(const AccountState &a)
 {
@@ -646,6 +657,8 @@ std::vector<SheetRow> Panel::queue_rows() const
     const bool live = c.connected;
     Rows rows;
     rows.row("Playing on", playing_on, speaker_name(s)).item.chevron = true;
+    if (c.can_move_here)
+        rows.row("Play on this PS5", move_here, "Moves the music here").item.disabled = !live;
     const int shown = std::min(static_cast<int>(c.upcoming.size()), kQueueWindow);
     const int first = up_next_first(c);
     const int remaining = std::max(c.queue_total - up_next_start(c), first + shown);
@@ -695,7 +708,12 @@ std::vector<SheetRow> Panel::players_rows() const
     const auto &p = s.preferences;
     const auto &c = s.companion;
     Rows rows;
-    rows.row("This PS5", play_here, "Sound from the PS5").chosen = !p.follow;
+    // With music elsewhere that can move here, this PS5's row brings it along.
+    if (c.can_move_here)
+        rows.row("Play on this PS5", move_here, "Moves the music here").item.disabled =
+            !c.connected;
+    else
+        rows.row("This PS5", play_here, "Sound from the PS5").chosen = !p.follow;
     auto &automatic =
         rows.row("Active speaker", follow_auto,
                  s.companion_configured ? "Whatever is playing" : "Needs Music Assistant");
@@ -706,30 +724,28 @@ std::vector<SheetRow> Panel::players_rows() const
     for (std::size_t i = 0; i < c.players.size(); ++i)
     {
         const auto &player = c.players[i];
-        auto &speaker =
-            rows.row(player.name, static_cast<int>(i),
-                     !player.available                                            ? "Unavailable"
-                     : !player.synced_to.empty() || !player.group_members.empty() ? "Grouped"
-                                                                                  : "Speaker");
+        auto &speaker = rows.row(player.name, static_cast<int>(i), speaker_detail(s, player));
         speaker.chosen = p.follow && p.player == player.id;
         speaker.item.disabled = !s.companion_configured || !player.available;
     }
-    // Group editing belongs to the chosen speaker, which leads the group.
-    const CompanionPlayer *leader = chosen_player(s);
-    if (leader == nullptr || leader->can_group_with.empty())
+    // Speakers together: who sounds the target's music (LG pick.js groupOptions).
+    const auto options = group_options(c.players, c.queue_id);
+    if (std::none_of(options.begin(), options.end(), [](const auto &o) { return o.allowed; }))
         return std::move(rows.list);
-    rows.header("Group " + leader->name + " with…");
-    for (const auto &id : leader->can_group_with)
+    rows.header("Speakers together");
+    for (const auto &option : options)
     {
-        for (std::size_t i = 0; i < c.players.size(); ++i)
-        {
-            const auto &member = c.players[i];
-            if (member.id != id || member.id == leader->id)
-                continue;
-            auto &row = rows.row(member.name, kGroupTag + static_cast<int>(i),
-                                 in_group(*leader, id) ? "Grouped" : "Not grouped");
-            row.item.disabled = !c.connected || !member.available;
-        }
+        const auto index = static_cast<std::size_t>(
+            std::find_if(c.players.begin(), c.players.end(),
+                         [&](const auto &player) { return player.id == option.id; }) -
+            c.players.begin());
+        auto &row = rows.row(option.name, kGroupTag + static_cast<int>(index),
+                             option.leader    ? "Leads the group"
+                             : option.allowed ? ""
+                             : option.member  ? "Always in the group"
+                                              : "Can’t join");
+        row.chosen = option.member;
+        row.item.disabled = !c.connected || !option.allowed;
     }
     return std::move(rows.list);
 }
@@ -1399,19 +1415,52 @@ void Panel::confirm_group(int tag)
 {
     auto &s = presentation();
     const auto &players = s.companion.players;
-    const CompanionPlayer *leader = chosen_player(s);
+    const CompanionPlayer *leader = player_named(s, s.companion.queue_id);
     const auto index = static_cast<std::size_t>(tag - kGroupTag);
     if (leader == nullptr || index >= players.size())
         return;
     const auto &member = players[index];
-    const bool grouped = in_group(*leader, member.id);
+    const auto options = group_options(players, leader->id);
+    const auto option = std::find_if(options.begin(), options.end(),
+                                     [&](const auto &o) { return o.id == member.id; });
+    if (option == options.end() || !option->allowed)
+        return;
     CompanionAction action;
-    action.kind = grouped ? CompanionActionKind::group_remove : CompanionActionKind::group_add;
+    action.kind =
+        option->member ? CompanionActionKind::group_remove : CompanionActionKind::group_add;
     action.option = leader->id;
     action.text = member.id;
     const std::string toast =
-        grouped ? member.name + " left the group" : member.name + " joins " + leader->name;
+        option->member ? member.name + " left the group" : member.name + " joins " + leader->name;
     send(action, toast.c_str());
+}
+
+// Playing on: a speaker with nothing of its own playing takes the target's
+// music along (LG player-view.js moveTo); one that plays is simply followed.
+void Panel::choose_speaker(const CompanionPlayer &player)
+{
+    auto &s = presentation();
+    // This PS5's own player only sounds with Source: This PS5; followed, it is silent.
+    if (!player.id.empty() && player.id == s.companion.own_player_id)
+    {
+        CompanionAction action;
+        action.kind = CompanionActionKind::transfer;
+        action.text = player.id;
+        action.enabled = true;
+        if (page_ == Page::players && player.takes_music)
+            send(action, "Moved the music to this PS5");
+        s.preferences.follow = false;
+        return;
+    }
+    if (page_ == Page::players && player.takes_music)
+    {
+        CompanionAction action;
+        action.kind = CompanionActionKind::transfer;
+        action.text = player.id;
+        send(action, ("Moved the music to " + player.name).c_str());
+    }
+    s.preferences.follow = true;
+    s.preferences.player = player.id;
 }
 
 void Panel::confirm(const SheetRow &row)
@@ -1441,10 +1490,7 @@ void Panel::confirm(const SheetRow &row)
         }
         else if ((page_ == Page::source || page_ == Page::players) && s.companion_configured &&
                  index < c.players.size() && c.players[index].available)
-        {
-            p.follow = true;
-            p.player = c.players[index].id;
-        }
+            choose_speaker(c.players[index]);
         else if (page_ == Page::presets && index < s.presets.size())
         {
             s.selected_preset = index;
@@ -1613,6 +1659,14 @@ void Panel::confirm(const SheetRow &row)
         break;
     case play_here:
         p.follow = false;
+        break;
+    case move_here:
+        // Starts it here even when it had stopped, and plays it through the PS5.
+        action.kind = CompanionActionKind::transfer;
+        action.text = c.own_player_id;
+        action.enabled = true;
+        if (send(action, "Moved the music to this PS5"))
+            p.follow = false;
         break;
     case follow_auto:
         if (s.companion_configured)

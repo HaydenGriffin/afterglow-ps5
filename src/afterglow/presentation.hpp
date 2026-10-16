@@ -166,6 +166,12 @@ struct Presentation
     std::string dev_status;
     // The open sheet's page name ("" when none), reported by the dev status request.
     std::string page;
+    // Idle poster (idle.hpp): the screen asks for recent music (main.cpp calls
+    // Companion::load_recent) and, while it shows, names the cover to load
+    // instead of the song's ("" for none).
+    bool recent_pending = false;
+    bool idle_showing = false;
+    std::string idle_artwork;
 };
 
 // Only the UI thread accesses this model. Audio reaches it through Analyzer.

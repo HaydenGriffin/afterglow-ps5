@@ -9,6 +9,7 @@ src/afterglow/client.cpp
 src/afterglow/companion.cpp
 src/afterglow/dev_requests.cpp
 src/afterglow/icons.cpp
+src/afterglow/idle.cpp
 src/afterglow/lightbar.cpp
 src/afterglow/panel.cpp
 src/afterglow/sheet_list.cpp
@@ -25,6 +26,7 @@ src/afterglow/presentation.cpp
 src/afterglow/protocol.cpp
 src/afterglow/thumbnails.cpp
 src/afterglow/scenes.cpp
+src/afterglow/speakers.cpp
 src/app/shell.cpp
 src/app/tour.cpp
 src/audio/cues.cpp
