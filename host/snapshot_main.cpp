@@ -152,12 +152,18 @@ class Recorder
 // Illustrative Music Assistant answers for the Afterglow tour: what main.cpp
 // and the companion would do with a request, so search and drill-down pages
 // can be photographed. Invented titles; no live server is contacted.
+// Albums and songs name their artist (with a year or a length, as Music
+// Assistant sends them); other kinds carry Companion's per-type line.
 hui::afterglow::CompanionTrack preview_item(const char *title, const char *subtitle,
-                                            const char *type, int id)
+                                            const char *type, int id, const char *year = "",
+                                            int seconds = 0)
 {
     hui::afterglow::CompanionTrack item;
     item.title = title;
-    item.subtitle = subtitle;
+    const std::string_view kind = type;
+    (kind == "album" || kind == "track" ? item.artist : item.subtitle) = subtitle;
+    item.year = year;
+    item.duration = seconds;
     item.media_type = type;
     item.item_id = std::to_string(id);
     item.provider = "library";
@@ -169,6 +175,12 @@ void answer_afterglow_preview()
     using hui::afterglow::BrowseCategory;
     using hui::afterglow::KeyboardPurpose;
     auto &model = hui::afterglow::presentation();
+    // Every action is accepted at once, so Browse's confirmations can be photographed.
+    if (model.companion_action_pending && model.companion_action.id != 0)
+    {
+        model.companion.action_done = model.companion_action.id;
+        model.companion.action_done_ok = true;
+    }
     model.companion_action_pending = false;
     model.queue_offset_request = -1;
     if (model.keyboard_pending && model.keyboard.purpose == KeyboardPurpose::search)
@@ -189,22 +201,22 @@ void answer_afterglow_preview()
     case BrowseCategory::search:
         items = {preview_item("Lightkeeper", "34 albums", "artist", 1),
                  preview_item("Low Light Choir", "6 albums", "artist", 2),
-                 preview_item("Light Across the Ceiling", "Lightkeeper", "album", 3),
-                 preview_item("Morning Light", "Low Light Choir", "album", 4),
-                 preview_item("First Light", "Lightkeeper", "track", 5),
-                 preview_item("Lighthouse", "Harbour Lamps", "track", 6),
+                 preview_item("Light Across the Ceiling", "Lightkeeper", "album", 3, "2024"),
+                 preview_item("Morning Light", "Low Light Choir", "album", 4, "2019"),
+                 preview_item("First Light", "Lightkeeper", "track", 5, "", 214),
+                 preview_item("Lighthouse", "Harbour Lamps", "track", 6, "", 187),
                  preview_item("Night Light Radio", "Radio station", "radio", 7),
                  preview_item("Light Reading", "Paper Lantern · 120 episodes", "podcast", 8)};
         break;
     case BrowseCategory::artist_albums:
-        items = {preview_item("Light Across the Ceiling", "Lightkeeper · 2024", "album", 9),
-                 preview_item("Slow Current", "Lightkeeper · 2021", "album", 10),
-                 preview_item("Harbour Songs", "Lightkeeper · 2018", "album", 11)};
+        items = {preview_item("Light Across the Ceiling", "Lightkeeper", "album", 9, "2024"),
+                 preview_item("Slow Current", "Lightkeeper", "album", 10, "2021"),
+                 preview_item("Harbour Songs", "Lightkeeper", "album", 11, "2018")};
         break;
     default:
-        items = {preview_item("Evening Light", "Afterglow preview", "album", 12),
+        items = {preview_item("Evening Light", "Afterglow preview", "album", 12, "2023"),
                  preview_item("Still Water", "Afterglow preview", "playlist", 13),
-                 preview_item("The Long Way Home", "Afterglow preview", "track", 14)};
+                 preview_item("The Long Way Home", "Afterglow preview", "track", 14, "", 252)};
         model.companion.browse_has_more = true;
         return;
     }
