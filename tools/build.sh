@@ -277,6 +277,9 @@ mkdir -p "$app/assets/fonts"
 for face in archivo-regular archivo-semibold archivo-display dejavu-sans-mono; do
     cp "$root/assets/fonts/$face.huifont" "$app/assets/fonts/"
 done
+# The wordmark for setup, connecting and Status (src/afterglow/brand_mark.hpp).
+mkdir -p "$app/assets/brand"
+cp "$root"/assets/brand/*.png "$app/assets/brand/"
 # MilkDrop presets (tools/prepare-presets.py) carry their own index.tsv.
 if [[ -f $root/assets/presets/index.tsv ]]; then
     mkdir -p "$app/assets/presets"

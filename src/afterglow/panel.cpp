@@ -2587,6 +2587,8 @@ void Panel::draw_sheet(ui::Canvas &canvas) const
     const float rule = rule_y();
     list.rounded_rect({kLeft, rule, width, 2}, 0, style::kRule);
 
+    if (page_ == Page::status && s.wordmark)
+        s.wordmark(list, kRight - 200, kTitleBaseline, 200);
     if (page_ == Page::details && !share_link().url.empty())
         draw_share_details(canvas, rule);
     else if (page_ == Page::details || page_ == Page::account)

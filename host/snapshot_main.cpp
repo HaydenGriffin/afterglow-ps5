@@ -772,6 +772,10 @@ int main(int argc, char **argv)
             milkdrop_preview.texture(); // Illustrative cover for layout validation.
         make_preview_covers(renderer);
         model.thumbnail = [](const std::string &url) { return preview_covers.texture(url); };
+        model.wordmark =
+            hui::afterglow::wordmark_hook(assets + "/brand/afterglow-wordmark-paper.png",
+                                          [&renderer](int w, int h, const std::uint8_t *rgba)
+                                          { return renderer.batch().create_texture(w, h, rgba); });
         if (const char *cover = std::getenv("AFTERGLOW_COVER"))
         {
             int w = 0, h = 0, channels = 0;
