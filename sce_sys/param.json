@@ -2,32 +2,16 @@
   "ageLevel": {
     "default": 0
   },
-  "amm": {
-    "multimapVaRangeInGib": 512,
-    "pagetableMemorySizeInMib": 256,
-    "vaRangeInGib": 512
-  },
-  "applicationCategoryType": 0,
+  "applicationCategoryType": 65536,
   "applicationDrmType": "free",
   "attribute": 1644167168,
   "attribute2": 0,
-  "attribute3": 1572928,
+  "attribute3": 1048576,
   "conceptId": "99481",
-  "contentBadgeType": 1,
+  "contentBadgeType": 2,
   "contentId": "UP9000-PPSA99481_00-AFTERGLOWPS50001",
   "contentVersion": "01.006.000",
   "downloadDataSize": 256,
-  "gameIntent": {
-    "permittedIntents": [
-      {
-        "intentType": "launchActivity"
-      }
-    ]
-  },
-  "kernel": {
-    "cpuPageTableSize": 268435456,
-    "gpuPageTableSize": 268435456
-  },
   "localizedParameters": {
     "defaultLanguage": "en-US",
     "en-US": {

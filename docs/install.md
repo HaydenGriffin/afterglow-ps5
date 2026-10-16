@@ -98,7 +98,7 @@ Extract the ZIP on your computer. It holds one folder, `PPSA99481`. Copy that **
 ## 5. Start it
 
 Wait until the enabler has registered the title (with ShadowMount Plus, about ten seconds after the upload finishes;
-it says so). **Afterglow** then appears on the home screen with the AFTER/GLOW tile. Starting it earlier shows the
+it says so). **Afterglow** then appears on the home screen with the AFTER/GLOW tile, under Media rather than Games. Starting it earlier shows the
 system's "title not found" screen: nothing is harmed, wait and try again.
 
 The home-screen icon and backgrounds are copied once, when the title is registered. Hold **Circle** for 1.5 seconds

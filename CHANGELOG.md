@@ -42,6 +42,8 @@ Built and tested on a PC; not yet installed on a console.
   and "Next" reads "Up next", as on LG 1.5.0.
 - With no server set up, the screen points at Settings → Account → Sign in.
 - The PS5 home screen shows the Afterglow poster block: a new icon, and selection and start-up backgrounds.
+- Afterglow is a media app: it sits under Media on the home screen, beside the other music and video apps, instead
+  of under Games.
 - Publishing: README, [install guide](docs/install.md), this changelog, issue and pull request templates,
   GitHub Actions for tests, lint and a release ZIP per version tag.
 - Fixed on the console: muted text and rules (section headings, "Saved on this PS5", the time and status lines)

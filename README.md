@@ -71,7 +71,7 @@ GPL-3.0-or-later.
 
 Download `PPSA99481.zip` from the [releases](https://github.com/HaydenGriffin/afterglow-ps5/releases), or build it
 (below). Extract it and copy the `PPSA99481` folder to `/data/homebrew/` on the console over FTP. Wait for your
-homebrew enabler to register the title, then start **Afterglow** from the home screen.
+homebrew enabler to register the title, then start **Afterglow** from the home screen; it sits with the media apps, not the games.
 
 Sign in with Options → Settings → Account → **Sign in**: the system keyboard asks for Music Assistant's address,
 your username and password. The PS5 keeps its own long-lived token, named after the console, which you can revoke

@@ -413,7 +413,11 @@ and Status report the accepted refresh after the first presentation. Rendering
 is capped to the lesser of that output refresh and the selected rate. An LG C1
 supports 120 Hz, but cable/console output configuration and each preset's
 actual performance must be checked on hardware. Sustained 120 fps is not yet
-verified.
+verified. Afterglow's `param.json` declares no 120 Hz or VRR support
+(`attribute3` is `0x100000`, VRR off, as other media apps use): declaring
+120 Hz also declares VRR, which blanks the TV for a second at every launch, and
+an `attribute3` that declares VRR and VRR off together stops the console
+starting the app at all. So most consoles stay at 60 Hz.
 
 MilkDrop keeps running behind the Album and Lyrics posters by default (turn
 off **MilkDrop behind album and lyrics** to give them a plain ground); the
