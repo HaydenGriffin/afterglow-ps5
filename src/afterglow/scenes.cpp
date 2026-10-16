@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <string_view>
 
 namespace hui::afterglow
 {
@@ -156,37 +157,111 @@ float fade_in(const SceneClock &clock, float seconds = 0.28f)
 {
     return std::clamp(clock.lyric_age / seconds, 0.0f, 1.0f);
 }
-// Field B: LG's "Up next" list, the next two songs. One song keeps room for a
-// two-line title; two share the field one line each.
-void draw_next_field(const Scene &scene, const gfx::Rect &b, Color tb)
+// The poster as LG Afterglow sets it (player.css at 1920 x 1080, 1vh = 10.8 px,
+// 1vw = 19.2 px): the complete cover in a square at the left margin under a
+// quiet place line, the words in one plain column from 43vw, Up next above
+// one progress line along the bottom. No fields: the ground carries it all.
+constexpr gfx::Rect kCover{kSafeLeft, 173, 576, 576}; // .poster-art: 16vh, 30vw square
+constexpr float kWords = 826;                         // .poster-title / .poster-lyrics: 43vw
+constexpr float kWordsWidth = kSafeRight - kWords;
+static_assert(kWordsWidth == kPlainLyricsWidth, "paginate() wraps untimed lyrics to the column");
+constexpr float kPlaceBaseline = 92;
+constexpr float kNextBaseline = 900;
+// LG's line sits at 91vh; here it stays clear of the controller hints (centre
+// y = 1000) that fade in on the right after any press.
+constexpr float kProgressY = 958;
+constexpr float kTimesBaseline = 967;
+// The lyric column (.poster-lyrics: 18vh to 76vh); the stack centres in it.
+constexpr float kLyricsTop = 194;
+constexpr float kLyricsHeight = 626;
+// The wordmark on the screens you pass through (setup, connecting).
+constexpr float kBrandWidth = 400;
+
+// The ground is ink with a breath of the artwork's colour in it, so the dark
+// poster still belongs to the song.
+Color poster_ground(const Presentation &state, float ground)
+{
+    return gfx::mix(kInk, field_a(state), 0.14f).with_alpha(ground);
+}
+// The cover, complete, backed by its own colour while it loads.
+void draw_cover(const Scene &scene)
+{
+    const auto &state = scene.state;
+    scene.list.rounded_rect(kCover, 0, field_a(state));
+    if (state.artwork_texture)
+        scene.list.image(state.artwork_texture, kCover, gfx::kFullUv,
+                         Color::rgb(0xffffff).with_alpha(night(state) ? kNightDim : 1));
+}
+std::string place_name(const Presentation &state)
+{
+    return state.preview          ? "Listening room · Preview"
+           : !state.group.empty() ? state.group
+                                  : "This PS5";
+}
+// Where the music plays at the left, its state at the right (LG .poster-target
+// and .poster-state).
+void draw_place(const Scene &scene, const std::string &status)
 {
     auto &list = scene.list;
     const auto &fonts = scene.fonts;
-    // The drawn song's next two; the Queue sheet's window may belong to another speaker.
+    const Color soft = muted(scene.state);
+    const std::string status_line = fonts.regular.font->fit(status, kTypeMin, 720);
+    const float status_width = fonts.regular.font->measure(status_line, kTypeMin);
+    ui::text(list, fonts.regular,
+             fonts.regular.font->fit(place_name(scene.state), kTypeMin,
+                                     std::max(240.0f, kSafeRight - kSafeLeft - 48 - status_width)),
+             kSafeLeft, kPlaceBaseline, kTypeMin, soft);
+    ui::text(list, fonts.regular, status_line, kSafeRight, kPlaceBaseline, kTypeMin, soft,
+             gfx::Align::right);
+}
+// The screens you pass through on the way to music carry the wordmark: setting
+// up and connecting. Waiting while connected can last all evening, so it does not.
+bool brand_screen(const Presentation &state)
+{
+    return state.title.empty() && (!state.configured || !state.connected);
+}
+// LG's "Up next", with the artists as well as the song.
+void draw_up_next(const Scene &scene)
+{
+    auto &list = scene.list;
+    const auto &fonts = scene.fonts;
+    const Color soft = muted(scene.state);
+    // The drawn song's next; the Queue sheet's window may belong to another speaker.
     const auto &upcoming = scene.state.companion.next_up;
-    const float x = b.x + kFieldInset;
-    const float width = b.w - kFieldInset * 2;
-    ui::text(list, fonts.semibold, "Up next", x, 725, kTypeBody, tb);
-    list.line(x, 744, b.x + b.w - kFieldInset, 744, 2, tb);
-    if (upcoming.size() < 2)
+    float x = kWords;
+    x += ui::text(list, fonts.regular, "Up next", x, kNextBaseline, kTypeMin, soft) + 20;
+    if (upcoming.empty())
     {
-        const float end = ui::paragraph(list, fonts.semibold,
-                                        upcoming.empty() ? "Nothing queued" : upcoming[0].title, x,
-                                        792, 34, width, 38, tb, 2);
-        if (!upcoming.empty())
-            ui::text(list, fonts.regular,
-                     fonts.regular.font->fit(upcoming[0].artist, kTypeMin, width), x, end - 4,
-                     kTypeMin, tb);
+        ui::text(list, fonts.regular, "Nothing queued", x, kNextBaseline, kTypeMin, soft);
         return;
     }
-    for (std::size_t i = 0; i < 2; ++i)
-    {
-        const float top = 790 + static_cast<float>(i) * 76;
-        ui::text(list, fonts.semibold, fonts.semibold.font->fit(upcoming[i].title, 32, width), x,
-                 top, 32, tb);
-        ui::text(list, fonts.regular, fonts.regular.font->fit(upcoming[i].artist, kTypeMin, width),
-                 x, top + 32, kTypeMin, tb.with_alpha(0.85f));
-    }
+    const auto &next = upcoming[0];
+    const std::string title = fonts.semibold.font->fit(next.title, kTypeMin, kSafeRight - x);
+    x += ui::text(list, fonts.semibold, title, x, kNextBaseline, kTypeMin, paper(scene.state)) + 20;
+    if (!next.artist.empty() && kSafeRight - x > 120)
+        ui::text(list, fonts.regular,
+                 fonts.regular.font->fit(next.artist, kTypeMin, kSafeRight - x), x, kNextBaseline,
+                 kTypeMin, soft);
+}
+// One thin line across the poster with the times at its ends (.poster-progress).
+void draw_progress(const Scene &scene)
+{
+    const double duration = scene.state.companion.track.duration;
+    if (scene.state.title.empty() || duration <= 0)
+        return;
+    auto &list = scene.list;
+    const auto &fonts = scene.fonts;
+    const Color soft = muted(scene.state);
+    const double elapsed = std::max(0.0, scene.clock.position);
+    // Both ends keep the total's width, so the line does not move as the time grows.
+    const float slot = fonts.regular.font->measure(clock_text(duration), kTypeMin);
+    ui::text(list, fonts.regular, clock_text(elapsed), kSafeLeft, kTimesBaseline, kTypeMin, soft);
+    ui::text(list, fonts.regular, clock_text(duration), kSafeRight, kTimesBaseline, kTypeMin, soft,
+             gfx::Align::right);
+    const float from = kSafeLeft + slot + 24, to = kSafeRight - slot - 24;
+    const auto share = static_cast<float>(std::clamp(elapsed / duration, 0.0, 1.0));
+    list.line(from, kProgressY, to, kProgressY, 2, kRule);
+    list.line(from, kProgressY, from + (to - from) * share, kProgressY, 2, paper(scene.state));
 }
 } // namespace
 
@@ -220,7 +295,14 @@ IdleCopy idle_copy(const Presentation &state)
         return {"Ready when you are.", "Add your Music Assistant server",
                 "Press Options, then Settings, Account, Sign in."};
     if (!state.connected)
-        return {"Ready when you are.", "Connecting to Music Assistant…", state.status};
+    {
+        // The connection's own status adds a reason (a rejected token, a retry
+        // time); when it only says it is connecting, the line already says so.
+        constexpr std::string_view kConnecting = "Connecting to Music Assistant";
+        const bool repeats = state.status.empty() || state.status.rfind(kConnecting, 0) == 0;
+        return {"Ready when you are.", std::string(kConnecting) + "…",
+                repeats ? std::string() : state.status};
+    }
     return {"Ready when you are.", "Choose Afterglow PS5 in Music Assistant",
             state.companion_configured ? "Or press Options to browse your music." : ""};
 }
@@ -278,34 +360,157 @@ void draw_visual_style(const Scene &scene, int style)
 void draw_slab(const Scene &scene, float ground)
 {
     auto &list = scene.list;
+    // The poster's left side stays beside a sheet, as on LG: the ground, the
+    // place line and the cover, which the sheet's edge cuts. The ground
+    // overhangs the screen: the OLED drift moves everything a few pixels.
+    list.rounded_rect({-16, -16, 1952, 1112}, 0, poster_ground(scene.state, ground));
+    draw_cover(scene);
+    ui::text(list, scene.fonts.regular,
+             scene.fonts.regular.font->fit(place_name(scene.state), kTypeMin,
+                                           kSlabWidth - kSafeLeft - 24),
+             kSafeLeft, kPlaceBaseline, kTypeMin, muted(scene.state));
     list.rounded_rect({kSlabWidth, 0, 1920 - kSlabWidth, 1080}, 0, kInk.with_alpha(ground));
-    // A full-height cover slab, cropped rather than stretched. It overhangs the
-    // screen by 2 px: an edge at exactly 0 is antialiased, and the visuals
-    // showed through as a coloured line down the left side.
-    const gfx::Rect slab{-2, -2, kSlabWidth + 2, 1084};
-    list.rounded_rect(slab, 0, field_a(scene.state));
-    if (scene.state.artwork_texture)
-        list.image(scene.state.artwork_texture, slab, {0.196f, 0, 0.608f, 1},
-                   Color::rgb(0xffffff).with_alpha(night(scene.state) ? kNightDim : 1));
 }
 
-void draw_poster(const Scene &scene, bool lyrics, float ground)
+namespace
+{
+// LG's title ladder (.poster-title data-length): 9, 7.6, 6.4 and 5.2vh.
+float title_size(const std::string &title)
+{
+    return title.size() <= 12   ? 97.0f
+           : title.size() <= 26 ? 82.0f
+           : title.size() <= 50 ? 69.0f
+                                : 56.0f;
+}
+
+// Album: the big title, then the artists and the album in the right column.
+void draw_album_words(const Scene &scene)
 {
     auto &list = scene.list;
     const auto &fonts = scene.fonts;
     const auto &state = scene.state;
-    const auto &track = state.companion.track;
-    const bool idle = state.title.empty();
+    const float size = title_size(state.title);
+    const auto lines = ui::paragraph_lines(fonts.display, state.title, size, kWordsWidth, 3);
+    // .poster-title: top 22vh, line height 1.08.
+    ui::paragraph(list, fonts.display, lines, kWords, 238 + size * 0.86f, size, size * 1.08f,
+                  paper(state));
+    // .poster-meta at 57vh: the artists (3.6vh, two lines), the album (2.5vh).
+    const float end = ui::paragraph(list, fonts.regular, state.artist, kWords, 651, 38, kWordsWidth,
+                                    48, paper(state), 2);
+    const std::string album = joined({state.album, state.companion.track.year});
+    if (!album.empty())
+        ui::text(list, fonts.regular, fonts.regular.font->fit(album, kTypeBody, kWordsWidth),
+                 kWords, end + 2, kTypeBody, muted(state));
+}
+
+// Lyrics: the song under the cover (.poster-song and .poster-artist at 73vh).
+void draw_song_under_cover(const Scene &scene)
+{
+    auto &list = scene.list;
+    const auto &fonts = scene.fonts;
+    const auto &state = scene.state;
+    const float size = state.title.size() > 50 ? 30.0f : 37.0f;
+    const float end = ui::paragraph(list, fonts.semibold, state.title, kCover.x, 818, size,
+                                    kCover.w, size * 1.15f, paper(state), 2);
+    ui::paragraph(list, fonts.regular, state.artist, kCover.x, end + 4, kTypeBody, kCover.w, 34,
+                  muted(state), 2);
+}
+
+// LG's lyric stack centred in its column: the line before, the line now, the
+// line after. Under the line now, the PS5's own rule fills as it is sung.
+void draw_timed_lyrics(const Scene &scene)
+{
+    auto &list = scene.list;
+    const auto &fonts = scene.fonts;
+    const Color ink_paper = paper(scene.state);
+    const Color soft = muted(scene.state);
+    const Singing s = singing(scene.lyrics);
+    constexpr float kSide = 37, kSideStep = 48, kNow = 72, kNowStep = 78, kGap = 40;
+    const auto before = ui::paragraph_lines(fonts.regular, s.before, kSide, kWordsWidth, 2);
+    const auto now = ui::paragraph_lines(fonts.display, s.current, kNow, kWordsWidth, 4);
+    const auto after = ui::paragraph_lines(fonts.regular, s.next, kSide, kWordsWidth, 2);
+    const auto rows = [](const ui::ParagraphLines &p)
+    { return static_cast<float>(std::max<std::size_t>(1, p.lines.size())); };
+    const float block =
+        rows(before) * kSideStep + kGap + rows(now) * kNowStep + kGap + rows(after) * kSideStep;
+    // A new line slides up into place and the stack fades in.
+    const float top = kLyricsTop + (kLyricsHeight - block) / 2 + slide(scene.clock, 48);
+    const float in = fade_in(scene.clock);
+    if (!s.before.empty())
+        ui::paragraph(list, fonts.regular, before, kWords, top + 36, kSide, kSideStep, soft);
+    const float now_top = top + rows(before) * kSideStep + kGap;
+    const Color lit = ink_paper.with_alpha(s.current_alpha * (0.35f + 0.65f * in));
+    const float now_end =
+        karaoke_paragraph(list, fonts.display, now, s.current, s.sung, kWords, now_top + 62, kNow,
+                          kNowStep, lit, lit.with_alpha(lit.a * kUnsung));
+    if (s.progress >= 0)
+    {
+        float width = 0;
+        for (const auto &line : now.lines)
+            width = std::max(width, fonts.display.font->measure(line, kNow));
+        const float y = now_end - kNowStep + 28;
+        list.line(kWords, y, kWords + width, y, 4, kRule);
+        list.line(kWords, y, kWords + width * std::clamp(s.progress, 0.0f, 1.0f), y, 4, ink_paper);
+    }
+    if (!s.next.empty())
+        ui::paragraph(list, fonts.regular, after, kWords,
+                      now_top + rows(now) * kNowStep + kGap + 36, kSide, kSideStep,
+                      soft.with_alpha(soft.a * in));
+}
+
+// Untimed lyrics are paged by hand; nothing pretends to know the timing. The
+// page height matches paginate() in the screen.
+void draw_plain_lyrics(const Scene &scene)
+{
+    auto &list = scene.list;
+    const auto &fonts = scene.fonts;
+    float y = 300;
+    const auto &lines = *scene.lyrics.lines;
+    const int end = std::min(static_cast<int>(lines.size()),
+                             scene.lyrics.first + std::max(1, scene.lyrics.count));
+    for (int i = scene.lyrics.first; i < end; ++i)
+        y = ui::paragraph(list, fonts.semibold, lines[static_cast<std::size_t>(i)].text, kWords, y,
+                          44, kPlainLyricsWidth, 52, paper(scene.state), 2) +
+            10;
+    char note[64];
+    std::snprintf(note, sizeof(note), "Untimed lyrics · page %d of %d", scene.lyrics.page + 1,
+                  std::max(1, scene.lyrics.pages));
+    ui::text(list, fonts.regular, note, kWords, 740, kTypeMin, muted(scene.state));
+}
+
+// Setting up, connecting or waiting: no song, so no cover. The wordmark (on
+// the screens you pass through), the line in the poster's voice, what to do.
+void draw_waiting(const Scene &scene)
+{
+    auto &list = scene.list;
+    const auto &fonts = scene.fonts;
+    const auto &state = scene.state;
     const IdleCopy copy = idle_copy(state);
-    const Color ink_paper = paper(state);
-    const Color soft = muted(state);
-    draw_slab(scene, ground);
+    const bool brand = brand_screen(state) && state.wordmark;
+    if (brand)
+        state.wordmark(list, kSafeLeft, 330, kBrandWidth);
+    const float size = title_size(copy.title);
+    const float step = size * 1.08f;
+    const float title_end =
+        ui::paragraph(list, fonts.display, copy.title, kSafeLeft, brand ? 500 : 450, size,
+                      kSafeRight - kSafeLeft, step, paper(state), 2);
+    const float line_end = ui::paragraph(list, fonts.regular, copy.line, kSafeLeft,
+                                         title_end - step + 72, 38, 1144, 48, paper(state), 2);
+    if (!copy.note.empty())
+        ui::paragraph(list, fonts.regular, copy.note, kSafeLeft, line_end - 4, kTypeBody, 1144, 36,
+                      muted(state), 2);
+}
+} // namespace
+
+void draw_poster(const Scene &scene, bool lyrics, float ground)
+{
+    auto &list = scene.list;
+    const auto &state = scene.state;
+    const bool idle = state.title.empty();
+    list.rounded_rect({-16, -16, 1952, 1112}, 0, poster_ground(state, ground));
 
     // Where the music plays, and what state it is in. The stream's format and
     // quality live in Details, not on the poster (LG 1.5.0).
-    const std::string where = state.preview          ? "Listening room · Preview"
-                              : !state.group.empty() ? state.group
-                                                     : "This PS5";
     const std::string status =
         idle ? (state.connected    ? "Idle"
                 : state.configured ? "Connecting…"
@@ -317,126 +522,34 @@ void draw_poster(const Scene &scene, bool lyrics, float ground)
                               : scene.lyrics.loading ? "Finding lyrics…"
                                                      : "No lyrics for this song")
                            : ""});
-    const std::string status_line = fonts.regular.font->fit(status, kTypeMin, 720);
-    const float status_width = fonts.regular.font->measure(status_line, kTypeMin);
-    ui::text(list, fonts.regular,
-             fonts.regular.font->fit(where, kTypeMin, std::max(240.0f, 1104 - status_width)),
-             kColumn, 92, kTypeMin, soft);
-    ui::text(list, fonts.regular, status_line, kSafeRight, 92, kTypeMin, soft, gfx::Align::right);
-    list.line(kColumn, 124, kSafeRight, 124, 2, kRule);
-
-    const auto title_block = [&](const std::string &title, float bottom)
-    {
-        const float size = title.size() <= 12   ? 184.0f
-                           : title.size() <= 26 ? 144.0f
-                           : title.size() <= 50 ? 104.0f
-                                                : 80.0f;
-        const auto lines = ui::paragraph_lines(fonts.display, title, size, 1144, 3);
-        const float top = bottom - static_cast<float>(lines.lines.size() - 1) * size * 0.94f;
-        ui::paragraph(list, fonts.display, lines, kColumn, top, size, size * 0.94f, ink_paper);
-    };
-
-    const bool timed_lyrics = lyrics && !idle && scene.lyrics.timed && !scene.lyrics.empty();
-    const bool plain_lyrics = lyrics && !idle && !scene.lyrics.timed && !scene.lyrics.empty();
-    if (timed_lyrics)
-    {
-        // LG's lyric stack, bottom-aligned above the fields: the line before,
-        // the line now (up to three lines), a karaoke rule, the line after.
-        const Singing s = singing(scene.lyrics);
-        const float offset = slide(scene.clock, 48);
-        const float in = fade_in(scene.clock);
-        const float next_baseline = 618 + offset;
-        if (!s.next.empty())
-            ui::text(list, fonts.regular, fonts.regular.font->fit(s.next, 39, 1144), kColumn,
-                     next_baseline, 39, soft.with_alpha(soft.a * in));
-        const float rule_y = next_baseline - 62;
-        const auto lines = ui::paragraph_lines(fonts.display, s.current, 92, 1144, 3);
-        const float last = rule_y - 22;
-        const float first = last - static_cast<float>(lines.lines.size() - 1) * 90;
-        const Color now = ink_paper.with_alpha(s.current_alpha * (0.35f + 0.65f * in));
-        karaoke_paragraph(list, fonts.display, lines, s.current, s.sung, kColumn, first, 92, 90,
-                          now, now.with_alpha(now.a * kUnsung));
-        if (s.progress >= 0)
-        {
-            float width = 0;
-            for (const auto &line : lines.lines)
-                width = std::max(width, fonts.display.font->measure(line, 92));
-            list.line(kColumn, rule_y, kColumn + width, rule_y, 4, kRule);
-            list.line(kColumn, rule_y, kColumn + width * std::clamp(s.progress, 0.0f, 1.0f), rule_y,
-                      4, ink_paper);
-        }
-        if (!s.before.empty())
-            ui::text(list, fonts.regular, fonts.regular.font->fit(s.before, 32, 1144), kColumn,
-                     first - 104, 32, soft);
-    }
-    else if (plain_lyrics)
-    {
-        // Untimed lyrics are paged by hand; nothing pretends to know the timing.
-        // Clear of the toast line; the page height matches paginate() in the screen.
-        float y = 248;
-        const auto &lines = *scene.lyrics.lines;
-        const int end = std::min(static_cast<int>(lines.size()),
-                                 scene.lyrics.first + std::max(1, scene.lyrics.count));
-        for (int i = scene.lyrics.first; i < end; ++i)
-            y = ui::paragraph(list, fonts.semibold, lines[static_cast<std::size_t>(i)].text,
-                              kColumn, y, 44, 1144, 52, ink_paper, 2) +
-                10;
-        char note[64];
-        std::snprintf(note, sizeof(note), "Untimed lyrics · page %d of %d", scene.lyrics.page + 1,
-                      std::max(1, scene.lyrics.pages));
-        ui::text(list, fonts.regular, note, kColumn, 640, kTypeMin, soft);
-    }
-    else
-    {
-        title_block(idle ? copy.title : state.title, 608);
-    }
-
-    const gfx::Rect a{kColumn, 670, 706, 248};
-    const gfx::Rect b{1410, 670, 414, 248};
-    const Color fa = field_a(state);
-    const Color fb = field_b(state);
-    const Color ta = field_text(fa);
-    const Color tb = field_text(fb);
-    list.rounded_rect(a, 0, fa);
-    list.rounded_rect(b, 0, fb);
-    const float inset = a.x + kFieldInset;
+    draw_place(scene, status);
     if (idle)
     {
-        const float end =
-            ui::paragraph(list, fonts.semibold, copy.line, inset, 735, 40, 650, 46, ta, 2);
-        if (!copy.note.empty())
-            ui::paragraph(list, fonts.regular, copy.note, inset, end + 4, kTypeBody, 650, 36,
-                          ta.with_alpha(0.85f), 3);
+        draw_waiting(scene);
+        return;
     }
-    else if (lyrics)
-    {
-        const float end =
-            ui::paragraph(list, fonts.display, state.title, inset, 735, 43, 650, 46, ta, 2);
-        ui::text(list, fonts.semibold, fonts.semibold.font->fit(state.artist, 32, 650), inset,
-                 end + 4, 32, ta);
-    }
-    else
-    {
-        const float end =
-            ui::paragraph(list, fonts.semibold, state.artist, inset, 735, 52, 650, 56, ta, 2);
-        ui::text(list, fonts.regular,
-                 fonts.regular.font->fit(joined({state.album, track.year}), kTypeBody, 650), inset,
-                 end - 56 + 43, kTypeBody, ta);
-    }
-    draw_next_field(scene, b, tb);
+    draw_cover(scene);
 
-    const double duration = track.duration;
-    if (!idle && duration > 0)
-    {
-        const double elapsed = std::max(0.0, scene.clock.position);
-        ui::text(list, fonts.regular, clock_text(elapsed), kColumn, 962, kTypeMin, ink_paper);
-        ui::text(list, fonts.regular, clock_text(duration), kSafeRight, 962, kTypeMin, ink_paper,
-                 gfx::Align::right);
-        list.line(780, 953, 1728, 953, 2, kRule);
-        list.line(780, 953,
-                  780 + 948 * static_cast<float>(std::clamp(elapsed / duration, 0.0, 1.0)), 953, 2,
-                  ink_paper);
-    }
+    const bool timed = lyrics && scene.lyrics.timed && !scene.lyrics.empty();
+    const bool plain = lyrics && !scene.lyrics.timed && !scene.lyrics.empty();
+    if (!lyrics)
+        draw_album_words(scene);
+    else
+        draw_song_under_cover(scene);
+    if (timed)
+        draw_timed_lyrics(scene);
+    else if (plain)
+        draw_plain_lyrics(scene);
+    else if (lyrics)
+        // LG's .lyric-note: the column says why it is empty (the status line does too).
+        ui::text(scene.list, scene.fonts.regular,
+                 scene.lyrics.retrying  ? "Lyrics unavailable. Retrying shortly…"
+                 : scene.lyrics.failed  ? "Lyrics couldn’t load."
+                 : scene.lyrics.loading ? "Finding lyrics…"
+                                        : "No lyrics for this song.",
+                 kWords, kLyricsTop + kLyricsHeight / 2, 37, muted(state));
+    draw_up_next(scene);
+    draw_progress(scene);
 }
 
 namespace
@@ -456,12 +569,27 @@ CardText card_text(const Presentation &state)
 }
 } // namespace
 
+namespace
+{
+// LG's #track: an ink box at the left margin that fits its words, up to 62vw,
+// padded 2vh by 1.6vw; the title at 5.4vh in two lines at most, the artists at
+// 3vh, the album at 2.3vh. While setting up or connecting, the wordmark heads it.
+constexpr float kCardPadTop = 22, kCardPadSide = 31, kCardPadBottom = 24;
+constexpr float kCardTitle = 58, kCardTitleStep = 66, kCardArtist = 32;
+constexpr float kCardBrand = 360;
+float card_brand_height(const Presentation &state)
+{
+    return brand_screen(state) && state.wordmark ? kCardBrand * kWordmarkAspect + 24 : 0;
+}
+} // namespace
+
 float track_card_height(const ui::Fonts &fonts, const Presentation &state)
 {
     const CardText card = card_text(state);
-    const auto lines = ui::paragraph_lines(fonts.display, card.title, 58, 1184, 2);
-    const float title_h = static_cast<float>(lines.lines.size()) * 62;
-    return 40 + title_h + (card.artist.empty() ? 0 : 44) + (card.meta.empty() ? 0 : 38) + 30;
+    const auto lines = ui::paragraph_lines(fonts.display, card.title, kCardTitle, 1128, 2);
+    return kCardPadTop + card_brand_height(state) +
+           static_cast<float>(lines.lines.size()) * kCardTitleStep +
+           (card.artist.empty() ? 0 : 43) + (card.meta.empty() ? 0 : 33) + kCardPadBottom;
 }
 
 void draw_track_card(const Scene &scene)
@@ -473,35 +601,36 @@ void draw_track_card(const Scene &scene)
     const auto &state = scene.state;
     const CardText card = card_text(state);
     const std::string &title = card.title, &artist = card.artist, &meta = card.meta;
-    // LG's card fits its content, up to 62 % of the width.
-    const auto lines = ui::paragraph_lines(fonts.display, title, 58, 1184, 2);
-    float width = 0;
+    const auto lines = ui::paragraph_lines(fonts.display, title, kCardTitle, 1128, 2);
+    const float brand = card_brand_height(state);
+    float width = brand > 0 ? kCardBrand : 0;
     for (const auto &line : lines.lines)
-        width = std::max(width, fonts.display.font->measure(line, 58));
-    width = std::max(width, fonts.semibold.font->measure(artist, 32));
+        width = std::max(width, fonts.display.font->measure(line, kCardTitle));
+    width = std::max(width, fonts.semibold.font->measure(artist, kCardArtist));
     width = std::max(width, fonts.regular.font->measure(meta, kTypeMin));
-    width = std::clamp(width + kFieldInset * 2, 520.0f, 1240.0f);
+    width = std::min(width + kCardPadSide * 2, 1190.0f);
+    const float inner = width - kCardPadSide * 2;
     const float height = track_card_height(fonts, state);
-    const gfx::Rect field{kSafeLeft, 980 - height, width, height};
-    const Color fa = field_a(state);
-    const Color text = field_text(fa);
+    const gfx::Rect box{kSafeLeft, 980 - height, width, height};
+    const float x = box.x + kCardPadSide;
+    const Color text = paper(state);
     list.push_opacity(scene.clock.card);
-    list.rounded_rect(field, 0, fa);
-    float y = ui::paragraph(list, fonts.display, lines, field.x + kFieldInset, field.y + 40 + 46,
-                            58, 62, text);
-    y -= 62;
+    list.rounded_rect(box, 0, kInk.with_alpha(0.9f));
+    float top = box.y + kCardPadTop;
+    if (brand > 0)
+        state.wordmark(list, x, top + kCardBrand * kWordmarkAspect * kWordmarkBaseline, kCardBrand);
+    top += brand;
+    ui::paragraph(list, fonts.display, lines, x, top + 50, kCardTitle, kCardTitleStep, text);
+    float y = top + static_cast<float>(lines.lines.size()) * kCardTitleStep;
     if (!artist.empty())
     {
-        y += 44;
-        ui::text(list, fonts.semibold, fonts.semibold.font->fit(artist, 32, width - 56),
-                 field.x + kFieldInset, y, 32, text);
+        ui::text(list, fonts.semibold, fonts.semibold.font->fit(artist, kCardArtist, inner), x,
+                 y + 35, kCardArtist, text);
+        y += 43;
     }
     if (!meta.empty())
-    {
-        y += 38;
-        ui::text(list, fonts.regular, fonts.regular.font->fit(meta, kTypeMin, width - 56),
-                 field.x + kFieldInset, y, kTypeMin, text.with_alpha(0.85f));
-    }
+        ui::text(list, fonts.regular, fonts.regular.font->fit(meta, kTypeMin, inner), x, y + 26,
+                 kTypeMin, text.with_alpha(0.85f));
     list.pop_opacity();
 }
 
@@ -560,14 +689,26 @@ template <typename Draw> void soft_outline(gfx::DrawList &list, float spread, Dr
 }
 } // namespace
 
+namespace
+{
+// LG's One line (.lyric-overlay-line): bold 4vh words in an ink box at the left
+// margin, padded 1.4vh by 1.4vw, up to 60vw wide, all scaled by the Size. The
+// PS5 keeps the line after it beneath, and the rule that fills as it is sung.
+constexpr float kLineSize = 44, kLineStep = 50, kLeadSize = 30, kLinePadX = 27, kLinePadY = 15;
+constexpr float kLineMin = 360, kLineMax = 1152;
+} // namespace
+
 float lyric_line_width(const ui::Fonts &fonts, const LyricView &lyrics, float scale)
 {
     const Singing s = singing(lyrics);
-    const auto lines = ui::paragraph_lines(fonts.display, s.current, 64 * scale, 1184 * scale, 2);
-    float width = fonts.regular.font->measure(s.next.empty() ? s.before : s.next, 34 * scale);
+    const float pad = kLinePadX * 2 * scale;
+    const auto lines = ui::paragraph_lines(fonts.semibold, s.current, kLineSize * scale,
+                                           kLineMax * scale - pad, 2);
+    float width =
+        fonts.regular.font->measure(s.next.empty() ? s.before : s.next, kLeadSize * scale);
     for (const auto &line : lines.lines)
-        width = std::max(width, fonts.display.font->measure(line, 64 * scale));
-    return std::clamp(width + kFieldInset * 2 * scale, 480.0f * scale, 1240.0f * scale);
+        width = std::max(width, fonts.semibold.font->measure(line, kLineSize * scale));
+    return std::clamp(width + pad, kLineMin * scale, kLineMax * scale);
 }
 
 void draw_lyric_line(const Scene &scene)
@@ -579,36 +720,36 @@ void draw_lyric_line(const Scene &scene)
     const OverlayLook &look = scene.state.preferences.line_look;
     const float k = overlay_scale(look.size);
     const Singing s = singing(scene.lyrics);
-    // Sized to the line; a two-row line grows the field upwards, so the lead
+    // Sized to the line; a two-row line grows the box upwards, so the lead
     // line below never moves.
-    const float width = std::max(480.0f * k, scene.clock.lyric_width);
-    const float inset = kFieldInset * k;
-    const float size = 64 * k, step = 66 * k, lead_size = 34 * k;
-    const auto lines = ui::paragraph_lines(fonts.display, s.current, size, width - inset * 2, 2);
-    const float height = (40 + static_cast<float>(lines.lines.size()) * 66 + 52 + 26) * k;
+    const float width = std::max(kLineMin * k, scene.clock.lyric_width);
+    const float inset = kLinePadX * k;
+    const float size = kLineSize * k, step = kLineStep * k, lead_size = kLeadSize * k;
+    const auto lines = ui::paragraph_lines(fonts.semibold, s.current, size, width - inset * 2, 2);
+    const float rows = static_cast<float>(lines.lines.size());
+    // Padding, the first row's capitals, the rows, the lead line, its descenders, padding.
+    const float height = (kLinePadY + 38 + (rows - 1) * kLineStep + 42 + 12 + kLinePadY) * k;
     const float top = overlay_top(look.position, height, overlay_room(scene, 980));
     const gfx::Rect field{kSafeLeft, top, width, height};
     const bool box = look.background == background_box;
-    const Color fa = field_a(scene.state);
-    // Off the box the words sit on the dark ground or the visuals: paper.
-    const Color text = box ? field_text(fa) : paper(scene.state);
-    const Color lead_colour = box ? text.with_alpha(0.72f) : muted(scene.state);
+    // On the box, the shade or the visuals the words are paper.
+    const Color text = paper(scene.state);
+    const Color lead_colour = muted(scene.state);
     const float in = fade_in(scene.clock);
     list.push_opacity(scene.clock.lyric);
     if (box)
-        list.rounded_rect(field, 0, fa);
-    const float last = field.y + height - (30 + 34 + 26) * k;
-    const float first =
-        last - static_cast<float>(lines.lines.size() - 1) * step + slide(scene.clock, 20 * k);
+        list.rounded_rect(field, 0, kInk.with_alpha(0.9f));
+    const float lead_y = field.y + height - (12 + kLinePadY) * k;
+    const float last = lead_y - 42 * k;
+    const float first = last - (rows - 1) * step + slide(scene.clock, 20 * k);
     const float x = field.x + inset;
     const Color now = text.with_alpha(s.current_alpha * (0.3f + 0.7f * in));
     const std::string lead = s.next.empty() ? s.before : s.next;
     const std::string lead_line =
         lead.empty() ? lead : fonts.regular.font->fit(lead, lead_size, width - inset * 2);
-    const float lead_y = field.y + height - 30 * k;
     const auto words = [&](Color lit, Color unlit, Color quiet, std::size_t sung)
     {
-        karaoke_paragraph(list, fonts.display, lines, s.current, sung, x, first, size, step, lit,
+        karaoke_paragraph(list, fonts.semibold, lines, s.current, sung, x, first, size, step, lit,
                           unlit);
         if (!lead_line.empty())
             ui::text(list, fonts.regular, lead_line, x, lead_y, lead_size, quiet);
@@ -626,16 +767,16 @@ void draw_lyric_line(const Scene &scene)
     if (s.progress >= 0)
     {
         const float p = std::clamp(s.progress, 0.0f, 1.0f);
-        const float y = field.y + height - 3 * k;
+        const float y = field.y + height - 2 * k;
         if (box)
-            list.line(field.x, y, field.x + field.w * p, y, 6 * k, text.with_alpha(0.55f));
+            list.line(field.x, y, field.x + field.w * p, y, 4 * k, text.with_alpha(0.55f));
         else
         {
             // No box edge to run along: the rule spans the words' column.
             const float span = width - inset * 2;
             if (look.background == background_none)
-                list.line(x, y + 1, x + span * p, y + 1, 10 * k, kInk.with_alpha(0.3f));
-            list.line(x, y, x + span * p, y, 6 * k, text.with_alpha(0.7f));
+                list.line(x, y + 1, x + span * p, y + 1, 8 * k, kInk.with_alpha(0.3f));
+            list.line(x, y, x + span * p, y, 4 * k, text.with_alpha(0.7f));
         }
     }
     list.pop_opacity();

@@ -5,6 +5,7 @@
 #pragma once
 
 #include "audio/stream_ring.hpp"
+#include "afterglow/brand_mark.hpp"
 #include "afterglow/companion.hpp"
 #include "afterglow/preferences.hpp"
 #include "afterglow/preset_quality.hpp"
@@ -142,6 +143,9 @@ struct Presentation
     // GL texture for an item's artwork URL, or 0 while it loads or when none.
     // main.cpp installs the thumbnail cache; tests leave it empty.
     std::function<std::uint32_t(const std::string &url)> thumbnail;
+    // Draws the wordmark (brand_mark.hpp) on setup, connecting and Status only.
+    // main.cpp installs it; tests leave it empty and nothing is drawn.
+    WordmarkDraw wordmark;
     std::string save_status;
     PresetQuality quality;
     bool scanning = false;

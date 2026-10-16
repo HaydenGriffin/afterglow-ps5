@@ -603,6 +603,8 @@ int main()
     const auto thumb_upload = [&](int w, int h, const std::uint8_t *rgba)
     { return renderer.batch().create_texture(w, h, rgba); };
     const auto thumb_release = [](std::uint32_t texture) { glDeleteTextures(1, &texture); };
+    model.wordmark =
+        afterglow::wordmark_hook("/app0/assets/brand/afterglow-wordmark-paper.png", thumb_upload);
     std::string applied_preferences, applied_player = "\x01", artwork_url;
     std::string submitted_quality = model.preferences.quality;
     std::uint64_t artwork_generation = 0, favorite_revision = 0;

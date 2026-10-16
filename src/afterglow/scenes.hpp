@@ -72,12 +72,19 @@ struct IdleCopy
 };
 IdleCopy idle_copy(const Presentation &state);
 
+// The width untimed lyrics wrap to in the Lyrics poster's column; the screen
+// pages them by it.
+inline constexpr float kPlainLyricsWidth = 998;
+
 // The halo and spectrum styles; MilkDrop arrives as a texture.
 void draw_visual_style(const Scene &scene, int style);
-// Album (lyrics = false) or Lyrics poster beside the artwork slab. ground is
-// the opacity of the ink behind the text: 1 over nothing, 0.82 over MilkDrop.
+// Album (lyrics = false) or Lyrics poster, as LG sets it: the cover in a
+// square at the left margin, the words in one column on the dark ground. ground
+// is the ground's opacity: 1 over nothing, less over MilkDrop. With no song it
+// is the setup, connecting or waiting screen.
 void draw_poster(const Scene &scene, bool lyrics, float ground);
-// Only the slab and ground, for sheets that sit right of the artwork.
+// The poster's left side (ground, place line, cover) and the ink a sheet
+// stands on from kSlabWidth, for sheets that sit right of the artwork.
 void draw_slab(const Scene &scene, float ground);
 void draw_track_card(const Scene &scene);
 // The track card's height (it stands on y = 980), for overlays that stack above it.
