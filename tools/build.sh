@@ -267,7 +267,11 @@ mkdir -p "$app/sce_sys" "$app/sce_module"
 cp "$param" "$app/sce_sys/param.json"
 # Says which build this is, for an app that reads it; a release has none.
 [[ -z ${BUILD_LABEL:-} ]] || printf '%s\n' "$BUILD_LABEL" > "$app/build-label.txt"
-python3 "$root/tools/afterglow-icon.py" "$app/sce_sys/icon0.png"
+# Afterglow's own home-screen artwork (docs/brand/README.md). snd0.at9 is the
+# upstream kit's selection music, so it stays out of the app.
+for asset in icon0.png pic0.dds pic1.dds; do
+    cp "$root/sce_sys/$asset" "$app/sce_sys/$asset"
+done
 mkdir -p "$app/assets/fonts"
 for face in archivo-regular archivo-semibold archivo-display dejavu-sans-mono; do
     cp "$root/assets/fonts/$face.huifont" "$app/assets/fonts/"
