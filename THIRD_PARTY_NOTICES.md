@@ -179,6 +179,23 @@ The 349 bundled community presets retain author names in `assets/presets/index.t
 Their origin and the limits of the available licensing information are recorded
 in `third_party/presets/README.md`, alongside the upstream repository's MIT text.
 
+## BearSSL (online lyrics)
+
+[BearSSL](https://www.bearssl.org/) by Thomas Pornin, MIT license
+(`third_party/bearssl/LICENSE.txt`, also shipped as `licenses/bearssl/LICENSE.txt`
+in the app folder). `tools/build-bearssl.sh` fetches it from
+`https://www.bearssl.org/git/BearSSL` at commit
+`7bea48e5e850ab4cafbe68d3765cdaba13a86d6f` (the commit id pins the whole tree),
+builds it under ignored `.deps/bearssl/`, and statically links it into the PS5
+application and the host preview. It carries the HTTPS requests of the online
+lyrics search to lrclib.net. On the console its OS hooks are off: randomness
+comes from the CPU's RDRAND instruction and the time from the app. No source
+is modified and none is stored in this repository.
+
+Certificates are checked against the console's own CA list
+(`/system/common/cert/CA_LIST.cer`) or, on a PC, the system's bundle; none is
+shipped.
+
 ## Archivo
 
 Archivo by Omnibus-Type, SIL Open Font License 1.1. Static instances (600/100, 750/88 and 820/80 weight/width) were made from the existing LG Afterglow bundled variable font. Source and licence: `third_party/fonts/Archivo-*.ttf` and `Archivo-LICENSE.txt`. Baked atlases ship in `assets/fonts`.

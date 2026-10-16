@@ -251,12 +251,50 @@ TEST_F(AfterglowPanel, AdjustsVisualsWithinBoundsAndRequests120Hz)
 
 TEST_F(AfterglowPanel, LyricsTimingStepsTheOffset)
 {
+    auto &p = presentation().preferences;
     panel_.open(Page::settings);
     down(2);
     cross();
     ASSERT_EQ(panel_.page(), Page::lyrics_timing);
     input(nav(Direction::left));
-    EXPECT_EQ(presentation().preferences.lyrics_offset_ms, -50);
+    EXPECT_EQ(p.lyrics_offset_ms, -100) << "LG's 100 ms steps";
+    for (int i = 0; i < 120; ++i)
+        input(nav(Direction::right));
+    EXPECT_EQ(p.lyrics_offset_ms, 10000) << "up to 10 s later";
+    p.lyrics_offset_ms = 50; // saved in the old 50 ms steps
+    input(nav(Direction::left));
+    EXPECT_EQ(p.lyrics_offset_ms, 0) << "back onto the grid, through zero";
+}
+
+TEST_F(AfterglowPanel, LyricsPageGroupsTimingResetOnlineAndRetry)
+{
+    using hui::afterglow::LyricsStatus;
+    auto &s = presentation();
+    auto &p = s.preferences;
+    panel_.open(Page::lyrics_timing);
+    input(nav(Direction::right));
+    ASSERT_EQ(p.lyrics_offset_ms, 100);
+    down(1);
+    cross();
+    EXPECT_EQ(p.lyrics_offset_ms, 0) << "Reset lyrics timing, offered while not zero";
+    // The reset row is gone; the focus now rests on Online lyrics.
+    cross();
+    EXPECT_FALSE(p.online_lyrics);
+    EXPECT_FALSE(s.lyrics_retry) << "off asks nothing";
+    s.lyrics.status = LyricsStatus::missing;
+    cross();
+    EXPECT_TRUE(p.online_lyrics);
+    EXPECT_TRUE(s.lyrics_retry) << "back on: a song without lyrics is looked up again";
+    s.lyrics_retry = false;
+    down(1);
+    cross();
+    EXPECT_TRUE(s.lyrics_retry) << "Retry lyrics, offered when none were found";
+    s.lyrics_retry = false;
+    s.lyrics.status = LyricsStatus::timed;
+    wait(0.1f);
+    down(1);
+    cross();
+    EXPECT_FALSE(s.lyrics_retry) << "no Retry row once lyrics are there";
 }
 
 TEST_F(AfterglowPanel, ChoosesPresetTogglesFavouriteAndKeep)

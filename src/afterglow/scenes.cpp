@@ -329,7 +329,10 @@ void draw_poster(const Scene &scene, bool lyrics, float ground)
              : joined({state.playing ? "Playing" : "Paused",
                        track.quality_badge.empty() ? track.format : track.quality_badge,
                        lyrics && scene.lyrics.empty()
-                           ? (scene.lyrics.loading ? "Finding lyrics…" : "No lyrics for this song")
+                           ? (scene.lyrics.retrying  ? "Lyrics unavailable, retrying shortly"
+                              : scene.lyrics.failed  ? "Lyrics couldn’t load"
+                              : scene.lyrics.loading ? "Finding lyrics…"
+                                                     : "No lyrics for this song")
                            : ""});
     const std::string status_line = fonts.regular.font->fit(status, kTypeMin, 720);
     const float status_width = fonts.regular.font->measure(status_line, kTypeMin);

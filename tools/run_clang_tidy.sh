@@ -57,6 +57,6 @@ app_cpp_sources+=("$root/tooling/native/app_crt.cpp" "$root/tooling/native/app_c
 if (( ${#app_cpp_sources[@]} )); then
     run_tidy app_cpp_sources -std=c++20 -fno-exceptions -fno-rtti --target=x86_64-sie-ps5 \
         -DGL_GLEXT_PROTOTYPES=1 -I"$root/src" -I"$root/.deps/projectm/include" \
-        -isystem "$opengl" \
+        -isystem "$root/.deps/bearssl/src/inc" -isystem "$opengl" \
         -isystem "$sdk/target/include/c++/v1" -isystem "$sdk/target/include"
 fi

@@ -16,6 +16,7 @@ struct Preferences
     bool sequential = false, skip_slow = true;
     // Lyrics over the visuals: off, one line in a field, or the centred stage.
     int lyrics_layer = 0;
+    // Words-only lyric timing, -10000..10000 ms in 100 ms steps; positive is later.
     int lyrics_offset_ms = 0;
     // MilkDrop keeps playing behind the Album and Lyrics posters.
     bool poster_visuals = true;
@@ -41,6 +42,9 @@ struct Preferences
     bool lightbar = true, lightbar_beat = false;
     // Account mirroring of these preferences to Music Assistant (vizman.devices[id]).
     bool account_sync = true;
+    // Online lyrics (LG onlineLyrics): when Music Assistant has none, ask
+    // lrclib.net. Off sends nothing there.
+    bool online_lyrics = true;
     std::string player, quality, favorite_pending;
     std::vector<std::string> favorites;
     bool favorite(std::string_view name) const;

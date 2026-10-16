@@ -35,7 +35,9 @@ struct LyricView
     int first = 0;   // plain lyrics: first line on the page
     int count = 0;   // plain lyrics: lines on the page
     bool loading = false;
-    bool karaoke = false; // light words as they are sung, when the line has timings
+    bool karaoke = false;  // light words as they are sung, when the line has timings
+    bool failed = false;   // the lookup failed (retryable)
+    bool retrying = false; // and will try once more by itself
     bool empty() const
     {
         return lines == nullptr || lines->empty();

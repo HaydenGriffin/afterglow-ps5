@@ -9,6 +9,7 @@
 #include "afterglow/preferences.hpp"
 #include "afterglow/preset_quality.hpp"
 #include "afterglow/home_model.hpp"
+#include "afterglow/lyrics_lookup.hpp"
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -166,6 +167,10 @@ struct Presentation
     std::string dev_status;
     // The open sheet's page name ("" when none), reported by the dev status request.
     std::string page;
+    // Where the song's lyrics stand (online_lyrics.hpp pump_lyrics); the text
+    // itself is in companion.track. lyrics_retry: the UI asks, the pump retries.
+    LyricsState lyrics;
+    bool lyrics_retry = false;
 };
 
 // Only the UI thread accesses this model. Audio reaches it through Analyzer.

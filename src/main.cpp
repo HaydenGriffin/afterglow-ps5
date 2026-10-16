@@ -14,6 +14,7 @@
 #include "afterglow/preference_store.hpp"
 #include "afterglow/milkdrop.hpp"
 #include "afterglow/night.hpp"
+#include "afterglow/online_lyrics.hpp"
 #include "afterglow/presentation.hpp"
 #include "concepts/concepts.hpp"
 #include "core/save_file.hpp"
@@ -474,6 +475,9 @@ int main()
     start_home(*home, model);
     auto artwork = std::make_unique<afterglow::Artwork>();
     artwork->start();
+    afterglow::OnlineLyrics online_lyrics(afterglow::lrclib_fetch(), afterglow::https_abort);
+    online_lyrics.start();
+    afterglow::LyricsLookup lyrics_lookup;
     // Sheet rows with artwork ask for 160-pixel covers; GL stays on this thread.
     afterglow::ThumbnailOptions thumb_options;
     thumb_options.origin = "http://" + credentials.host + ":" + std::to_string(credentials.port);
@@ -625,6 +629,9 @@ int main()
         {
             const auto state = client->snapshot();
             model.companion = companion->snapshot();
+            afterglow::pump_lyrics(
+                model, lyrics_lookup, online_lyrics, [&] { companion->retry_lyrics(); },
+                now / 1000);
             if (model.companion.favorites_ready &&
                 (!favorites_received || model.companion.favorite_revision != favorite_revision))
             {
@@ -1012,6 +1019,7 @@ int main()
     home->stop();
     artwork->stop();
     thumbnails->stop();
+    online_lyrics.stop();
     model.thumbnail = nullptr;
     thumbnails->clear(thumb_release);
     milkdrop->release();
@@ -1025,6 +1033,7 @@ int main()
     home->join();
     artwork->join();
     thumbnails->join();
+    online_lyrics.join();
     preference_store.join();
     pad.reset_light_bar();
     pad.close();

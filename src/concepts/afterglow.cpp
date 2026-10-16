@@ -53,6 +53,13 @@ constexpr app::TourStep kTour[] = {
     {0.8f, 0, Direction::none, "queue"},
     {0.1f, action_bit(Action::page_next)},
     {0.8f, 0, Direction::none, "settings"},
+    {0.1f, 0, Direction::down},
+    {0.1f, 0, Direction::down},
+    {0.1f, action_bit(Action::confirm)},
+    {0.1f, 0, Direction::right},
+    {0.8f, 0, Direction::none, "lyrics-settings"},
+    {0.1f, 0, Direction::left},
+    {0.1f, action_bit(Action::back)},
     {0.1f, action_bit(Action::page_prev)},
     {0.1f, action_bit(Action::page_prev)},
     {0.1f, action_bit(Action::page_prev)},
@@ -290,9 +297,10 @@ class Afterglow final : public app::Concept
             view_.active = active;
             clock_.lyric_age = 0;
         }
-        // Music Assistant gives no "still fetching" signal; a new song with no
-        // lyrics yet reads as loading for a few seconds before saying none.
-        view_.loading = lyrics_.empty() && state.companion.connected && clock_.track_age < 4;
+        // The lookup says when it is still asking (Music Assistant, then LRCLIB).
+        view_.loading = lyrics_.empty() && state.lyrics.status == afterglow::LyricsStatus::loading;
+        view_.failed = lyrics_.empty() && state.lyrics.status == afterglow::LyricsStatus::error;
+        view_.retrying = view_.failed && state.lyrics.retry_at_ms != 0;
         const int page = std::clamp(view_.page, 0, std::max(0, view_.pages - 1));
         view_.page = page;
         const auto starts = static_cast<int>(page_starts_.size());
@@ -370,10 +378,11 @@ class Afterglow final : public app::Concept
         const auto &p = state.preferences;
         const bool wants_timed = p.display_mode < 2 && p.lyrics_layer > 0;
         if (wants_timed && !lyrics_announced_ && clock_.track_age > 4 && !state.title.empty() &&
-            !view_.timed)
+            !view_.timed && !view_.loading)
         {
-            state.show_toast(lyrics_.empty() ? "No lyrics for this song"
-                                             : "Untimed lyrics: press Square for Lyrics");
+            state.show_toast(view_.failed      ? "Lyrics couldn’t load"
+                             : lyrics_.empty() ? "No lyrics for this song"
+                                               : "Untimed lyrics: press Square for Lyrics");
             lyrics_announced_ = true;
         }
     }
@@ -416,12 +425,13 @@ class Afterglow final : public app::Concept
             const int step = input.is_pressed(Action::jump_next) ? 1 : -1;
             if (lyric_poster && view_.timed)
             {
-                // On the lyric poster L2/R2 nudge the timing while the words are in view.
-                p.lyrics_offset_ms = std::clamp(p.lyrics_offset_ms + step * 100, -5000, 5000);
+                // On the lyric poster L2/R2 nudge the timing while the words are
+                // in view, in the Lyrics timing row's steps.
+                p.lyrics_offset_ms = afterglow::step_lyrics_offset(p.lyrics_offset_ms, step);
                 state.show_toast(p.lyrics_offset_ms == 0
-                                     ? "Lyrics on time"
-                                     : "Lyrics " + std::to_string(std::abs(p.lyrics_offset_ms)) +
-                                           (p.lyrics_offset_ms > 0 ? " ms later" : " ms earlier"));
+                                     ? "Lyrics with the music"
+                                     : "Lyrics " +
+                                           afterglow::lyrics_timing_label(p.lyrics_offset_ms));
             }
             else if (p.visual_style == 0 && state.milkdrop_texture != 0 && !lyric_poster)
             {

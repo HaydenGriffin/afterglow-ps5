@@ -386,6 +386,8 @@ CompanionTrack parse_track(std::string_view item)
             if (!out.artist.empty())
                 out.artist += ", ";
             out.artist += name;
+            if (out.first_artist.empty())
+                out.first_artist = name;
         }
     }
     auto album = field(media, "album");
@@ -420,6 +422,7 @@ CompanionTrack parse_track(std::string_view item)
         if (split != std::string::npos)
         {
             out.artist = out.title.substr(0, split);
+            out.first_artist = out.artist;
             out.title.erase(0, split + 3);
         }
     }
@@ -1021,6 +1024,9 @@ struct Companion::Impl
     std::string relay_for;
     std::string current, displayed_player, enriched_uri, enrichment_id, enrichment_key;
     CompanionTrack enriched_track;
+    std::uint64_t enrichment_number = 0;
+    // Retry lyrics (UI thread): the worker enriches the playing song again.
+    std::atomic<bool> lyrics_retry{false};
     std::vector<CompanionTrack> upcoming;
     std::uint64_t sequence = 0;
     std::map<std::string, Player> players;
@@ -1352,6 +1358,9 @@ struct Companion::Impl
                 enriched_track.lyrics = string_value(lines[0]);
             if (lines.size() > 1)
                 enriched_track.lrc_lyrics = string_value(lines[1]);
+            // A failure is told apart from "no lyrics": the first is retried.
+            enriched_track.lyrics_reply = field(raw, "error_code").empty() ? 1 : 2;
+            enriched_track.lyrics_request = enrichment_number;
         }
         else if (id == items_request && !items_request.empty())
         {
@@ -1909,6 +1918,8 @@ struct Companion::Impl
                         okay = okay && request_delay(now);
                     choose(now);
                     follow_playing_index();
+                    if (lyrics_retry.exchange(false))
+                        enrichment_key.clear();
                     if (queues.contains(current) &&
                         current + ":" + queues[current].item_id + ":" + queues[current].track.uri !=
                             enrichment_key)
@@ -1918,7 +1929,8 @@ struct Companion::Impl
                         enriched_uri = q.track.uri;
                         enriched_track = {};
                         upcoming.clear();
-                        enrichment_id = std::to_string(++sequence);
+                        enrichment_number = ++sequence;
+                        enrichment_id = std::to_string(enrichment_number);
                         if (!enriched_uri.empty())
                             okay = okay && call("item-" + enrichment_id, "music/item_by_uri",
                                                 "{\"uri\":" + json_quote(enriched_uri) +
@@ -2185,6 +2197,10 @@ bool Companion::action(const CompanionAction &action)
     impl_->action_pending = std::move(request);
     impl_->state.action_busy = true;
     return true;
+}
+void Companion::retry_lyrics()
+{
+    impl_->lyrics_retry = true;
 }
 void Companion::set_queue_offset(int offset)
 {
