@@ -1,9 +1,10 @@
-# ps5-homebrew-ui - Feature request form.
+# Afterglow - Feature request form.
 # Copyright (C) 2026 BlackBearReloaded
+# Copyright (C) 2026 Afterglow contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 name: "Feature request"
-description: "An idea or improvement for ps5-homebrew-ui"
+description: "An idea or improvement for Afterglow for PS5"
 title: "[Feature] "
 labels: ["enhancement"]
 body:
@@ -13,6 +14,8 @@ body:
         **Before you post**
 
         - Do not post Sony SDK files, firmware, decrypted system files, keys or links to them.
+        - Afterglow follows Afterglow for LG webOS. If the LG app already does what you want, say so.
+        - Background music while playing games is out of scope: Afterglow is a foreground app.
   - type: textarea
     id: problem
     attributes:

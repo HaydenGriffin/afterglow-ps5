@@ -1,20 +1,21 @@
 # Pull-request builds
 
-Every pull request is built in full by the [Build workflow](../.github/workflows/tooling.yml):
-lint, host tests, and the same packaging a release gets. The result is an installable copy
-of the demo app, **Homebrew UI Lab** (`PPSA99050`), kept for 14 days, that a reviewer can
-put on a console before merging.
+Every pull request (and every push) is built in full by the
+[Build workflow](../.github/workflows/tooling.yml): lint, host tests, the network smoke tests
+against local mock servers, and the same packaging a release gets. The result is an
+installable copy of **Afterglow** (`PPSA99481`), kept for 14 days, that a reviewer can put on
+a console before merging.
 
 ## What a pull request produces
 
-| | Pull request | Tag, or a run started by hand |
+| | Pull request | Push, tag, or a run started by hand |
 | --- | --- | --- |
-| Artifact name | `ps5-homebrew-ui-PR<number>-<commit>` | `ps5-homebrew-ui-<full commit>` |
+| Artifact name | `afterglow-ps5-PR<number>-<commit>` | `afterglow-ps5-<full commit>` |
 | `<commit>` | First seven characters of the pull request's own head commit | The built commit, in full |
 | Label file in the app folder | `PR <number>, <commit>` | None |
 | `contentVersion` | Unchanged | Unchanged |
 
-Pull request 12 at commit `1a2b3c4` gives the artifact `ps5-homebrew-ui-PR12-1a2b3c4` and
+Pull request 12 at commit `1a2b3c4` gives the artifact `afterglow-ps5-PR12-1a2b3c4` and
 the label `PR 12, 1a2b3c4`. In a fork or a renamed repository the first part follows the
 repository's name.
 
@@ -30,11 +31,10 @@ Two details are deliberate:
 
 1. Open the pull request, then **Checks** and the **Build** run (or the run's page under
    **Actions**).
-2. Download the artifact named `ps5-homebrew-ui-PR<number>-<commit>` from the run's
+2. Download the artifact named `afterglow-ps5-PR<number>-<commit>` from the run's
    **Artifacts** list. GitHub requires a signed-in account for this.
-3. Unpack it: it holds `PPSA99050.zip` (the app folder) and `SHA256SUMS`. Check the ZIP
-   with `sha256sum -c SHA256SUMS`, then install as described in
-   [Deployment](platform/DEPLOYMENT.md).
+3. Unpack it: it holds `PPSA99481.zip` (the app folder) and `SHA256SUMS`. Check the ZIP
+   with `sha256sum -c SHA256SUMS`, then install as described in [install.md](install.md).
 
 A first-time contributor's pull request does not build until a maintainer approves the
 workflow run. That is GitHub's default for public repositories and is worth keeping: the
@@ -44,18 +44,18 @@ build runs the pull request's code.
 
 `tools/build.sh` writes the environment variable `BUILD_LABEL` as one line to
 `build-label.txt` at the root of the app folder, next to `eboot.bin`
-(`dist/PPSA99050/build-label.txt` after a build, `/app0/build-label.txt` on the console).
+(`dist/PPSA99481/build-label.txt` after a build, `/app0/build-label.txt` on the console).
 The workflow sets it for pull requests only. A build without it writes no file, so a
 release never carries one.
 
 `BUILD_LABEL` must be 1 to 40 characters from letters, digits, spaces and `, . _ # -`. The
 build refuses anything else before compiling, so the text is safe to show as it is.
 
-Homebrew UI Lab does not show the label on screen. To tell which build is installed, read
-the file in the app folder, or in the ZIP before installing:
+Afterglow does not show the label on screen. To tell which build is installed, read the
+file in the app folder, or in the ZIP before installing:
 
 ```bash
-unzip -p PPSA99050.zip PPSA99050/build-label.txt
+unzip -p PPSA99481.zip PPSA99481/build-label.txt
 ```
 
 An app built on the kit can read `/app0/build-label.txt` where it shows its version, such
@@ -70,7 +70,7 @@ BUILD_LABEL="pacing test 2" make
 
 ## Names and permissions
 
-The name used for tags and runs started by hand, `ps5-homebrew-ui-<full commit>`, appears twice in the
+The name used for pushes, tags and runs started by hand, `afterglow-ps5-<full commit>`, appears twice in the
 workflow: the build job's "Name this build" step and the release job's download. A tag
 never takes the pull-request branch, so the release job finds its build under that name;
 rename both together if the name ever changes.

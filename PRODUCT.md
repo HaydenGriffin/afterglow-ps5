@@ -1,6 +1,6 @@
 # Afterglow PS5
 
-An unofficial native Music Assistant companion for a jailbroken PS5, used from the sofa with a DualSense and a TV or HDMI sound system. The user's firmware is 7.61. This is version 1.5.0. The LG webOS Afterglow is the user-authorized visual and functional reference: both releases share a concert-poster identity and roughly equivalent core music controls, while remaining separate installations.
+An unofficial native Music Assistant companion for a jailbroken PS5, used from the sofa with a DualSense and a TV or HDMI sound system. The user's firmware is 7.61. This is version 1.6.0, the first public release. The LG webOS Afterglow is the user-authorized visual and functional reference: both releases share a concert-poster identity and roughly equivalent core music controls, while remaining separate installations.
 
 ## Platform and scope
 
@@ -16,6 +16,6 @@ Settings contains Source, Visuals & presets, Lyrics timing, Presets, Sound & syn
 
 Setup uses a private configuration file with numeric LAN IPv4 addresses (`host`, optional `ha_host`); metadata, browsing and following need a Music Assistant token, from console sign-in or `ma_token`. Following also needs the MilkDrop Visualizer relay. Starting the app does not transfer playback. Controls operate on the selected source. No invented live playback, health data, calibrated HDMI timing or PS5 system-screensaver support.
 
-An earlier build passed PS5 audio/title/artwork checks at 59.9–60 fps without audio errors. Everything new in 1.5.0 is unverified on the console: the transport band and controller bindings, search and paging, group editing, output compensation, keyboard and sign-in, settings sync, light bar, beat detection, album recolouring, night register, karaoke lyrics, the Home Assistant glance, the dev request path and 120 Hz. Host captures and tests demonstrate local behavior, not console sound, timing or sustained performance.
+An earlier build passed PS5 audio/title/artwork checks at 59.9–60 fps without audio errors. Everything new in 1.5.0 and 1.6.0 is unverified on the console: the transport band and controller bindings, search and paging, group editing, output compensation, keyboard and sign-in, settings sync, light bar, beat detection, album recolouring, night register, karaoke lyrics, the Home Assistant glance, the dev request path and 120 Hz. Host captures and tests demonstrate local behavior, not console sound, timing or sustained performance.
 
 PS5 uses projectM (347 enabled presets), while LG uses Butterchurn. PS5 has two artwork colours rather than LG's palette roles. LG's documented graphics memory growth remains unresolved; local checks do not establish long-session stability. See docs/AFTERGLOW.md for operational details and limitations.
