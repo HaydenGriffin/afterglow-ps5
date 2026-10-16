@@ -440,7 +440,10 @@ class Afterglow final : public app::Concept
             ui::Canvas canvas{list, fonts, 0, clock_.time};
             panel_.draw(canvas);
         }
-        afterglow::draw_toast(scene, sheet_open_);
+        // The programme's songs start where a toast drops in, and its Keep row
+        // already says what happened.
+        if (!(idle && state.programme.is_open()))
+            afterglow::draw_toast(scene, sheet_open_);
         draw_close_hold(list);
     }
 
