@@ -1,0 +1,20 @@
+diff --git a/vendor/hlslparser/src/HLSLTree.cpp b/vendor/hlslparser/src/HLSLTree.cpp
+index 563c87a..6e5aeda 100644
+--- a/vendor/hlslparser/src/HLSLTree.cpp
++++ b/vendor/hlslparser/src/HLSLTree.cpp
+@@ -647,6 +647,15 @@ bool HLSLTree::ReplaceUniformsAssignments()
+                 declaration->name = tree->AddString(iter->second.c_str());
+                 declaration->type = uniformDeclaration->type;
+ 
++                // HLSL lets a shader write its copy of a uniform; the copy
++                // starts with the uniform's value. Without this the
++                // components the shader does not write are undefined.
++                HLSLIdentifierExpression * value = tree->AddNode<HLSLIdentifierExpression>(node->fileName, node->line);
++                value->name = uniformDeclaration->name;
++                value->global = true;
++                value->expressionType = uniformDeclaration->type;
++                declaration->assignment = value;
++
+                 // Add declaration within function statements
+                 declaration->nextStatement = node->statement;
+                 node->statement = declaration;

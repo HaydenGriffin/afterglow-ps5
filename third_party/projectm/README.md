@@ -27,6 +27,13 @@ Local adaptations:
   same; the PS5 driver otherwise lowers every line loop on the CPU and prints
   a `[ps5-gallium] lowered-line-loop` line per draw, about 700 lines a second
   in the title log while MilkDrop runs.
+- `uniform-copy.patch` fixes the bundled hlslparser's translation of a preset
+  shader that assigns to a q variable (`q18 = 1;`). MilkDrop's HLSL lets a
+  shader overwrite its copy of a uniform; hlslparser replaces the uniform with
+  a local vec4 for the rest of the function but left it uninitialised, so the
+  three q variables sharing that vec4 read as undefined. The two Mandelbox
+  explorer presets and `Martin - disco mix 6` rendered black because of it.
+  The local now starts with the uniform's value.
 - `ps5_compat.c` refuses unused filesystem timestamp writes. The build extracts
   the SDK's C-locale conversion objects without linking its raw syscall object.
 
