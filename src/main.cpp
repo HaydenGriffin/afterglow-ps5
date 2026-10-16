@@ -710,6 +710,12 @@ int main()
                 model.status = state.status;
             model.title = state.title;
             model.artist = state.artist;
+            // Sendspin joins a song's artists with "/", which can't be told
+            // from a name like AC/DC; Music Assistant's queue lists them, so
+            // its names win while it describes the same song.
+            if (model.companion_configured && !model.companion.track.artist.empty() &&
+                model.companion.track.title == state.title)
+                model.artist = model.companion.track.artist;
             model.album = state.album;
             model.group = state.group;
             model.volume = state.volume;
