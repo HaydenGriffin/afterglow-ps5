@@ -206,7 +206,9 @@ TEST_F(AfterglowPanel, DisplayTicksSetModeAndLyricsLayer)
     down(3); // Lyrics, then past the heading to Off, then One line
     cross();
     EXPECT_EQ(p.lyrics_layer, 1);
-    down(2); // Stage, then past the Extras heading
+    // Stage, the One line overlay's Position, Background and Size, then past
+    // the Extras heading.
+    down(5);
     cross();
     EXPECT_FALSE(p.poster_visuals);
     down(1);
@@ -218,6 +220,53 @@ TEST_F(AfterglowPanel, DisplayTicksSetModeAndLyricsLayer)
     down(1);
     cross();
     EXPECT_TRUE(p.reduce_motion);
+}
+
+TEST_F(AfterglowPanel, DisplayOverlayRowsActOnTheChosenOverlayOnly)
+{
+    auto &p = presentation().preferences;
+    // The rows as the next frame shows them.
+    const auto value_of = [this](const char *title) -> std::string
+    {
+        input(idle());
+        for (const auto &row : panel_.rows())
+            if (row.item.title == title)
+                return row.item.value;
+        return "(missing)";
+    };
+    panel_.open(Page::display);
+    EXPECT_EQ(value_of("Position"), "(missing)") << "lyrics off: no overlay rows";
+    down(5); // Visuals + track, Album, Lyrics, past the heading to Off, One line
+    cross();
+    ASSERT_EQ(p.lyrics_layer, 1);
+    EXPECT_EQ(value_of("Position"), "Bottom");
+    EXPECT_EQ(value_of("Background"), "Box");
+    EXPECT_EQ(value_of("Size"), "Medium");
+    down(2); // Stage, Position
+    input(nav(Direction::right));
+    EXPECT_EQ(p.line_look.position, 0);
+    EXPECT_EQ(value_of("Position"), "Top");
+    down(1);
+    input(nav(Direction::right));
+    EXPECT_EQ(value_of("Background"), "Shade");
+    cross();
+    EXPECT_EQ(value_of("Background"), "None") << "Cross steps on, like Track card";
+    down(1);
+    input(nav(Direction::left));
+    EXPECT_EQ(value_of("Size"), "Small");
+    EXPECT_EQ(p.line_look, (hui::afterglow::OverlayLook{0, 2, 0}));
+    EXPECT_EQ(p.stage_look, hui::afterglow::kStageLookDefault) << "Stage keeps its own look";
+    for (int i = 0; i < 3; ++i)
+        input(nav(Direction::up));
+    cross(); // Stage
+    ASSERT_EQ(p.lyrics_layer, 2);
+    EXPECT_EQ(value_of("Position"), "Middle");
+    EXPECT_EQ(value_of("Background"), "Box");
+    down(1);
+    input(nav(Direction::left));
+    EXPECT_EQ(p.stage_look.position, 0);
+    EXPECT_EQ(p.line_look.position, 0) << "One line kept its Top";
+    EXPECT_TRUE(p.encode().find("stage_position=0") != std::string::npos);
 }
 
 TEST_F(AfterglowPanel, AdjustsVisualsWithinBoundsAndRequests120Hz)

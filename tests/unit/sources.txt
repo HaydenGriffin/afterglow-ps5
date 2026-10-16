@@ -18,6 +18,8 @@ src/afterglow/sheet_list.cpp
 src/afterglow/home_sheet.cpp
 src/afterglow/home_assistant.cpp
 src/afterglow/lyrics.cpp
+src/afterglow/lyric_overlay.cpp
+src/afterglow/progress_clock.cpp
 src/afterglow/lyrics_lookup.cpp
 src/afterglow/lrclib.cpp
 src/afterglow/http_response.cpp

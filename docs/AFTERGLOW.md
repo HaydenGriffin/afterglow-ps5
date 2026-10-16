@@ -330,6 +330,28 @@ unavailable state. When the LRC carries enhanced word timings (`<mm:ss.xx>`
 tags) and **Word-by-word lyrics** is on (the default), the current line lights
 word by word; otherwise timing stays line-level and none is invented.
 
+While One line or Stage is chosen, Display shows three rows under **Lyrics over
+visuals** for that overlay, each kept separately per overlay and included in
+the settings sync:
+
+| Row | Values | One line default | Stage default |
+| --- | --- | --- | --- |
+| **Position** | Top, Middle, Bottom | Bottom | Middle |
+| **Background** | Box, Shade, None | Box | Box |
+| **Size** | Small, Medium, Large | Medium | Medium |
+
+Box is the field or band as before; Shade is a soft dark band across the
+screen with no hard edges; None is the words alone with a soft dark outline.
+Small is 0.8x and Large 1.25x. Top sits below the notice line, Middle on the
+screen's centre and Bottom above the hints; an overlay moves up out of the
+track card's way, stacking above it at Bottom. The song progress bar and the
+lyric underlines (karaoke too) move every frame from the playback position,
+easing small clock corrections and jumping only on a seek or a new song.
+
+Every sheet and list whose rows run past its bottom or top fades the edge row
+and shows **More** with a chevron there; the focused row always keeps a row of
+context, so the cue never covers it.
+
 ### Lyrics
 
 Lyrics come from Music Assistant. When it has none for a song, after a Music

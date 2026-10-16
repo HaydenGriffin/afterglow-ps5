@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "afterglow/panel.hpp"
+#include "afterglow/lyric_overlay.hpp"
 #include "afterglow/speakers.hpp"
 #include "afterglow/style.hpp"
 #include "afterglow/version.hpp"
@@ -191,9 +192,35 @@ enum Row : int
     lyrics_reset,
     online_lyrics,
     retry_lyrics,
+    overlay_position,
+    overlay_background,
+    overlay_size,
 };
 // "Group with" rows carry this plus the speaker's index in players.
 constexpr int kGroupTag = 100000;
+
+// The look the Display rows under "Lyrics over visuals" change: the chosen
+// overlay's; null while lyrics are off.
+OverlayLook *chosen_look(Preferences &p)
+{
+    return p.lyrics_layer == 1 ? &p.line_look : p.lyrics_layer == 2 ? &p.stage_look : nullptr;
+}
+const OverlayLook *chosen_look(const Preferences &p)
+{
+    return p.lyrics_layer == 1 ? &p.line_look : p.lyrics_layer == 2 ? &p.stage_look : nullptr;
+}
+// Steps one of an overlay's three-way choices, wrapping like Track card.
+bool step_look(Preferences &p, int tag, int direction)
+{
+    OverlayLook *look = chosen_look(p);
+    if (look == nullptr)
+        return false;
+    int &value = tag == overlay_position     ? look->position
+                 : tag == overlay_background ? look->background
+                                             : look->size;
+    value = (std::clamp(value, 0, 2) + direction + 3) % 3;
+    return true;
+}
 
 std::string on_off(bool value)
 {
@@ -899,6 +926,17 @@ std::vector<SheetRow> Panel::sheet_rows() const
         rows.header("Lyrics over visuals");
         for (int i = 0; i < 3; ++i)
             rows.row(kLayers[i], layer_off + i).chosen = p.lyrics_layer == i;
+        if (const OverlayLook *look = chosen_look(p))
+        {
+            rows.row("Position", overlay_position,
+                     kOverlayPositions[std::clamp(look->position, 0, 2)])
+                .adjustable = true;
+            rows.row("Background", overlay_background,
+                     kOverlayBackgrounds[std::clamp(look->background, 0, 2)])
+                .adjustable = true;
+            rows.row("Size", overlay_size, kOverlaySizes[std::clamp(look->size, 0, 2)]).adjustable =
+                true;
+        }
         rows.header("Extras");
         rows.row("MilkDrop behind album and lyrics", poster_visuals, on_off(p.poster_visuals));
         rows.row("Track card", track_card, kTrackCards[std::clamp(p.track_info, 0, 2)]).adjustable =
@@ -1758,6 +1796,11 @@ void Panel::confirm(const SheetRow &row)
     case layer_stage:
         p.lyrics_layer = tag - layer_off;
         break;
+    case overlay_position:
+    case overlay_background:
+    case overlay_size:
+        step_look(p, tag, 1);
+        break;
     case poster_visuals:
         p.poster_visuals = !p.poster_visuals;
         break;
@@ -1938,6 +1981,11 @@ void Panel::adjust(const SheetRow &row, int direction, ui::Feedback &feedback)
         break;
     case visual_style:
         p.visual_style = (std::clamp(p.visual_style, 0, 2) + direction + 3) % 3;
+        break;
+    case overlay_position:
+    case overlay_background:
+    case overlay_size:
+        changed = step_look(p, row.item.tag, direction);
         break;
     case brightness:
         changed = step_clamped(p.brightness, direction * 10, 10, 100);

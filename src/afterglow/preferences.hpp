@@ -9,6 +9,20 @@
 
 namespace hui::afterglow
 {
+// Lyrics over visuals: how one overlay (One line or Stage) is laid out. Each
+// value is an index into the Display rows' choices; one out of range reads as
+// the overlay's default.
+struct OverlayLook
+{
+    int position = 2;   // Top, Middle, Bottom
+    int background = 0; // Box, Shade, None
+    int size = 1;       // Small, Medium, Large
+    bool operator==(const OverlayLook &) const = default;
+};
+// One line sits at the bottom, Stage in the middle; both on today's box at today's size.
+inline constexpr OverlayLook kLineLookDefault{2, 0, 1};
+inline constexpr OverlayLook kStageLookDefault{1, 0, 1};
+
 struct Preferences
 {
     bool follow = false, hold_idle = true, auto_level = false, oled_drift = true;
@@ -45,6 +59,8 @@ struct Preferences
     // Online lyrics (LG onlineLyrics): when Music Assistant has none, ask
     // lrclib.net. Off sends nothing there.
     bool online_lyrics = true;
+    // Position, background and size of each lyric overlay, kept apart.
+    OverlayLook line_look = kLineLookDefault, stage_look = kStageLookDefault;
     std::string player, quality, favorite_pending;
     std::vector<std::string> favorites;
     bool favorite(std::string_view name) const;

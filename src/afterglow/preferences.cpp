@@ -22,6 +22,14 @@ void Preferences::toggle_favorite(const std::string &name)
     else if (!name.empty() && name.find_first_of("\r\n") == std::string::npos)
         favorites.push_back(name);
 }
+namespace
+{
+// A choice from 0..2, or the default when the saved value is not one.
+int choice(int value, int fallback)
+{
+    return value >= 0 && value <= 2 ? value : fallback;
+}
+} // namespace
 std::string Preferences::encode() const
 {
     std::string out;
@@ -58,6 +66,12 @@ std::string Preferences::encode() const
     number("lightbar_beat", lightbar_beat);
     number("account_sync", account_sync);
     number("online_lyrics", online_lyrics);
+    number("line_position", line_look.position);
+    number("line_background", line_look.background);
+    number("line_size", line_look.size);
+    number("stage_position", stage_look.position);
+    number("stage_background", stage_look.background);
+    number("stage_size", stage_look.size);
     if (quality.find_first_of("\r\n") == std::string::npos)
         out += "quality=" + quality + "\n";
     if (favorite_pending.find_first_of("\r\n") == std::string::npos)
@@ -158,18 +172,31 @@ Preferences Preferences::decode(std::string_view text)
             p.account_sync = n == 1;
         if (key == "online_lyrics")
             p.online_lyrics = n == 1;
+        if (key == "line_position")
+            p.line_look.position = choice(n, kLineLookDefault.position);
+        if (key == "line_background")
+            p.line_look.background = choice(n, kLineLookDefault.background);
+        if (key == "line_size")
+            p.line_look.size = choice(n, kLineLookDefault.size);
+        if (key == "stage_position")
+            p.stage_look.position = choice(n, kStageLookDefault.position);
+        if (key == "stage_background")
+            p.stage_look.background = choice(n, kStageLookDefault.background);
+        if (key == "stage_size")
+            p.stage_look.size = choice(n, kStageLookDefault.size);
     }
     return p;
 }
 namespace
 {
-constexpr std::array<std::string_view, 29> kSyncedKeys = {
+constexpr std::array<std::string_view, 35> kSyncedKeys = {
     "follow",           "hold_idle",      "auto_level",     "oled_drift",       "locked",
     "favorites_only",   "tint",           "brightness",     "text_brightness",  "fps",
     "lyrics_layer",     "poster_visuals", "visual_style",   "reduce_motion",    "display_mode",
     "lyrics_offset_ms", "trim_ms",        "preset_seconds", "track_info",       "sequential",
     "skip_slow",        "minimum_fps",    "tint_strength",  "beat_sensitivity", "night_register",
-    "karaoke",          "lightbar",       "lightbar_beat",  "online_lyrics"};
+    "karaoke",          "lightbar",       "lightbar_beat",  "online_lyrics",    "line_position",
+    "line_background",  "line_size",      "stage_position", "stage_background", "stage_size"};
 bool synced_key(std::string_view key)
 {
     return std::find(kSyncedKeys.begin(), kSyncedKeys.end(), key) != kSyncedKeys.end();

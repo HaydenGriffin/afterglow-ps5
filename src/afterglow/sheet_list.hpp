@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #pragma once
+#include "afterglow/style.hpp"
 #include "ui/components/list.hpp"
 #include <string>
 #include <vector>
@@ -30,6 +31,8 @@ struct SheetLook
     float header_size = 26;
     float padding = 20;
     float thumbnail = 80;
+    // What the sheet sits on: the scroll cue fades the edge row into it.
+    gfx::Color ground = style::kInk;
 };
 
 // A ui::ListView showing a window of the rows. ListView scrolls by half a row
@@ -58,6 +61,15 @@ class SheetList
     {
         return focus_;
     }
+    // The window: the first row shown and how many rows show.
+    int first_shown() const
+    {
+        return first_;
+    }
+    int shown_count() const
+    {
+        return count_;
+    }
     void set_focus(int index);
     void focus_first();
     // An inactive list draws no highlight: the other column has the focus.
@@ -80,6 +92,8 @@ class SheetList
     void apply();
     void draw_row(ui::Canvas &canvas, const gfx::Rect &row, const SheetRow &meta,
                   float focus) const;
+    // k: the window's edge row; direction 1 for rows below, -1 for rows above.
+    void draw_cue(ui::Canvas &canvas, int k, float direction) const;
 
     ui::ListView list_;
     std::vector<SheetRow> rows_;

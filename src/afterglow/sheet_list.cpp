@@ -24,6 +24,14 @@ void chevron(gfx::DrawList &list, float tip_x, float cy, float direction, gfx::C
     list.line(back, cy - 8, tip_x, cy, 2.5f, colour);
     list.line(tip_x, cy, back, cy + 8, 2.5f, colour);
 }
+// The same chevron turned to point down (direction 1) or up (-1).
+void chevron_vertical(gfx::DrawList &list, float cx, float tip_y, float direction,
+                      gfx::Color colour)
+{
+    const float back = tip_y - 8.0f * direction;
+    list.line(cx - 8, back, cx, tip_y, 2.5f, colour);
+    list.line(cx, tip_y, cx + 8, back, 2.5f, colour);
+}
 } // namespace
 
 SheetList::SheetList()
@@ -88,7 +96,8 @@ int SheetList::settle(int index) const
 }
 
 // Moves the window the least distance that shows the target row whole, with
-// the group heading right above it.
+// the group heading right above it and, where there is one, a row of context
+// on either side: the scroll cue fades the edge row, never the focused one.
 void SheetList::show(int target)
 {
     const int count = static_cast<int>(rows_.size());
@@ -102,12 +111,24 @@ void SheetList::show(int target)
     const int top =
         target > 0 && rows_[static_cast<std::size_t>(target - 1)].item.header ? target - 1 : target;
     first_ = std::clamp(first_, 0, count - 1);
-    if (top < first_)
-        first_ = top;
-    float span = 0;
-    for (int i = first_; i <= target; ++i)
-        span += height(i);
-    while (span > room && first_ < top)
+    const auto span_of = [this](int from, int to)
+    {
+        float span = 0;
+        for (int i = from; i <= to; ++i)
+            span += height(i);
+        return span;
+    };
+    // The context rows are wanted only while the view has room for them.
+    int low = top > 0 ? top - 1 : top;
+    int high = target + 1 < count ? target + 1 : target;
+    if (span_of(low, high) > room)
+        low = top;
+    if (span_of(low, high) > room)
+        high = target;
+    if (low < first_)
+        first_ = low;
+    float span = span_of(first_, high);
+    while (span > room && first_ < low)
         span -= height(first_++);
     // Never leave empty space under the last row while rows above are hidden.
     float rest = 0;
@@ -235,10 +256,10 @@ ui::Event SheetList::handle(const InputFrame &input, ui::Feedback &feedback)
         const int next = step(focus_, frame.nav == Direction::down ? 1 : -1);
         if (next >= 0)
         {
-            const bool heading = next > 0 && rows_[static_cast<std::size_t>(next - 1)].item.header;
-            if ((heading ? next - 1 : next) < first_ || next >= first_ + count_)
+            const int was_first = first_, was_count = count_;
+            show(next);
+            if (first_ != was_first || count_ != was_count)
             {
-                show(next);
                 if (focus_ < first_ || focus_ >= first_ + count_)
                 {
                     // A view shorter than two rows: no glide to keep.
@@ -341,6 +362,44 @@ void SheetList::draw_row(ui::Canvas &canvas, const gfx::Rect &row, const SheetRo
              left, first + look.subtitle_size * 1.3f, look.subtitle_size, quiet);
 }
 
+// Rows past the window: the edge row fades into the ground, and "More" with
+// a chevron sits on the faded part, right-aligned with the values. The focus
+// keeps a row of context (show()), so this never covers the focused row.
+void SheetList::draw_cue(ui::Canvas &canvas, int k, float direction) const
+{
+    if (first_ + k == focus_)
+        return;
+    auto &list = canvas.list;
+    const gfx::Rect r = list_.row_rect(k);
+    const gfx::Color clear = look.ground.with_alpha(0);
+    const gfx::Color solid = look.ground.with_alpha(0.96f);
+    const float ramp = r.h * 0.7f;
+    if (direction > 0)
+    {
+        list.gradient_rect({r.x, r.y, r.w, ramp}, 0, clear, solid);
+        list.rounded_rect({r.x, r.y + ramp, r.w, r.h - ramp}, 0, solid);
+    }
+    else
+    {
+        list.rounded_rect({r.x, r.y, r.w, r.h - ramp}, 0, solid);
+        list.gradient_rect({r.x, r.y + r.h - ramp, r.w, ramp}, 0, solid, clear);
+    }
+    const auto &font = canvas.fonts.semibold;
+    const float size = style::kTypeMin;
+    const float right = r.x + r.w - look.padding;
+    // The faded row's value sits in the same column: the label clears its
+    // own patch of ground, softened on the left, so the two never overprint.
+    const float label = font.measure("More", size) + 28;
+    const float patch = right - label - 16;
+    list.gradient_rect_h({patch - 48, r.y, 48, r.h}, 0, clear, solid);
+    list.rounded_rect({patch, r.y, r.x + r.w - patch, r.h}, 0, solid);
+    const float baseline = direction > 0 ? r.y + r.h - 8 : r.y + 8 + size * 0.74f;
+    // The chevron's middle sits on the middle of the word's capitals.
+    const float mid = baseline - size * 0.36f;
+    chevron_vertical(list, right - 8, mid + 4 * direction, direction, style::kPaper);
+    ui::text(list, font, "More", right - 28, baseline, size, style::kPaper, gfx::Align::right);
+}
+
 void SheetList::draw(ui::Canvas &canvas) const
 {
     if (rows_.empty())
@@ -360,6 +419,10 @@ void SheetList::draw(ui::Canvas &canvas) const
     const int count = static_cast<int>(rows_.size());
     if (first_ == 0 && first_ + count_ >= count)
         return;
+    if (first_ > 0)
+        draw_cue(canvas, 0, -1);
+    if (first_ + count_ < count)
+        draw_cue(canvas, count_ - 1, 1);
     // Where the window sits in the whole list, measured in rows.
     float shown = 0;
     for (int k = 0; k < count_; ++k)

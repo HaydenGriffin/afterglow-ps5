@@ -23,6 +23,9 @@ struct SceneClock
     float lyric = 0;       // one-line lyric field visibility, 0..1
     float lyric_width = 0; // that field's sprung width
     bool reduced_motion = false;
+    // The playback position in seconds as the progress marks draw it: moved
+    // every frame by a ProgressClock, not stepped by status updates.
+    double position = 0;
 };
 
 struct LyricView
@@ -77,14 +80,18 @@ void draw_poster(const Scene &scene, bool lyrics, float ground);
 // Only the slab and ground, for sheets that sit right of the artwork.
 void draw_slab(const Scene &scene, float ground);
 void draw_track_card(const Scene &scene);
+// The track card's height (it stands on y = 980), for overlays that stack above it.
+float track_card_height(const ui::Fonts &fonts, const Presentation &state);
+// The lyric overlays, laid out by their OverlayLook in the preferences
+// (position, background, size) and kept clear of the track card.
 void draw_lyric_line(const Scene &scene);
 void draw_stage(const Scene &scene);
 // Centred below the poster header and the section strip, or in the top-right
 // corner of a sheet, where the title leaves room.
 void draw_toast(const Scene &scene, bool corner);
 
-// Width the one-line lyric field wants for the current line.
-float lyric_line_width(const ui::Fonts &fonts, const LyricView &lyrics);
+// Width the one-line lyric field wants for the current line at a size's scale.
+float lyric_line_width(const ui::Fonts &fonts, const LyricView &lyrics, float scale = 1);
 
 struct Transport
 {
