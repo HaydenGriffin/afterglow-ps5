@@ -70,6 +70,10 @@ fields. After three minutes without a button it dims to 35 %, and the first
 button then only wakes it. It moves with OLED text movement, follows the night
 register, rests MilkDrop while it shows, and with reduce motion the dimming is
 immediate. It needs Music Assistant; without it the poster says how to set up.
+When it has nothing to offer (recent music could not be read, or nothing has
+been played yet) the strip ends in **Check setup** after Browse: its field
+says "Nothing playing" and "Something not right? Check my setup", and Cross
+opens [Check my setup](#check-my-setup) and runs it.
 
 The current build includes:
 
@@ -294,7 +298,7 @@ bottom, the playing song with eight tiles: Previous, Play/Pause, Next, Back
 up/down switch between the strip and the tiles, Cross activates, L1/R1 step
 through the sections (wrapping), and Circle or Options closes it; it also
 closes after nine idle seconds. Details is the back of the poster (facts,
-music favourite, start radio); Display holds the four modes, the lyrics layer,
+music favourite, start radio, and [Scan to save](#scan-to-save)); Display holds the four modes, the lyrics layer,
 **MilkDrop behind album and lyrics**, the track card, visual style (MilkDrop,
 halo, spectrum), **Reduce motion** and **Word-by-word lyrics**.
 
@@ -316,7 +320,8 @@ transport band, and Options closes everything. Settings opens on the row it
 was left at. Queue holds **Playing on**, up
 next and the playback rows (shuffle, repeat, crossfade, volume, sleep timer,
 keep playing when the queue ends). Settings contains Source, Visuals &
-presets, Lyrics, Presets, Sound & sync, Account and Status. On Presets,
+presets, Lyrics, Presets, Sound & sync, Account, Status and
+[Check my setup](#check-my-setup). On Presets,
 Cross loads the selected preset, R3 changes its preset favourite status, and
 Square toggles **Keep**; in search results Square starts a new search. Music
 favourites are separate from visual preset favourites.
@@ -351,6 +356,48 @@ easing small clock corrections and jumping only on a seek or a new song.
 Every sheet and list whose rows run past its bottom or top fades the edge row
 and shows **More** with a chevron there; the focused row always keeps a row of
 context, so the cue never covers it.
+
+### Scan to save
+
+When Music Assistant knows the playing song's page on a public service
+(Spotify, Tidal, Apple Music, YouTube Music, Deezer, Qobuz or SoundCloud: a
+`provider_mappings[].url` that is the service's own `https://` page, with no
+port, user info or token-like query, at most 300 characters), Details shows a
+QR code beside the facts that opens it on a phone, labelled "Scan to open on
+your phone" and the service. The page of the provider the song is streaming
+from comes first, then the same service, then the order above. Songs with no
+public page (your own files, radio) show no code. The code (280 px, ink
+modules on paper with a four-module quiet zone) is drawn on the console with
+Project Nayuki's QR Code generator, the same grid as LG Afterglow draws for the
+same link; it is not focusable and nothing is sent anywhere.
+
+### Check my setup
+
+**Check my setup** (the last row of Settings: "Not run", then "All good" or
+"n to look at") opens a sheet that runs a few read-only checks once, when it
+opens and on **Check again**, never in the background. The note says
+"Checking…", then "Everything looks right." or how many things need a look.
+Each row passes or fails, and a failure carries one next step:
+
+| Row | Shown | Fails when, and the next step |
+|---|---|---|
+| Music Assistant | always | Not set up ("Sign in under Settings, Account."), can't be reached ("Check that Music Assistant is running at <host>."), or older than 2.10 ("Update Music Assistant to 2.10 or newer.") |
+| Signed in | always | The token is refused ("Sign in again under Settings, Account."; with the token from `afterglow.conf`, "Put a new ma_token in afterglow.conf, or sign in under Settings, Account.") |
+| This PS5 as a speaker | Source is This PS5 | Music Assistant has no player for the console (`client_id`, `ma_player_id` or the player Afterglow found for itself) ("Check that Music Assistant's Sendspin provider is on, then reopen Afterglow.") |
+| Sendspin | Source is This PS5 | The Sendspin client is not connected ("Check that Music Assistant's Sendspin provider is on.") |
+| MilkDrop Visualizer | following a speaker | The plugin's relay does not log the console in ("Add MilkDrop Visualizer in Music Assistant: Settings, Plugins.") |
+| Clock | always | The console's clock is more than 5 minutes from the server's `Date` ("3 h 12 min behind"; "Set the date and time in the PS5's settings. Online lyrics need it.") |
+| Online lyrics | Online lyrics is On | lrclib.net does not answer ("Check the PS5's internet connection, or turn Online lyrics off."); a busy LRCLIB (429, 5xx) is shown as busy, not failed |
+| Preset scan | presets found | Not every preset has a measurement ("Run Measure preset performance in Settings, Visuals & presets.") |
+
+Rows that depend on an earlier one say "Not checked" when it failed. The
+server rows use one short API connection (the greeting's `server_version`,
+`auth`, `players/get`), closed straight after; the relay check logs in to
+`/milkdrop_visualizer` with a player id that does not exist
+(`afterglow-setup-check`), so it never starts an audio tap; the lyrics check is
+one `GET https://lrclib.net/api/get/1`. When the "Ready when you are." screen
+has waited 20 seconds with Music Assistant not set up or not answering, its
+last line becomes "Something not right? Check my setup in Settings."
 
 ### Lyrics
 
@@ -404,7 +451,11 @@ artist, and the `User-Agent` header is
 Nothing else is sent (no account, token, player or device id); the album and
 length are only used on the console to pick the best match. LRCLIB sees the
 request coming from your network's address. Turn **Online lyrics** off
-(Options → Settings → Lyrics) to stop it. There is no analytics or telemetry.
+(Options → Settings → Lyrics) to stop it. **Check my setup** asks
+lrclib.net for one fixed record (`GET https://lrclib.net/api/get/1`, no song)
+only when you run it and Online lyrics is on. The Scan to save code is drawn
+on the console from the link Music Assistant already sent; nothing is sent.
+There is no analytics or telemetry.
 
 **Visual frame rate** offers 30, 60 or 120 fps. 120 requests a 120 Hz display
 on the next app launch; it does not change PS5 system settings. The graphics
@@ -524,7 +575,10 @@ unverified on the console**, including:
   DER), BearSSL's RDRAND seeding and the console clock for certificate dates
   (a wrong clock fails every lookup as "certificate expired or clock wrong");
   the TLS handshake itself has run only on a PC;
-- the 120 Hz option and sustained 120 fps.
+- the 120 Hz option and sustained 120 fps;
+- Scan to save read by a phone camera from across a room, and Check my setup
+  against a real server, relay, clock and lrclib.net (only unit fakes and the
+  preview's fixed answers have run it).
 
 Host checks and captures do not establish any of these.
 

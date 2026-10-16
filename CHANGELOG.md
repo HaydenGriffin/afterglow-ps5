@@ -4,6 +4,20 @@ Afterglow for PS5. Builds before 1.6.0 were private builds for one console; they
 the version where one was set. "Checked on hardware" means on one PS5 on firmware 7.20; anything else was
 checked on a PC only (unit tests, mock servers and the off-screen preview).
 
+# Unreleased
+
+- **Scan to save.** Details shows a QR code beside the facts that opens the playing song on a phone, on a public
+  service Music Assistant knows it from (Spotify, Tidal, Apple Music, YouTube Music, Deezer, Qobuz, SoundCloud),
+  preferring the one it streams from. Drawn on the console with Project Nayuki's QR Code generator (MIT, C version);
+  hidden when the song has no public page. The same link gives the same code as LG Afterglow.
+- **Check my setup** (last row of Settings): Music Assistant set up, reachable and 2.10 or newer, the token
+  accepted, this PS5 known as a speaker and Sendspin connected, the MilkDrop Visualizer plugin found (when following
+  a speaker), the console's clock within 5 minutes of the server's, lrclib.net answering (busy is not a failure) and
+  every preset measured, each failure with one next step. Runs only when asked. An idle poster with nothing to offer
+  ends its strip in **Check setup**, and "Ready when you are." adds "Something not right? Check my setup in
+  Settings." after 20 seconds without Music Assistant.
+- The guide calls the LG app LG Afterglow.
+
 # 1.6.0 — First public release (unreleased)
 
 Built and tested on a PC; not yet installed on a console.
