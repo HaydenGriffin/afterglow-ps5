@@ -1339,6 +1339,7 @@ void Panel::rebuild_browse()
 
 void Panel::rebuild()
 {
+    ++rebuilds_;
     if (browse_page())
     {
         rebuild_browse();
@@ -2416,11 +2417,14 @@ void Panel::update(const InputFrame &input, float dt, ui::Feedback &feedback, bo
         home_.update(input, dt, feedback, reduced_motion);
         return;
     }
-    const bool acted = input.pressed != 0 || input.nav != Direction::none;
-    if (input.nav == Direction::left || input.nav == Direction::right)
+    // Up and down only move the focus, which needs no new rows; a button acts
+    // on what the rows say now, and left or right adjusts what they show.
+    const bool sideways = input.nav == Direction::left || input.nav == Direction::right;
+    const bool changes = input.pressed != 0 || sideways;
+    if (sideways)
         held_steps_ = input.nav_repeat ? held_steps_ + 1 : 0;
     refresh_ -= dt;
-    if (refresh_ <= 0 || acted || playlists_moved())
+    if (refresh_ <= 0 || input.pressed != 0 || playlists_moved())
     {
         rebuild();
         refresh_ = 0.5f;
@@ -2446,7 +2450,7 @@ void Panel::update(const InputFrame &input, float dt, ui::Feedback &feedback, bo
             preset_input(input);
     }
     // Show what the press changed on the next frame, not half a second later.
-    if (acted)
+    if (changes)
         refresh_ = 0;
     if (page_ == Page::settings && root_ == Page::settings)
         settings_focus_ = sheet_.focus();

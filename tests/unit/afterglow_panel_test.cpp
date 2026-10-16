@@ -103,6 +103,33 @@ class AfterglowPanel : public hui::testing::ConceptFixture
     hui::afterglow::Panel panel_;
 };
 
+TEST_F(AfterglowPanel, MovingTheFocusBuildsNoRows)
+{
+    auto &s = presentation();
+    s.companion.connected = true;
+    for (int i = 0; i < 40; ++i)
+    {
+        const auto id = std::to_string(i);
+        s.companion.upcoming.push_back(track(("Song " + id).c_str(), id.c_str()));
+    }
+    s.companion.queue_total = 40;
+    panel_.open(Page::queue);
+    input(idle());
+    const int built = panel_.rebuilds();
+    for (int i = 0; i < 20; ++i)
+    {
+        auto frame = nav(Direction::down);
+        frame.nav_repeat = i > 0;
+        input(frame);
+    }
+    EXPECT_EQ(panel_.rebuilds(), built) << "a held direction only moves the focus";
+    wait(0.2f);
+    EXPECT_GT(panel_.rebuilds(), built) << "the half-second refresh still runs";
+    const int refreshed = panel_.rebuilds();
+    cross();
+    EXPECT_GT(panel_.rebuilds(), refreshed) << "a button acts on the rows as they are now";
+}
+
 TEST_F(AfterglowPanel, QueueOpensPlayersFromPlayingOnAndReturns)
 {
     presentation().companion.connected = true;

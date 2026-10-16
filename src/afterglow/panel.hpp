@@ -93,6 +93,12 @@ class Panel
     {
         return sheet_.rows();
     }
+    // How many times the rows have been built: a focus move builds none, so
+    // holding a direction through 2000 Browse rows stays cheap.
+    int rebuilds() const
+    {
+        return rebuilds_;
+    }
     // True once when Play now or Start radio has started the music: the
     // screen closes the controls and returns to Now playing, as on LG.
     bool take_leave();
@@ -199,6 +205,7 @@ class Panel
     int selected_queue_index_ = 0;
     int sleep_minutes_ = 30;
     float refresh_ = 0;
+    int rebuilds_ = 0;
     // Keyboard round trip and the sign-in fields collected so far.
     KeyboardPurpose keyboard_wait_ = KeyboardPurpose::none;
     std::string sign_in_host_, sign_in_username_;
