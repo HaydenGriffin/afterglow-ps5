@@ -463,6 +463,8 @@ TEST_F(AfterglowHomeSheet, NotesFollowTheLink)
     EXPECT_EQ(sheet_.note(), "Connecting…");
     home.link = HomeLink::auth_failed;
     EXPECT_EQ(sheet_.note(), "Token refused");
+    home.link = HomeLink::refused;
+    EXPECT_EQ(sheet_.note(), "Entities refused");
     home.link = HomeLink::offline;
     home.status = "Home Assistant is offline · retrying in 4 s";
     EXPECT_EQ(sheet_.note(), home.status);
@@ -767,6 +769,30 @@ TEST(AfterglowHomeClient, AFragmentedBinaryMessageIsNeverReadAsJson)
     const auto *light = find_entity(snapshot, "light.living_room_lights");
     ASSERT_NE(light, nullptr);
     EXPECT_FALSE(light->on) << "the binary message was not taken for an event";
+    client.stop();
+    client.join();
+}
+
+TEST(AfterglowHomeClient, ARefusedSubscriptionSaysWhyAndIsNotAskedAgain)
+{
+    LoopbackHome server;
+    ASSERT_NE(server.port(), 0);
+    hui::afterglow::HomeAssistant client;
+    auto config = fixture_config();
+    config.port = server.port();
+    ASSERT_TRUE(client.start(config));
+    ASSERT_TRUE(server.accept(3000));
+    server.authenticate();
+    server.send_text(R"({"id":1,"type":"result","success":false,)"
+                     R"("error":{"code":"unknown_command","message":"Unknown command."}})");
+    ASSERT_TRUE(eventually([&] { return client.snapshot().link == HomeLink::refused; }));
+    EXPECT_EQ(client.snapshot().status,
+              "Home Assistant refused the entity subscription: Unknown command.");
+    EXPECT_FALSE(server.accept(2500)) << "no reconnect a second later, or ever";
+    client.send({"light.living_room_lights", "toggle"});
+    ASSERT_TRUE(eventually([&] { return !client.snapshot().results.empty(); }));
+    EXPECT_FALSE(client.snapshot().results.back().ok);
+    EXPECT_EQ(client.snapshot().results.back().message, client.snapshot().status);
     client.stop();
     client.join();
 }
