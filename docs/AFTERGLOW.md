@@ -30,8 +30,9 @@ The current build includes:
 
 - Album artwork, track/artist/album information, a quality badge (for example
   "Lossless · FLAC 44.1 kHz / 16-bit") when Music Assistant supplies one,
-  plain, timed or word-by-word lyrics, and the next two songs in the poster's
-  Next field.
+  plain, timed or word-by-word lyrics (from Music Assistant, with an online
+  search on lrclib.net when it has none), and the next two songs in the
+  poster's Next field.
 - Browse: Search (system keyboard), recently played, favourite
   playlists/albums/songs/artists, radio stations, all playlists and albums,
   podcasts and audiobooks; artist pages (albums, songs), podcast episodes;
@@ -120,7 +121,7 @@ the working LG app's token. A file token is never renewed; replace it when it
 expires and reopen the app.
 
 With **Sync settings with Music Assistant** on (the default), the display,
-visual, preset, timing and light-bar settings are mirrored to this device's
+visual, preset, timing, lyrics and light-bar settings are mirrored to this device's
 entry in the account's Afterglow preferences, and restored from it on a fresh
 install. Off keeps them on this PS5.
 
@@ -135,7 +136,9 @@ For visual-only speaker following, enable Music Assistant's **MilkDrop
 Visualizer** plugin. Its `/milkdrop_visualizer` WebSocket relay runs on the
 Music Assistant API port. Own-player metadata works without opening a relay
 subscription. Artwork uses Music Assistant's HTTP image proxy; the native
-fetcher accepts numeric IPv4 HTTP URLs, not HTTPS or hostnames.
+fetcher accepts numeric IPv4 HTTP URLs, not HTTPS or hostnames. The one
+connection that leaves the LAN is the online lyrics search (see
+[Lyrics](#lyrics) and [Privacy](#privacy)).
 
 Preferences and pending favourite changes are stored in
 `/download0/hui/afterglow.prefs`. Favourite changes keep their timestamps until
@@ -236,7 +239,7 @@ selects or toggles, Circle goes back one level and then returns to the
 transport band, and Options closes everything. Queue holds **Playing on**, up
 next and the playback rows (shuffle, repeat, crossfade, volume, sleep timer,
 keep playing when the queue ends). Settings contains Source, Visuals &
-presets, Lyrics timing, Presets, Sound & sync, Account and Status. On Presets,
+presets, Lyrics, Presets, Sound & sync, Account and Status. On Presets,
 Cross loads the selected preset, R3 changes its preset favourite status, and
 Square toggles **Keep**; in search results Square starts a new search. Music
 favourites are separate from visual preset favourites.
@@ -249,8 +252,60 @@ previous/current/next lines, manually paged plain lines, or an explicit
 unavailable state. When the LRC carries enhanced word timings (`<mm:ss.xx>`
 tags) and **Word-by-word lyrics** is on (the default), the current line lights
 word by word; otherwise timing stays line-level and none is invented.
-Settings → **Lyrics timing** shifts text by up to ±5000 ms in 50 ms steps;
-positive values show lines later. LRC file offsets are honoured.
+
+### Lyrics
+
+Lyrics come from Music Assistant. When it has none for a song, after a Music
+Assistant error, or when it has not answered within 5 seconds, Afterglow
+searches [LRCLIB](https://lrclib.net) itself (`/api/search`, as LG Afterglow
+1.5 does) and takes the hit with the same base title (without "feat. ...",
+bracketed versions or " - Remaster" tails), the same artist and a length
+within 3 seconds, preferring timed lyrics, then the same album, then the
+closer length. Music Assistant's own LRCLIB lookup is exact-match only, so a
+title listed with featured artists misses there. The search only runs while
+lyrics are on screen (the Lyrics poster, a lyrics layer, or Settings →
+Lyrics), on its own thread, over HTTPS with the server's certificate checked,
+and gives up after 8 seconds. A failed lookup (network, a busy or
+rate-limited LRCLIB, an unreadable answer) is retried once after 30 seconds
+and is never remembered as "no lyrics"; only a clean answer from both sources
+is. The last three songs' results are kept, so going back to a song does not
+ask again.
+
+Settings → **Lyrics** holds, as LG's Display → Lyrics does:
+
+- **Lyrics timing**: moves the words only, up to 10 s earlier or later in
+  100 ms steps ("With the music" at zero; positive is later). The sound,
+  MilkDrop, the progress bar and seeking stay where they are. On the timed
+  Lyrics poster L2/R2 take the same steps.
+- **Reset lyrics timing**, while the timing is not zero.
+- **Online lyrics** (on by default): off keeps lyrics to what Music Assistant
+  provides and sends nothing to lrclib.net; switching it back on looks up a
+  song that had no lyrics again. It is saved with the other synced settings
+  in this PS5's entry of the account's Afterglow preferences (key
+  `online_lyrics`; LG keeps its `onlineLyrics` per TV the same way, so the two
+  are not one shared switch).
+- **Retry lyrics**, when the lookup failed or found nothing: asks Music
+  Assistant and LRCLIB again and forgets a remembered "no lyrics".
+
+The page shows the current and next timed line live as the timing changes,
+and says when lyrics are being found, could not load, or do not exist.
+An LRC `[offset:]` tag is honoured with the format's sign: a positive offset
+brings the lyrics sooner.
+
+### Privacy
+
+Afterglow talks to the Music Assistant server (and Home Assistant when
+configured) on the LAN. The exception is the online lyrics search: when Music
+Assistant has no lyrics for a song and lyrics are on screen, the PS5 sends one
+HTTPS request, `GET https://lrclib.net/api/search?track_name=<title>&artist_name=<artist>`:
+`track_name` is the song's base title (lower case, without featured artists,
+bracketed versions or " - Remaster" tails), `artist_name` the first credited
+artist, and the `User-Agent` header is
+`Afterglow PS5/<version> (https://github.com/HaydenGriffin/afterglow-ps5)`.
+Nothing else is sent (no account, token, player or device id); the album and
+length are only used on the console to pick the best match. LRCLIB sees the
+request coming from your network's address. Turn **Online lyrics** off
+(Options → Settings → Lyrics) to stop it. There is no analytics or telemetry.
 
 **Visual frame rate** offers 30, 60 or 120 fps. 120 requests a 120 Hz display
 on the next app launch; it does not change PS5 system settings. The graphics
@@ -309,7 +364,18 @@ CXX=clang++-18 bash tests/integration/run-companion-smoke.sh
 CXX=clang++-18 bash tests/integration/run-companion-library-smoke.sh
 CXX=clang++-18 bash tests/integration/run-account-smoke.sh
 CXX=clang++-18 bash tests/integration/run-home-assistant-smoke.sh
+CXX=clang++-18 CC=clang-18 bash tests/integration/run-lyrics-https-smoke.sh
+# After make app: every system import and the module it binds to; fails if any
+# lands on libScePosixForWebKit (a null import in a native title).
+python3 tools/audit-imports.py build/llvm-pie.elf
 ```
+
+The lyrics smoke makes a throwaway CA and a certificate for `localhost`,
+serves an lrclib.net stand-in on loopback and runs the real HTTPS client
+(BearSSL) and search worker against it: it finds the lyrics, reads chunked
+and rate-limited answers, and refuses an untrusted CA and a host name the
+certificate does not cover. `AFTERGLOW_LRCLIB_LIVE=1` adds one real search on
+lrclib.net and expired / wrong-host certificates on badssl.com.
 
 Host checks include real Music Assistant metadata/relay reads and disposable
 mock servers that test masked WebSockets, decimal elapsed times, lyrics,
@@ -335,6 +401,11 @@ the console**, including:
 - album slot recolouring, the night register's local time, the song-change
   slide, word-by-word lyrics and lyric timing on L2/R2;
 - the Home Assistant glance, the dev request path and the quality badge;
+- the online lyrics search on the console: name lookup through
+  `sceNetResolver`, the CA list at `/system/common/cert/CA_LIST.cer` (PEM or
+  DER), BearSSL's RDRAND seeding and the console clock for certificate dates
+  (a wrong clock fails every lookup as "certificate expired or clock wrong");
+  the TLS handshake itself has run only on a PC;
 - the 120 Hz option and sustained 120 fps.
 
 Host checks and captures do not establish any of these.
