@@ -176,6 +176,9 @@ class Panel
     Page root_ = Page::queue;
     // The row back() puts the focus on when it returns to the parent page.
     int parent_focus_ = 0;
+    // Settings' Lyrics row, kept while Choose lyrics (a page below Lyrics)
+    // holds parent_focus_, so two Backs land on Lyrics again.
+    int lyrics_parent_focus_ = 0;
     // An index in kCategories; Browse opens on Recently played.
     int category_ = 1;
     bool browse_right_ = false;

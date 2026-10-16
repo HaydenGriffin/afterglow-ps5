@@ -1430,6 +1430,7 @@ bool Panel::back()
         return true;
     case Page::lyrics_choice:
         navigate(Page::lyrics_timing, parent_focus_);
+        parent_focus_ = lyrics_parent_focus_;
         return true;
     case Page::lyrics_lines:
     case Page::chapters:
@@ -2159,6 +2160,7 @@ bool Panel::confirm_song_lyrics_row(int tag)
     switch (confirm_song_lyrics(s, tag))
     {
     case SongLyricsStep::open_choice:
+        lyrics_parent_focus_ = parent_focus_;
         parent_focus_ = sheet_.focus();
         navigate(Page::lyrics_choice);
         break;

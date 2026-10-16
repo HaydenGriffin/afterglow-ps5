@@ -557,6 +557,22 @@ TEST_F(AfterglowSongSheets, ABusyLrclibOffersTryAgainAndOnlineOffHidesTheRow)
     EXPECT_EQ(row("Choose other lyrics"), nullptr);
 }
 
+TEST_F(AfterglowSongSheets, BackFromChooseLyricsTwiceLandsOnSettingsLyricsRow)
+{
+    auto &s = presentation();
+    s.preferences.lyrics_offset_ms = 300; // Reset lyrics timing shows, so the rows shift
+    panel_.open(Page::settings);
+    pick("Lyrics");
+    ASSERT_EQ(panel_.page(), Page::lyrics_timing);
+    pick("Choose other lyrics");
+    ASSERT_EQ(panel_.page(), Page::lyrics_choice);
+    EXPECT_TRUE(panel_.back());
+    EXPECT_TRUE(panel_.back());
+    ASSERT_EQ(panel_.page(), Page::settings);
+    input(press(Action::confirm));
+    EXPECT_EQ(panel_.page(), Page::lyrics_timing) << "the focus came back to Lyrics";
+}
+
 TEST_F(AfterglowSongSheets, GoToALineSeeksToThePickedLineAfterTheTiming)
 {
     auto &s = presentation();
