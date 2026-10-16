@@ -4,6 +4,7 @@
 
 #include "afterglow/scenes.hpp"
 #include "afterglow/icons.hpp"
+#include "afterglow/lyric_overlay.hpp"
 #include "afterglow/style.hpp"
 #include "ui/glyphs.hpp"
 #include <algorithm>
@@ -421,7 +422,7 @@ void draw_poster(const Scene &scene, bool lyrics, float ground)
     const double duration = track.duration;
     if (!idle && duration > 0)
     {
-        const double elapsed = std::max(0.0, state.companion.elapsed);
+        const double elapsed = std::max(0.0, scene.clock.position);
         ui::text(list, fonts.regular, clock_text(elapsed), kColumn, 962, kTypeMin, ink_paper);
         ui::text(list, fonts.regular, clock_text(duration), kSafeRight, 962, kTypeMin, ink_paper,
                  gfx::Align::right);
@@ -432,6 +433,31 @@ void draw_poster(const Scene &scene, bool lyrics, float ground)
     }
 }
 
+namespace
+{
+// What the track card shows: the song, or the idle copy before there is one.
+struct CardText
+{
+    std::string title, artist, meta;
+};
+CardText card_text(const Presentation &state)
+{
+    const bool idle = state.title.empty();
+    const IdleCopy copy = idle_copy(state);
+    const auto &track = state.companion.track;
+    return {idle ? copy.title : state.title, idle ? copy.line : state.artist,
+            idle ? copy.note : joined({state.album, track.year, track.label})};
+}
+} // namespace
+
+float track_card_height(const ui::Fonts &fonts, const Presentation &state)
+{
+    const CardText card = card_text(state);
+    const auto lines = ui::paragraph_lines(fonts.display, card.title, 58, 1184, 2);
+    const float title_h = static_cast<float>(lines.lines.size()) * 62;
+    return 40 + title_h + (card.artist.empty() ? 0 : 44) + (card.meta.empty() ? 0 : 38) + 30;
+}
+
 void draw_track_card(const Scene &scene)
 {
     if (scene.clock.card < 0.01f)
@@ -439,12 +465,8 @@ void draw_track_card(const Scene &scene)
     auto &list = scene.list;
     const auto &fonts = scene.fonts;
     const auto &state = scene.state;
-    const auto &track = state.companion.track;
-    const bool idle = state.title.empty();
-    const IdleCopy copy = idle_copy(state);
-    const std::string title = idle ? copy.title : state.title;
-    const std::string artist = idle ? copy.line : state.artist;
-    const std::string meta = idle ? copy.note : joined({state.album, track.year, track.label});
+    const CardText card = card_text(state);
+    const std::string &title = card.title, &artist = card.artist, &meta = card.meta;
     // LG's card fits its content, up to 62 % of the width.
     const auto lines = ui::paragraph_lines(fonts.display, title, 58, 1184, 2);
     float width = 0;
@@ -453,8 +475,7 @@ void draw_track_card(const Scene &scene)
     width = std::max(width, fonts.semibold.font->measure(artist, 32));
     width = std::max(width, fonts.regular.font->measure(meta, kTypeMin));
     width = std::clamp(width + kFieldInset * 2, 520.0f, 1240.0f);
-    const float title_h = static_cast<float>(lines.lines.size()) * 62;
-    const float height = 40 + title_h + (artist.empty() ? 0 : 44) + (meta.empty() ? 0 : 38) + 30;
+    const float height = track_card_height(fonts, state);
     const gfx::Rect field{kSafeLeft, 980 - height, width, height};
     const Color fa = field_a(state);
     const Color text = field_text(fa);
@@ -478,14 +499,69 @@ void draw_track_card(const Scene &scene)
     list.pop_opacity();
 }
 
-float lyric_line_width(const ui::Fonts &fonts, const LyricView &lyrics)
+namespace
+{
+// Toasts drop in centred at the top (draw_toast, 140..200 px).
+constexpr float kToastBottom = 200;
+// Where an overlay may go: under the toast line, so a notice never covers the
+// words, above the hints, and a gutter above the track card while it shows.
+OverlayRoom overlay_room(const Scene &scene, float bottom)
+{
+    OverlayRoom room;
+    room.top = kToastBottom + kOverlayGutter;
+    room.bottom = bottom;
+    room.card = scene.clock.card;
+    if (room.card > 0)
+        room.card_top = 980 - track_card_height(scene.fonts, scene.state);
+    return room;
+}
+// Background None keeps words legible over bright visuals without a band:
+// draw(colour) runs first in soft ink on a ring around the words, then the
+// caller draws them for real.
+// Quieter words over that ring are greyed, not made see-through, so the ring
+// does not show through them as a second copy.
+// Background Shade: a band of the dark ground across the whole screen width,
+// 2.2 times the text block (from its first line's capitals to the lead
+// line), clear at its top and bottom and darkest over the words. Vertical
+// gradients only, so it has no side edges (as LG's).
+void shade_band(gfx::DrawList &list, float block_top, float block_bottom)
+{
+    const float block = block_bottom - block_top;
+    const float ramp = block * 0.6f;
+    const Color clear = kInk.with_alpha(0), dark = kInk.with_alpha(0.78f);
+    // Wider than the canvas: the OLED drift moves everything a few pixels sideways.
+    list.gradient_rect({-16, block_top - ramp, 1952, ramp}, 0, clear, dark);
+    list.rounded_rect({-16, block_top, 1952, block}, 0, dark);
+    list.gradient_rect({-16, block_bottom, 1952, ramp}, 0, dark, clear);
+}
+Color over_outline(Color c, float share)
+{
+    return gfx::mix(kInk, c, share).with_alpha(c.a);
+}
+template <typename Draw> void soft_outline(gfx::DrawList &list, float spread, Draw &&draw)
+{
+    constexpr float kRing[8][2] = {{1, 0},  {0.71f, 0.71f},   {0, 1},  {-0.71f, 0.71f},
+                                   {-1, 0}, {-0.71f, -0.71f}, {0, -1}, {0.71f, -0.71f}};
+    for (const auto &d : kRing)
+    {
+        list.push_transform(1, 0, 0, d[0] * spread * 1.6f, d[1] * spread * 1.6f);
+        draw(kInk.with_alpha(0.07f));
+        list.pop_transform();
+        list.push_transform(1, 0, 0, d[0] * spread, d[1] * spread);
+        draw(kInk.with_alpha(0.26f));
+        list.pop_transform();
+    }
+}
+} // namespace
+
+float lyric_line_width(const ui::Fonts &fonts, const LyricView &lyrics, float scale)
 {
     const Singing s = singing(lyrics);
-    const auto lines = ui::paragraph_lines(fonts.display, s.current, 64, 1184, 2);
-    float width = fonts.regular.font->measure(s.next.empty() ? s.before : s.next, 34);
+    const auto lines = ui::paragraph_lines(fonts.display, s.current, 64 * scale, 1184 * scale, 2);
+    float width = fonts.regular.font->measure(s.next.empty() ? s.before : s.next, 34 * scale);
     for (const auto &line : lines.lines)
-        width = std::max(width, fonts.display.font->measure(line, 64));
-    return std::clamp(width + kFieldInset * 2, 480.0f, 1240.0f);
+        width = std::max(width, fonts.display.font->measure(line, 64 * scale));
+    return std::clamp(width + kFieldInset * 2 * scale, 480.0f * scale, 1240.0f * scale);
 }
 
 void draw_lyric_line(const Scene &scene)
@@ -494,33 +570,68 @@ void draw_lyric_line(const Scene &scene)
         return;
     auto &list = scene.list;
     const auto &fonts = scene.fonts;
+    const OverlayLook &look = scene.state.preferences.line_look;
+    const float k = overlay_scale(look.size);
     const Singing s = singing(scene.lyrics);
     // Sized to the line; a two-row line grows the field upwards, so the lead
     // line below never moves.
-    const float width = std::max(480.0f, scene.clock.lyric_width);
-    const auto rows = ui::paragraph_lines(fonts.display, s.current, 64, width - 56, 2);
-    const float kHeight = 40 + static_cast<float>(rows.lines.size()) * 66 + 52 + 26;
-    const gfx::Rect field{kSafeLeft, 980 - kHeight, width, kHeight};
+    const float width = std::max(480.0f * k, scene.clock.lyric_width);
+    const float inset = kFieldInset * k;
+    const float size = 64 * k, step = 66 * k, lead_size = 34 * k;
+    const auto lines = ui::paragraph_lines(fonts.display, s.current, size, width - inset * 2, 2);
+    const float height = (40 + static_cast<float>(lines.lines.size()) * 66 + 52 + 26) * k;
+    const float top = overlay_top(look.position, height, overlay_room(scene, 980));
+    const gfx::Rect field{kSafeLeft, top, width, height};
+    const bool box = look.background == background_box;
     const Color fa = field_a(scene.state);
-    const Color text = field_text(fa);
+    // Off the box the words sit on the dark ground or the visuals: paper.
+    const Color text = box ? field_text(fa) : paper(scene.state);
+    const Color lead_colour = box ? text.with_alpha(0.72f) : muted(scene.state);
     const float in = fade_in(scene.clock);
     list.push_opacity(scene.clock.lyric);
-    list.rounded_rect(field, 0, fa);
-    const auto lines = ui::paragraph_lines(fonts.display, s.current, 64, width - 56, 2);
-    const float last = field.y + kHeight - 30 - 34 - 26;
+    if (box)
+        list.rounded_rect(field, 0, fa);
+    const float last = field.y + height - (30 + 34 + 26) * k;
     const float first =
-        last - static_cast<float>(lines.lines.size() - 1) * 66 + slide(scene.clock, 20);
+        last - static_cast<float>(lines.lines.size() - 1) * step + slide(scene.clock, 20 * k);
+    const float x = field.x + inset;
     const Color now = text.with_alpha(s.current_alpha * (0.3f + 0.7f * in));
-    karaoke_paragraph(list, fonts.display, lines, s.current, s.sung, field.x + kFieldInset, first,
-                      64, 66, now, now.with_alpha(now.a * kUnsung));
     const std::string lead = s.next.empty() ? s.before : s.next;
-    if (!lead.empty())
-        ui::text(list, fonts.regular, fonts.regular.font->fit(lead, 34, width - 56),
-                 field.x + kFieldInset, field.y + kHeight - 30, 34, text.with_alpha(0.72f * in));
+    const std::string lead_line =
+        lead.empty() ? lead : fonts.regular.font->fit(lead, lead_size, width - inset * 2);
+    const float lead_y = field.y + height - 30 * k;
+    const auto words = [&](Color lit, Color unlit, Color quiet, std::size_t sung)
+    {
+        karaoke_paragraph(list, fonts.display, lines, s.current, sung, x, first, size, step, lit,
+                          unlit);
+        if (!lead_line.empty())
+            ui::text(list, fonts.regular, lead_line, x, lead_y, lead_size, quiet);
+    };
+    if (look.background == background_shade)
+        shade_band(list, first - size * 0.74f, lead_y + 10 * k);
+    if (look.background == background_none)
+        soft_outline(list, 3 * k,
+                     [&](Color shade) { words(shade, shade, shade, std::string::npos); });
+    if (look.background == background_none)
+        words(now, over_outline(now, kUnsung), over_outline(text, 0.7f).with_alpha(in), s.sung);
+    else
+        words(now, now.with_alpha(now.a * kUnsung), lead_colour.with_alpha(lead_colour.a * in),
+              s.sung);
     if (s.progress >= 0)
-        list.line(field.x, field.y + kHeight - 3,
-                  field.x + field.w * std::clamp(s.progress, 0.0f, 1.0f), field.y + kHeight - 3, 6,
-                  text.with_alpha(0.55f));
+    {
+        const float p = std::clamp(s.progress, 0.0f, 1.0f);
+        const float y = field.y + height - 3 * k;
+        if (box)
+            list.line(field.x, y, field.x + field.w * p, y, 6 * k, text.with_alpha(0.55f));
+        else
+        {
+            // No box edge to run along: the rule spans the words' column.
+            const float span = width - inset * 2;
+            if (look.background == background_none)
+                list.line(x, y + 1, x + span * p, y + 1, 10 * k, kInk.with_alpha(0.3f));
+            list.line(x, y, x + span * p, y, 6 * k, text.with_alpha(0.7f));
+        }
+    }
     list.pop_opacity();
 }
 
@@ -530,31 +641,77 @@ void draw_stage(const Scene &scene)
         return;
     auto &list = scene.list;
     const auto &fonts = scene.fonts;
+    const OverlayLook &look = scene.state.preferences.stage_look;
+    const float k = overlay_scale(look.size);
     const Singing s = singing(scene.lyrics);
+    // A band across the screen, readable from across the room: a 6 px accent,
+    // then 300 px of ground, both scaled with the words.
+    const float height = 306 * k;
+    const float top = overlay_top(look.position, height, overlay_room(scene, 970));
     list.push_opacity(scene.clock.lyric);
-    // A band across the middle, readable from across the room.
-    list.rounded_rect({0, 384, 1920, 6}, 0, field_a(scene.state));
-    list.rounded_rect({0, 390, 1920, 300}, 0, kInk.with_alpha(0.82f));
-    float size = 120;
-    auto lines = ui::paragraph_lines(fonts.display, s.current, size, 1600, 1);
+    if (look.background == background_box)
+    {
+        list.rounded_rect({0, top, 1920, 6 * k}, 0, field_a(scene.state));
+        list.rounded_rect({0, top + 6 * k, 1920, 300 * k}, 0, kInk.with_alpha(0.82f));
+    }
+    // One line at the size's scale; Large may use the whole safe width and,
+    // before it wraps, steps back to Medium's one line, so it is never smaller.
+    const float wide = k > 1 ? kSafeRight - kSafeLeft : 1600.0f;
+    float size = 120 * k;
+    auto lines = ui::paragraph_lines(fonts.display, s.current, size, wide, 1);
+    if (lines.truncated && k > 1)
+    {
+        size = 120;
+        lines = ui::paragraph_lines(fonts.display, s.current, size, wide, 1);
+    }
     if (lines.truncated)
     {
-        size = 92;
-        lines = ui::paragraph_lines(fonts.display, s.current, size, 1600, 2);
+        size = 92 * k;
+        lines = ui::paragraph_lines(fonts.display, s.current, size, wide, 2);
     }
     const float in = fade_in(scene.clock);
-    const float offset = slide(scene.clock, 28);
-    const float first = lines.lines.size() > 1 ? 506 : 560;
+    const float offset = slide(scene.clock, 28 * k);
+    const float first = top + (lines.lines.size() > 1 ? 122 : 176) * k;
     const Color now = paper(scene.state).with_alpha(s.current_alpha * (0.3f + 0.7f * in));
-    karaoke_paragraph(list, fonts.display, lines, s.current, s.sung, 960, first + offset, size,
-                      size * 0.98f, now, now.with_alpha(now.a * kUnsung), gfx::Align::center);
     const std::string lead = s.next.empty() ? s.before : s.next;
+    const std::string lead_line = lead.empty() ? lead : fonts.regular.font->fit(lead, 44 * k, wide);
     const Color soft = muted(scene.state);
-    if (!lead.empty())
-        ui::text(list, fonts.regular, fonts.regular.font->fit(lead, 44, 1600), 960, 660 + offset,
-                 44, soft.with_alpha(soft.a * in), gfx::Align::center);
+    const auto words = [&](Color lit, Color unlit, Color quiet, std::size_t sung)
+    {
+        karaoke_paragraph(list, fonts.display, lines, s.current, sung, 960, first + offset, size,
+                          size * 0.98f, lit, unlit, gfx::Align::center);
+        if (!lead_line.empty())
+            ui::text(list, fonts.regular, lead_line, 960, top + 276 * k + offset, 44 * k, quiet,
+                     gfx::Align::center);
+    };
+    if (look.background == background_shade)
+        shade_band(list, first + offset - size * 0.74f, top + (276 + 10) * k + offset);
+    if (look.background == background_none)
+        soft_outline(list, 4 * k,
+                     [&](Color shade) { words(shade, shade, shade, std::string::npos); });
+    if (look.background == background_none)
+        words(now, over_outline(now, kUnsung),
+              over_outline(paper(scene.state), soft.a).with_alpha(in), s.sung);
+    else
+        words(now, now.with_alpha(now.a * kUnsung), soft.with_alpha(soft.a * in), s.sung);
     if (s.progress >= 0)
-        list.line(0, 687, 1920 * std::clamp(s.progress, 0.0f, 1.0f), 687, 6, field_a(scene.state));
+    {
+        const float p = std::clamp(s.progress, 0.0f, 1.0f);
+        const float y = top + 303 * k;
+        if (look.background == background_box)
+            list.line(0, y, 1920 * p, y, 6 * k, field_a(scene.state));
+        else
+        {
+            // Without the band the rule spans the sung line, centred under it.
+            float span = 0;
+            for (const auto &line : lines.lines)
+                span = std::max(span, fonts.display.font->measure(line, size));
+            const float x = 960 - span / 2;
+            if (look.background == background_none)
+                list.line(x, y + 1, x + span * p, y + 1, 10 * k, kInk.with_alpha(0.3f));
+            list.line(x, y, x + span * p, y, 6 * k, paper(scene.state).with_alpha(0.7f));
+        }
+    }
     list.pop_opacity();
 }
 
@@ -572,7 +729,7 @@ void draw_toast(const Scene &scene, bool corner)
     const float drop = scene.clock.reduced_motion ? 0 : (1 - ease_out(age / 0.25f)) * -16;
     const std::string text = fonts.semibold.font->fit(state.toast, kTypeBody, 1200);
     const float width = fonts.semibold.font->measure(text, kTypeBody) + 64;
-    const float top = (corner ? kSafeTop : 140.0f) + drop;
+    const float top = (corner ? kSafeTop : kToastBottom - 60) + drop;
     const float left = corner ? kSafeRight - width : 960 - width / 2;
     list.push_opacity(alpha);
     list.rounded_rect({left, top, width, 60}, 0, kPaper);
@@ -644,7 +801,7 @@ void draw_transport(const Scene &scene, const Transport &transport)
     const double duration = state.companion.track.duration;
     if (duration > 0)
         ui::text(list, fonts.regular,
-                 clock_text(state.companion.elapsed) + " / " + clock_text(duration), kSafeRight,
+                 clock_text(scene.clock.position) + " / " + clock_text(duration), kSafeRight,
                  band + 56, kTypeMin, kMuted, gfx::Align::right);
     const bool favourite = state.companion.track.favorite;
     struct TileView

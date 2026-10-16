@@ -3,8 +3,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "concepts/concepts.hpp"
+#include "afterglow/lyric_overlay.hpp"
 #include "afterglow/lyrics.hpp"
 #include "afterglow/panel.hpp"
+#include "afterglow/progress_clock.hpp"
 #include "afterglow/presentation.hpp"
 #include "afterglow/scenes.hpp"
 #include "afterglow/style.hpp"
@@ -74,6 +76,19 @@ constexpr app::TourStep kTour[] = {
     {0.1f, 0, Direction::right},
     {0.1f, action_bit(Action::confirm)},
     {0.8f, 0, Direction::none, "display"},
+    // Down to the last row: the rows above now show "More" at the top.
+    {0.1f, 0, Direction::down},
+    {0.1f, 0, Direction::down},
+    {0.1f, 0, Direction::down},
+    {0.1f, 0, Direction::down},
+    {0.1f, 0, Direction::down},
+    {0.1f, 0, Direction::down},
+    {0.1f, 0, Direction::down},
+    {0.1f, 0, Direction::down},
+    {0.1f, 0, Direction::down},
+    {0.1f, 0, Direction::down},
+    {0.1f, 0, Direction::down},
+    {0.8f, 0, Direction::none, "display-end"},
     {0.1f, action_bit(Action::page_next)},
     {0.1f, action_bit(Action::confirm)},
     {0.8f, 0, Direction::none, "players"},
@@ -147,6 +162,7 @@ class Afterglow final : public app::Concept
             clock_.time += dt;
         state.toast_age += dt;
         seek_age_ += dt;
+        follow_position(state, dt);
         follow_lyrics(state);
         if (state.title != shown_track_)
         {
@@ -294,6 +310,14 @@ class Afterglow final : public app::Concept
 
   private:
     // ---- lyrics -------------------------------------------------------------
+    // Progress bars and lyric underlines draw from this every frame.
+    void follow_position(const afterglow::Presentation &state, float dt)
+    {
+        const auto &c = state.companion;
+        clock_.position =
+            progress_.update(c.elapsed, c.playing, c.track.uri + "\n" + c.track.queue_item_id,
+                             c.track.duration, dt, state.preferences.reduce_motion);
+    }
     void follow_lyrics(afterglow::Presentation &state)
     {
         const auto &track = state.companion.track;
@@ -311,7 +335,7 @@ class Afterglow final : public app::Concept
         }
         view_.lines = &lyrics_;
         view_.karaoke = state.preferences.karaoke;
-        view_.now = state.companion.elapsed - state.preferences.lyrics_offset_ms / 1000.0;
+        view_.now = clock_.position - state.preferences.lyrics_offset_ms / 1000.0;
         const int active = timed ? afterglow::current_lyric(lyrics_, view_.now) : -1;
         if (active != view_.active)
         {
@@ -484,7 +508,8 @@ class Afterglow final : public app::Concept
         clock_.lyric = std::clamp(clock_.lyric + ((line || stage) ? fade : -fade) * dt, 0.0f, 1.0f);
         if (line && context_.fonts.display.font != nullptr)
         {
-            const float target = afterglow::lyric_line_width(context_.fonts, view_);
+            const float target = afterglow::lyric_line_width(
+                context_.fonts, view_, afterglow::overlay_scale(p.line_look.size));
             clock_.lyric_width = clock_.lyric_width <= 0 || p.reduce_motion
                                      ? target
                                      : approach(clock_.lyric_width, target, dt, 14.0f);
@@ -873,6 +898,7 @@ class Afterglow final : public app::Concept
     std::vector<afterglow::IdleTile> idle_tiles_;
     afterglow::IdleView idle_view_;
     afterglow::SceneClock clock_;
+    afterglow::ProgressClock progress_;
     afterglow::LyricView view_;
     afterglow::Transport transport_;
     std::vector<afterglow::LyricLine> lyrics_;

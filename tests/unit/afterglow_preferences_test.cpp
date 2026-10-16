@@ -110,6 +110,37 @@ TEST(AfterglowPreferences, OnlineLyricsIsOnByDefaultSavedAndSynced)
     EXPECT_TRUE(p.with_synced("{\"online_lyrics\":1}").online_lyrics);
 }
 
+TEST(AfterglowPreferences, LyricOverlayLooksDefaultSaveApartAndSync)
+{
+    Preferences p;
+    EXPECT_EQ(p.line_look, (hui::afterglow::OverlayLook{2, 0, 1})) << "Bottom, Box, Medium";
+    EXPECT_EQ(p.stage_look, (hui::afterglow::OverlayLook{1, 0, 1})) << "Middle, Box, Medium";
+    p.line_look = {0, 2, 0};
+    p.stage_look = {2, 1, 2};
+    const auto restored = Preferences::decode(p.encode());
+    EXPECT_EQ(restored.line_look, p.line_look);
+    EXPECT_EQ(restored.stage_look, p.stage_look);
+    const std::string synced = p.encode_synced();
+    for (const char *pair : {"\"line_position\":0", "\"line_background\":2", "\"line_size\":0",
+                             "\"stage_position\":2", "\"stage_background\":1", "\"stage_size\":2"})
+        EXPECT_NE(synced.find(pair), std::string::npos) << pair;
+    const auto mirrored = Preferences{}.with_synced(synced);
+    EXPECT_EQ(mirrored.line_look, p.line_look);
+    EXPECT_EQ(mirrored.stage_look, p.stage_look);
+}
+
+TEST(AfterglowPreferences, UnknownOverlayValuesFallBackToEachOverlaysDefault)
+{
+    const auto p = Preferences::decode("line_position=3\nline_background=-1\nline_size=9\n"
+                                       "stage_position=7\nstage_background=x\nstage_size=-2\n");
+    EXPECT_EQ(p.line_look, hui::afterglow::kLineLookDefault);
+    EXPECT_EQ(p.stage_look, hui::afterglow::kStageLookDefault);
+    // One bad value leaves the overlay's other choices alone.
+    const auto mixed = Preferences::decode("stage_position=0\nstage_size=5\n");
+    EXPECT_EQ(mixed.stage_look, (hui::afterglow::OverlayLook{0, 0, 1}));
+    EXPECT_EQ(Preferences{}.with_synced("{\"line_position\":12}").line_look.position, 2);
+}
+
 TEST(AfterglowPreferences, FavoriteDuplicatesAndLineEndingsRemainStable)
 {
     auto p = Preferences::decode("favorite=one\r\nfavorite=one\nfavorite=two\nplayer=room\r\n"
