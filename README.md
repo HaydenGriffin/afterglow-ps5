@@ -152,8 +152,8 @@ docker run --rm -v "$PWD:/work" afterglow-builder make test-unit
 docker run --rm -v "$PWD:/work" afterglow-builder make lint
 ```
 
-The interface also renders on a PC, off-screen, with the same code and shaders. The README images come from it, on
-made-up music and an invented cover:
+The interface also renders on a PC, off-screen, with the same code and shaders. The README images above were
+captured on a PS5 running 1.6.0. To render a preview with made-up music and an invented cover:
 
 ```sh
 AFTERGLOW_PREVIEW=1 AFTERGLOW_COVER=docs/images/preview-cover.png AFTERGLOW_LYRICS=karaoke \
