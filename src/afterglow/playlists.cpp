@@ -55,9 +55,9 @@ LocalTime local_time()
 
 namespace playlist_wire
 {
-const char *const kMonths[12] = {"January", "February", "March",     "April",
-                                 "May",     "June",     "July",      "August",
-                                 "September", "October", "November", "December"};
+const char *const kMonths[12] = {"January",   "February", "March",    "April",
+                                 "May",       "June",     "July",     "August",
+                                 "September", "October",  "November", "December"};
 
 std::string short_date(int day, int month)
 {
@@ -454,8 +454,8 @@ void Playlists::update(std::int64_t now_ms, std::vector<ApiReply> &replies,
         {
             list_waiting_ = 0;
             list_state_ = it->error_code != 0 ? ListState::error : ListState::ready;
-            list_ = it->error_code != 0 ? std::vector<pw::Playlist>{}
-                                        : pw::decode_editable(it->result);
+            list_ =
+                it->error_code != 0 ? std::vector<pw::Playlist>{} : pw::decode_editable(it->result);
             it = replies.erase(it);
         }
         else if (waiting_ != 0 && it->id == waiting_)

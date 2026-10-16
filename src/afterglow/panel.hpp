@@ -59,6 +59,8 @@ class Panel
         sync,    // TV output compensation (static delay) with the sync figure
         account, // sign in / log out / settings sync
         home,    // Home Assistant glance, drawn by HomeSheet
+        // Added by the playlists round (panel_playlists.cpp):
+        playlist, // Add to a playlist: New playlist and the playlists a song can go into
     };
 
     Panel();
@@ -205,5 +207,27 @@ class Panel
     bool leave_ = false;
     // Settings opens on the row it was left at (LG 1.4.3).
     int settings_focus_ = 0;
+
+    // Playlists (panel_playlists.cpp): save the queue, add a song through the
+    // picker. Rows confirm from presentation().playlists by a key naming them.
+    static constexpr int kSavePlaylistTag = -1000, kAddPlaylistTag = -1001, kNewPlaylistTag = -1002,
+                         kRetryPlaylistsTag = -1003;
+    SheetRow save_playlist_row() const;
+    SheetRow add_playlist_row(const CompanionTrack &song, bool ready) const;
+    // A row reads its key's confirmation: in the value, or the subtitle (Browse).
+    static void mark_playlist(SheetRow &row, const std::string &key, bool subtitle);
+    std::vector<SheetRow> picker_rows() const;
+    void open_picker(const CompanionTrack &song);
+    // True when the row was a playlist row and has been acted on.
+    bool confirm_playlist(const SheetRow &row);
+    void close_picker();
+    std::string playlist_key(const CompanionTrack &song, Page from) const;
+    // True once when a job or the picker's list moved on, or a confirmation
+    // expired: the rows are rebuilt then, not at the next half-second refresh.
+    bool playlists_moved();
+    CompanionTrack adding_song_;
+    Page adding_from_ = Page::details;
+    int adding_focus_ = 0;
+    std::string playlists_seen_;
 };
 } // namespace hui::afterglow

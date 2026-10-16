@@ -124,8 +124,8 @@ TEST_F(AfterglowPanel, EmptyQueueRowRefusesCrossAndPlaybackFollows)
     cross();
     EXPECT_EQ(panel_.page(), Page::queue);
     EXPECT_FALSE(s.companion_action_pending);
-    // Past the Playback heading to Shuffle.
-    down(1);
+    // Past Save as a playlist and the Playback heading to Shuffle.
+    down(2);
     cross();
     EXPECT_TRUE(s.companion_action_pending);
     EXPECT_EQ(s.companion_action.kind, CompanionActionKind::shuffle);
@@ -137,7 +137,7 @@ TEST_F(AfterglowPanel, VolumeAdjustsAndSleepTimerClears)
     auto &s = presentation();
     s.companion.connected = true;
     panel_.open(Page::queue);
-    down(5); // nothing queued, shuffle, repeat, crossfade, volume
+    down(6); // nothing queued, save as a playlist, shuffle, repeat, crossfade, volume
     input(nav(Direction::right));
     EXPECT_EQ(s.command, UiCommand::volume_up);
     s.command = UiCommand::none;
@@ -569,7 +569,7 @@ TEST_F(AfterglowPanel, QueueEditsCarryStableItemIdAndRefuseDuplicates)
     down(1);
     cross();
     ASSERT_EQ(panel_.page(), Page::queue_actions);
-    down(4);
+    down(5);
     cross();
     EXPECT_EQ(s.companion_action.kind, CompanionActionKind::delete_item);
     EXPECT_EQ(s.companion_action.text, "queue-item-42");
@@ -579,7 +579,7 @@ TEST_F(AfterglowPanel, QueueEditsCarryStableItemIdAndRefuseDuplicates)
     s.companion_action.kind = CompanionActionKind::seek;
     cross();
     ASSERT_EQ(panel_.page(), Page::queue_actions);
-    down(4);
+    down(5);
     cross();
     EXPECT_EQ(s.companion_action.kind, CompanionActionKind::seek);
 }
@@ -888,7 +888,7 @@ TEST_F(AfterglowPanel, LaterSongsHidesWhenNothingIsLeft)
     s.companion.queue_total = 63; // absolute counting would claim 11 more
     s.companion.upcoming = {track("A", "a"), track("B", "b")};
     panel_.open(Page::queue);
-    down(4); // Earlier songs, A, B, then Shuffle: no Later songs row
+    down(5); // Earlier songs, A, B, Save as a playlist, then Shuffle: no Later songs row
     cross();
     EXPECT_EQ(s.companion_action.kind, CompanionActionKind::shuffle);
     EXPECT_EQ(s.queue_offset_request, -1);
@@ -915,8 +915,9 @@ TEST_F(AfterglowPanel, KeepPlayingTogglesAutoplay)
     auto &s = presentation();
     s.companion.connected = true;
     panel_.open(Page::queue);
-    // Nothing queued, shuffle, repeat, crossfade, volume, sleep timer, keep playing.
-    down(7);
+    // Nothing queued, save as a playlist, shuffle, repeat, crossfade, volume, sleep timer,
+    // keep playing.
+    down(8);
     cross();
     EXPECT_EQ(s.companion_action.kind, CompanionActionKind::autoplay);
     EXPECT_TRUE(s.companion_action.enabled);

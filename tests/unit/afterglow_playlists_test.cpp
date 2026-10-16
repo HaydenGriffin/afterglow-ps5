@@ -59,11 +59,11 @@ TEST(AfterglowPlaylists, NamesNeedNoKeyboard)
 
 TEST(AfterglowPlaylists, OnlyEditablePlaylistsInTheOrderAsked)
 {
-    const auto list = pw::decode_editable(
-        R"([{"item_id":"1","name":"A","is_editable":true,"is_dynamic":false},)"
-        R"({"item_id":"2","name":"B","is_editable":false},)"
-        R"({"item_id":"3","name":"C","is_editable":true,"is_dynamic":true},)"
-        R"({"item_id":4,"name":"D","is_editable":true}])");
+    const auto list =
+        pw::decode_editable(R"([{"item_id":"1","name":"A","is_editable":true,"is_dynamic":false},)"
+                            R"({"item_id":"2","name":"B","is_editable":false},)"
+                            R"({"item_id":"3","name":"C","is_editable":true,"is_dynamic":true},)"
+                            R"({"item_id":4,"name":"D","is_editable":true}])");
     ASSERT_EQ(list.size(), 2u);
     EXPECT_EQ(list[0].name, "A");
     EXPECT_EQ(list[1].item_id, "4");
@@ -83,10 +83,10 @@ TEST(AfterglowPlaylists, TasksAndCounts)
         R"({"id":"t","status":"success","progress_text":"Added 12 item(s) to playlist"})");
     EXPECT_EQ(done.state, pw::TaskState::done);
     EXPECT_EQ(done.added, 12);
-    EXPECT_EQ(
-        pw::decode_task(R"({"id":"t","status":"success","progress_text":"No new playlist items to add"})")
-            .added,
-        0);
+    EXPECT_EQ(pw::decode_task(
+                  R"({"id":"t","status":"success","progress_text":"No new playlist items to add"})")
+                  .added,
+              0);
     EXPECT_EQ(pw::decode_task(R"({"id":"t","status":"running","progress_text":"Matching"})").added,
               -1);
 }
@@ -115,7 +115,8 @@ TEST(AfterglowPlaylists, RequestArguments)
               R"({"queue_id":"q1","name":"Queue · 16 Oct"})");
     EXPECT_EQ(pw::add_args("5", {"a://track/1", "b://track/2"}),
               R"({"db_playlist_id":"5","uris":["a://track/1","b://track/2"]})");
-    EXPECT_EQ(pw::editable_args(), R"({"limit":50,"offset":0,"order_by":"timestamp_modified_desc"})");
+    EXPECT_EQ(pw::editable_args(),
+              R"({"limit":50,"offset":0,"order_by":"timestamp_modified_desc"})");
     EXPECT_EQ(pw::task_args("t1"), R"({"task_id":"t1"})");
     EXPECT_EQ(pw::created_id(R"({"item_id":"77","name":"x"})"), "77");
 }
