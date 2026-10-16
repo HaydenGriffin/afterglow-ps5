@@ -371,6 +371,61 @@ std::string item_subtitle(const CompanionTrack &track, std::string_view media)
     }
     return {};
 }
+// Details' Go to rows open these pages by id, never by a name search.
+CompanionLink link_of(std::string_view raw)
+{
+    CompanionLink link;
+    if (raw.empty() || raw.front() != '{')
+        return link;
+    link.item_id = text_field(raw, "item_id");
+    link.provider = text_field(raw, "provider");
+    link.name = text_field(raw, "name");
+    link.uri = text_field(raw, "uri");
+    if (link.item_id.empty() || link.provider.empty() || link.name.empty() ||
+        link.item_id.size() > 2048 || link.provider.size() > 256)
+        return {};
+    return link;
+}
+// metadata.chapters: [{position, name, start, end}] in seconds, any order.
+std::vector<CompanionChapter> read_chapters(std::string_view metadata)
+{
+    std::vector<CompanionChapter> chapters;
+    for (auto raw : elements(field(metadata, "chapters"), 300))
+    {
+        const double start = decimal(raw, "start", -1);
+        if (start < 0)
+            continue;
+        CompanionChapter chapter;
+        chapter.name = trimmed(text_field(raw, "name"));
+        chapter.start = static_cast<int>(start);
+        chapters.push_back(std::move(chapter));
+    }
+    std::stable_sort(chapters.begin(), chapters.end(),
+                     [](const auto &a, const auto &b) { return a.start < b.start; });
+    return chapters;
+}
+void read_spoken_word(CompanionTrack &out, std::string_view media, std::string_view metadata)
+{
+    if (out.media_type == "track")
+    {
+        out.album_link = link_of(field(media, "album"));
+        for (auto artist : elements(field(media, "artists"), 16))
+            if (auto link = link_of(artist); !link.item_id.empty() && out.artist_links.size() < 3)
+                out.artist_links.push_back(std::move(link));
+        return;
+    }
+    if (out.media_type != "audiobook" && out.media_type != "podcast_episode")
+        return;
+    out.chapters = read_chapters(metadata);
+    // A book's authors and an episode's podcast stand where a song's artist and album do.
+    if (out.media_type == "audiobook" && out.artist.empty())
+        out.artist = out.first_artist = join_names(field(media, "authors"));
+    if (out.media_type == "podcast_episode")
+    {
+        const auto podcast = field(media, "podcast");
+        out.podcast_link = link_of(podcast);
+    }
+}
 CompanionTrack parse_track(std::string_view item)
 {
     CompanionTrack out;
@@ -451,6 +506,7 @@ CompanionTrack parse_track(std::string_view item)
             out.title.erase(0, split + 3);
         }
     }
+    read_spoken_word(out, media, metadata);
     out.subtitle = item_subtitle(out, media);
     read_stream(out, item);
     read_share(out, media, item);
@@ -547,6 +603,7 @@ BrowsePage browse_page(const BrowseRequest &request)
     switch (request.category)
     {
     case BrowseCategory::recent:
+    case BrowseCategory::in_progress:
         page.limit = 30;
         break;
     case BrowseCategory::tracks:
@@ -712,6 +769,9 @@ Request browse_request(const BrowseRequest &request)
         if (request.item_id.empty())
             return {{}, {}, "Choose a podcast"};
         return {"music/podcasts/podcast_episodes", provider_args(request), {}};
+    case BrowseCategory::in_progress:
+        // No offset either: the newest 30, read whole.
+        return {"music/in_progress_items", "{\"limit\":30}", {}};
     }
     result.command = "music/" + kind + "/library_items";
     result.args = "{\"limit\":60,\"offset\":" + std::to_string(offset) +
@@ -808,6 +868,20 @@ Request recent_request()
     return {"music/recently_played_items",
             "{\"limit\":" + std::to_string(kRecentLimit + 2) + ",\"fully_played_only\":false}",
             {}};
+}
+
+Request in_progress_request()
+{
+    return {"music/in_progress_items", "{\"limit\":" + std::to_string(kInProgressLimit) + "}", {}};
+}
+
+std::vector<CompanionTrack> decode_in_progress(std::string_view result)
+{
+    std::vector<CompanionTrack> items;
+    for (auto &item : decode_items(result, kInProgressLimit))
+        if (!item.uri.empty())
+            items.push_back(std::move(item));
+    return items;
 }
 
 std::vector<CompanionTrack> decode_recent(std::string_view result)
@@ -933,6 +1007,18 @@ Request action_request(const CompanionAction &action, const CompanionSnapshot &t
             uri = "radio_playlist://playlist/" + uri;
         command = "play_media";
         args += ",\"media\":" + json_quote(uri) + ",\"option\":" + json_quote(option);
+        break;
+    }
+    case CompanionActionKind::speed:
+    {
+        if (target.target_elsewhere)
+            return {{}, {}, "Nothing is playing on " + target.target_name};
+        // Music Assistant 2.10 takes 0.5 to 3.0, for audiobooks and episodes.
+        const int hundredths = std::clamp(action.value, 50, 300);
+        const int cents = hundredths % 100;
+        command = "set_playback_speed";
+        args += ",\"speed\":" + std::to_string(hundredths / 100) + "." + (cents < 10 ? "0" : "") +
+                std::to_string(cents);
         break;
     }
     case CompanionActionKind::play_index:
@@ -1144,6 +1230,7 @@ struct Companion::Impl
         bool shuffle = false, autoplay = false, crossfade = false;
         std::string repeat = "off";
         std::int64_t started = 0;
+        int speed = 100;
     };
     using Wave = companion_wire::Wave;
     std::atomic<bool> stopping{true}, relay_enabled{true};
@@ -1175,6 +1262,7 @@ struct Companion::Impl
     std::string account_id, save_id;
     std::int64_t account_deadline = 0, save_deadline = 0, recent_deadline = 0, delay_deadline = 0;
     std::int64_t account_hold = 0;
+    std::string progress_inflight;
     CompanionTrack enriched_track;
     std::uint64_t enrichment_number = 0;
     // Retry lyrics (UI thread): the worker enriches the playing song again.
@@ -1331,6 +1419,8 @@ struct Companion::Impl
         q.autoplay = field(raw, "autoplay_enabled") == "true";
         q.crossfade = field(raw, "crossfade_enabled") == "true";
         q.repeat = text_field(raw, "repeat_mode");
+        q.speed = std::clamp(static_cast<int>(std::lround(decimal(raw, "playback_speed", 1) * 100)),
+                             50, 300);
         auto old = queues.find(q.id);
         q.started = old != queues.end() && old->second.state == "playing" ? old->second.started
                                                                           : sys::monotonic_us();
@@ -1575,6 +1665,8 @@ struct Companion::Impl
         }
         else if (id == recent_inflight && !recent_inflight.empty())
             read_recent(raw, result);
+        else if (id == progress_inflight && !progress_inflight.empty())
+            read_in_progress(raw, result);
         else if (id == items_request && !items_request.empty())
         {
             upcoming.clear();
@@ -2016,10 +2108,12 @@ struct Companion::Impl
             state.elapsed = 0;
             state.queue_state.clear();
             state.next_up.clear();
+            state.playback_speed = 100;
             return;
         }
         const auto &q = drawn->second;
         state.queue_state = q.state;
+        state.playback_speed = q.speed;
         state.track = q.track;
         state.playing = q.state == "playing";
         state.elapsed = std::max(
@@ -2162,7 +2256,25 @@ struct Companion::Impl
         recent_inflight = "recent-" + std::to_string(++sequence);
         recent_deadline = sys::monotonic_us() + kReplyUs;
         const auto wire = companion_wire::recent_request();
-        return call(recent_inflight, wire.command, wire.args);
+        if (!call(recent_inflight, wire.command, wire.args))
+            return false;
+        // Continue listening rides along; a server that cannot say leaves it out.
+        if (!progress_inflight.empty())
+            return true;
+        progress_inflight = "progress-" + std::to_string(++sequence);
+        const auto progress = companion_wire::in_progress_request();
+        return call(progress_inflight, progress.command, progress.args);
+    }
+    void read_in_progress(std::string_view raw, std::string_view result)
+    {
+        auto items = companion_wire::decode_in_progress(result);
+        std::lock_guard<std::mutex> lock(mutex);
+        progress_inflight.clear();
+        if (!field(raw, "error_code").empty())
+            items.clear();
+        for (auto &item : items)
+            absolute_artwork(item);
+        state.in_progress = std::move(items);
     }
     void read_recent(std::string_view raw, std::string_view result)
     {
@@ -2313,6 +2425,7 @@ struct Companion::Impl
             target = {};
             window_key.clear();
             recent_inflight.clear();
+            progress_inflight.clear();
             players.clear();
             queues.clear();
             skipped.clear();

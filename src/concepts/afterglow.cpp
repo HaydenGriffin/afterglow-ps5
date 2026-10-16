@@ -162,6 +162,41 @@ constexpr app::TourStep kTour[] = {
     {1.2f, 0, Direction::none, "idle-nothing"},
     {0.1f, action_bit(Action::confirm)},
     {0.8f, 0, Direction::none, "idle-played"},
+    // The idle poster carried on with a book: Details offers Speed and
+    // Chapters; then a song from Browse, whose Details go to its album.
+    {0.1f, action_bit(Action::menu)},
+    {0.1f, 0, Direction::right},
+    {0.1f, 0, Direction::right},
+    {0.1f, 0, Direction::right},
+    {0.1f, 0, Direction::right},
+    {0.1f, 0, Direction::right},
+    {0.1f, action_bit(Action::confirm)},
+    {0.8f, 0, Direction::none, "details-spoken"},
+    {0.1f, 0, Direction::down},
+    {0.1f, action_bit(Action::confirm)},
+    {0.8f, 0, Direction::none, "chapters"},
+    {0.1f, action_bit(Action::back)},
+    {0.1f, action_bit(Action::page_prev)},
+    {0.1f, 0, Direction::up},
+    {0.1f, action_bit(Action::confirm)},
+    {0.8f, 0, Direction::none, "browse-continue"},
+    {0.1f, 0, Direction::left},
+    {0.1f, 0, Direction::down},
+    {0.1f, action_bit(Action::confirm)},
+    {0.1f, 0, Direction::down},
+    {0.1f, 0, Direction::down},
+    {0.1f, action_bit(Action::confirm)},
+    {0.1f, action_bit(Action::confirm)},
+    {0.3f, action_bit(Action::menu)},
+    {0.1f, 0, Direction::right},
+    {0.1f, 0, Direction::right},
+    {0.1f, 0, Direction::right},
+    {0.1f, 0, Direction::right},
+    {0.1f, 0, Direction::right},
+    {0.1f, action_bit(Action::confirm)},
+    {0.8f, 0, Direction::none, "details-go-to"},
+    {0.1f, action_bit(Action::confirm)},
+    {0.8f, 0, Direction::none, "go-to-album"},
 };
 
 class Afterglow final : public app::Concept
@@ -433,8 +468,8 @@ class Afterglow final : public app::Concept
             state.idle_artwork.clear();
             return;
         }
-        idle_tiles_ =
-            afterglow::idle_tiles(paused ? &c.track : nullptr, c.recent, c.recent_state, true);
+        idle_tiles_ = afterglow::idle_tiles(paused ? &c.track : nullptr, c.recent, c.recent_state,
+                                            c.in_progress, true);
         const auto &tile = idle_tiles_[static_cast<std::size_t>(
             std::clamp(idle_.focus(), 0, static_cast<int>(idle_tiles_.size()) - 1))];
         const bool has_recent =

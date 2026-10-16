@@ -6,6 +6,8 @@ checked on a PC only (unit tests, mock servers and the off-screen preview).
 
 # Unreleased
 
+Built and tested on a PC only.
+
 - Music playing on another speaker can be joined or moved: Queue and Playing on offer **Join <speaker>** (this
   PS5's own player joins that speaker's group, where Music Assistant allows it) and **Move here** (the music
   moves to the PS5, as the old Play on this PS5 row did). Nothing happens until you choose one.
@@ -39,6 +41,14 @@ checked on a PC only (unit tests, mock servers and the off-screen preview).
   lrclib.net (up to six, with length, Timed or Plain and album; a much longer one says so). The pick is kept for the
   song and fetched by its LRCLIB id on later plays; **Automatic** goes back.
 - **Go to a line.** Details → **Go to a line**: with timed lyrics, pick a line and the song plays from it.
+- **Go to the album or artist.** Details offers Go to the album, Go to *artist* (up to three) and, for a podcast
+  episode, Go to the podcast, when Music Assistant gives their ids; Browse opens on that page and Circle returns to
+  Details.
+- **Audiobooks and podcasts.** Browse has **Continue listening** (after Search; Browse still opens on Recently
+  played). The idle poster offers up to three audiobooks or episodes in progress after the paused song ("Carry on").
+  While one plays, Details offers **Speed** (0.75× to 2×) and **Chapters** (Cross plays from a chapter's start);
+  Start radio and Retry lyrics are not offered for them. Empty Podcasts, Audiobooks and episode lists say so.
+- A playing audiobook names its authors where a song names its artist.
 
 # 1.6.0 — First public release (unreleased)
 

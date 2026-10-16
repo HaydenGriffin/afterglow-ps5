@@ -64,6 +64,8 @@ class Panel
         // Added by round 2 (lyrics lane, song_lyrics.hpp):
         lyrics_choice, // Choose other lyrics: LRCLIB's versions of the song
         lyrics_lines,  // Go to a line: the timed lines, picking one seeks
+        // Added by feature round 2:
+        chapters, // Details → Chapters: an audiobook's or episode's chapters
     };
 
     Panel();
@@ -139,6 +141,9 @@ class Panel
     void open_list(Page page, BrowseCategory category);
     void load_more();
     void pop_browse();
+    // Details' Go to rows: Browse on an album's, artist's or podcast's page;
+    // Back from it returns to Details.
+    void go_to(const CompanionTrack &item);
     void load(const BrowseRequest &request);
     // The system keyboard: ask once, answer when main.cpp fills the result.
     void ask_keyboard(KeyboardPurpose purpose, std::string title, std::string initial,
@@ -169,7 +174,8 @@ class Panel
     Page root_ = Page::queue;
     // The row back() puts the focus on when it returns to the parent page.
     int parent_focus_ = 0;
-    int category_ = 0;
+    // An index in kCategories; Browse opens on Recently played.
+    int category_ = 1;
     bool browse_right_ = false;
     // Browse: the request the current list shows, the item whose page this is
     // (album, artist, podcast or the song whose actions show) and the way back.

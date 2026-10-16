@@ -9,6 +9,7 @@
 #include "afterglow/song_lyrics.hpp"
 #include "afterglow/speaker_group.hpp"
 #include "afterglow/speakers.hpp"
+#include "afterglow/spoken_word.hpp"
 #include "afterglow/style.hpp"
 #include "afterglow/version.hpp"
 #include "ui/glyphs.hpp"
@@ -30,6 +31,7 @@ struct Category
 };
 // Browse's category column, below its Search entry. Row tags are indexes here.
 constexpr Category kCategories[] = {
+    {"Continue listening", BrowseCategory::in_progress},
     {"Recently played", BrowseCategory::recent},
     {"Favourite playlists", BrowseCategory::favorite_playlists},
     {"Favourite albums", BrowseCategory::favorite_albums},
@@ -206,11 +208,16 @@ enum Row : int
     open_setup,
     setup_again,
     setup_row,
+    playback_speed,
+    open_chapters,
 };
 // "Group with" rows carry this plus the speaker's index in players.
 constexpr int kGroupTag = 100000;
 // "Volume for each speaker" rows carry this minus the member's index in member_volumes.
 constexpr int kVolumeTag = -100000;
+// Details' Go to rows carry this plus their index in details_rows(); the song
+// lyrics rows (song_lyrics.hpp) start above them at 300000.
+constexpr int kGoToTag = 200000;
 
 // The look the Display rows under "Lyrics over visuals" change: the chosen
 // overlay's; null while lyrics are off.
@@ -567,7 +574,7 @@ const char *Panel::page_name() const
         "browse",  "collection", "item_actions",  "queue",       "queue_actions", "details",
         "display", "settings",   "source",        "visuals",     "presets",       "lyrics_timing",
         "status",  "search",     "artist",        "players",     "sync",          "account",
-        "home",    "setup",      "lyrics_choice", "lyrics_lines"};
+        "home",    "setup",      "lyrics_choice", "lyrics_lines",  "chapters"};
     const auto index = static_cast<std::size_t>(page_);
     return index < std::size(kNames) ? kNames[index] : "";
 }
@@ -618,6 +625,8 @@ std::string Panel::title() const
         return "Choose lyrics";
     case Page::lyrics_lines:
         return "Go to a line";
+    case Page::chapters:
+        return "Chapters";
     default:
         return search_root_ ? "Search" : "Browse";
     }
@@ -687,6 +696,8 @@ std::string Panel::note() const
         return lyrics_choice_note(s);
     case Page::lyrics_lines:
         return lyrics_lines_note(s);
+    case Page::chapters:
+        return s.companion.track.title;
     default:
         return {};
     }
@@ -981,11 +992,40 @@ std::vector<SheetRow> Panel::sheet_rows() const
     case Page::details:
     {
         const bool ready = companion_ready(s) && !c.track.uri.empty();
+        const auto extras = details_rows(c.track, c.playback_speed, c.elapsed);
+        for (std::size_t i = 0; i < extras.size(); ++i)
+        {
+            const auto &extra = extras[i];
+            const int tag = extra.kind == DetailsRowKind::speed ? playback_speed
+                            : extra.kind == DetailsRowKind::chapters
+                                ? open_chapters
+                                : kGoToTag + static_cast<int>(i);
+            auto &row = rows.row(extra.label, tag, extra.value);
+            row.adjustable = extra.kind == DetailsRowKind::speed;
+            row.item.chevron = extra.kind != DetailsRowKind::speed;
+            row.item.disabled =
+                extra.kind == DetailsRowKind::speed ? !ready : !s.companion_configured;
+        }
         rows.row(c.track.favorite ? "Remove from music favourites" : "Add to music favourites",
                  favourite)
             .item.disabled = !ready;
-        rows.row("Start radio from this song", radio, "Replaces the queue").item.disabled = !ready;
+        if (offers_radio(c.track))
+            rows.row("Start radio from this song", radio, "Replaces the queue").item.disabled =
+                !ready;
         add_line_row(s, rows.list);
+        break;
+    }
+    case Page::chapters:
+    {
+        const auto chapters = chapter_rows(c.track, c.elapsed);
+        for (std::size_t i = 0; i < chapters.size(); ++i)
+        {
+            auto &row = rows.row(chapters[i].label, static_cast<int>(i), chapters[i].value);
+            row.chosen = chapters[i].current;
+            row.item.disabled = !companion_ready(s);
+        }
+        if (chapters.empty())
+            rows.row("No chapters", info).item.disabled = true;
         break;
     }
     case Page::display:
@@ -1105,7 +1145,8 @@ std::vector<SheetRow> Panel::sheet_rows() const
         rows.row("Online lyrics", online_lyrics, on_off(p.online_lyrics)).item.subtitle =
             "When Music Assistant has none, ask lrclib.net";
         add_choose_row(s, rows.list);
-        if (s.lyrics.status == LyricsStatus::error || s.lyrics.status == LyricsStatus::missing)
+        if ((s.lyrics.status == LyricsStatus::error || s.lyrics.status == LyricsStatus::missing) &&
+            offers_lyrics_retry(c.track))
             rows.row("Retry lyrics", retry_lyrics);
         break;
     }
@@ -1194,7 +1235,14 @@ std::vector<SheetRow> Panel::list_rows() const
             row.chosen = true;
             row.item.subtitle = confirmed_text_;
         }
-    if (items.empty())
+    const auto empty = empty_list_copy(request_.category);
+    if (items.empty() && !search && !empty.first.empty())
+    {
+        auto &row = rows.row(empty.first, info);
+        row.item.subtitle = empty.second;
+        row.item.disabled = true;
+    }
+    else if (items.empty())
         rows.row(search                  ? "Nothing found for “" + query_ + "”"
                  : page_ == Page::browse ? "Nothing here yet"
                  : page_ == Page::artist ? "Nothing by this artist yet"
@@ -1362,6 +1410,7 @@ bool Panel::back()
         navigate(Page::lyrics_timing, parent_focus_);
         return true;
     case Page::lyrics_lines:
+    case Page::chapters:
         navigate(Page::details, parent_focus_);
         return true;
     case Page::source:
@@ -1452,10 +1501,35 @@ void Panel::load_more()
     append_from_ = s.companion.browse_items.size();
 }
 
+void Panel::go_to(const CompanionTrack &item)
+{
+    trail_.clear();
+    trail_.push_back({page_, {}, {}, sheet_.focus()});
+    search_root_ = false;
+    pending_focus_ = -1;
+    subject_ = item;
+    request_ = {};
+    request_.category = item.media_type == "artist"    ? BrowseCategory::artist_albums
+                        : item.media_type == "podcast" ? BrowseCategory::podcast_episodes
+                                                       : BrowseCategory::tracks;
+    request_.item_id = item.item_id;
+    request_.provider = item.provider;
+    request_.media_type = item.media_type;
+    load(request_);
+    browse_right_ = true;
+    navigate(item.media_type == "artist" ? Page::artist : Page::collection);
+}
+
 void Panel::pop_browse()
 {
     const BrowseFrame frame = trail_.back();
     trail_.pop_back();
+    // A page opened from Details (go_to) returns to it.
+    if (frame.page == Page::details)
+    {
+        navigate(frame.page, frame.focus);
+        return;
+    }
     request_ = frame.request;
     subject_ = frame.subject;
     browse_right_ = true;
@@ -1738,6 +1812,14 @@ void Panel::confirm(const SheetRow &row)
     };
     if (confirm_song_lyrics_row(tag))
         return;
+    if (tag >= kGoToTag)
+    {
+        const auto extras = details_rows(c.track, c.playback_speed, c.elapsed);
+        const auto index = static_cast<std::size_t>(tag - kGoToTag);
+        if (page_ == Page::details && index < extras.size())
+            go_to(extras[index].target);
+        return;
+    }
     if (tag >= kGroupTag)
     {
         confirm_group(tag);
@@ -1759,6 +1841,18 @@ void Panel::confirm(const SheetRow &row)
         {
             s.selected_preset = index;
             s.command = UiCommand::preset_select;
+        }
+        else if (page_ == Page::chapters)
+        {
+            // Plays from the chapter's start and stays on the page.
+            const auto chapters = chapter_rows(c.track, c.elapsed);
+            if (index < chapters.size())
+            {
+                CompanionAction seek;
+                seek.kind = CompanionActionKind::seek;
+                seek.value = chapters[index].start;
+                send(seek, nullptr);
+            }
         }
         return;
     }
@@ -1866,6 +1960,18 @@ void Panel::confirm(const SheetRow &row)
     case show_episodes:
         open_list(Page::collection, BrowseCategory::podcast_episodes);
         break;
+    case playback_speed:
+        action.kind = CompanionActionKind::speed;
+        action.value = step_speed(c.playback_speed, 1, true);
+        send(action, nullptr);
+        break;
+    case open_chapters:
+    {
+        parent_focus_ = sheet_.focus();
+        const int at = chapter_at(c.track.chapters, c.elapsed);
+        navigate(Page::chapters, std::max(at, 0));
+        break;
+    }
     case queue_play:
     case queue_next:
     case queue_remove:
@@ -2122,6 +2228,14 @@ void Panel::adjust(const SheetRow &row, int direction, ui::Feedback &feedback)
     bool changed = true;
     switch (row.item.tag)
     {
+    case playback_speed:
+    {
+        CompanionAction action;
+        action.kind = CompanionActionKind::speed;
+        action.value = step_speed(s.companion.playback_speed, direction, false);
+        changed = action.value != s.companion.playback_speed && send(action, nullptr);
+        break;
+    }
     case repeat:
     {
         CompanionAction action;

@@ -337,18 +337,18 @@ TEST(AfterglowSetupCheck, TheIdleStripOffersTheCheckOnlyWithNothingToOffer)
         return out;
     };
     using K = IdleTileKind;
-    EXPECT_EQ(kinds(idle_tiles(nullptr, {}, RecentState::ready, true)),
+    EXPECT_EQ(kinds(idle_tiles(nullptr, {}, RecentState::ready, {}, true)),
               (std::vector<K>{K::browse, K::setup}));
-    EXPECT_EQ(kinds(idle_tiles(nullptr, {}, RecentState::error, true)),
+    EXPECT_EQ(kinds(idle_tiles(nullptr, {}, RecentState::error, {}, true)),
               (std::vector<K>{K::retry, K::browse, K::setup}));
     CompanionTrack played;
     played.title = "Evening Light";
     played.uri = "library://album/1";
-    EXPECT_EQ(kinds(idle_tiles(nullptr, {played}, RecentState::ready, true)),
+    EXPECT_EQ(kinds(idle_tiles(nullptr, {played}, RecentState::ready, {}, true)),
               (std::vector<K>{K::play, K::browse}));
-    EXPECT_EQ(kinds(idle_tiles(&played, {}, RecentState::ready, true)),
+    EXPECT_EQ(kinds(idle_tiles(&played, {}, RecentState::ready, {}, true)),
               (std::vector<K>{K::resume, K::browse}));
-    EXPECT_EQ(kinds(idle_tiles(nullptr, {}, RecentState::loading, true)),
+    EXPECT_EQ(kinds(idle_tiles(nullptr, {}, RecentState::loading, {}, true)),
               (std::vector<K>{K::browse}));
     EXPECT_EQ(kinds(idle_tiles(nullptr, {}, RecentState::ready)), (std::vector<K>{K::browse}));
     IdleTile tile;

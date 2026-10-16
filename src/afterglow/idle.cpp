@@ -56,7 +56,7 @@ std::string joined(const std::vector<std::string> &parts)
 
 std::vector<IdleTile> idle_tiles(const CompanionTrack *paused,
                                  const std::vector<CompanionTrack> &recent, RecentState state,
-                                 bool setup)
+                                 const std::vector<CompanionTrack> &in_progress, bool setup)
 {
     std::vector<IdleTile> tiles;
     if (paused != nullptr && !paused->title.empty())
@@ -65,6 +65,22 @@ std::vector<IdleTile> idle_tiles(const CompanionTrack *paused,
         tile.kind = IdleTileKind::resume;
         tile.item = *paused;
         tiles.push_back(std::move(tile));
+    }
+    const auto shown = [&tiles](const std::string &uri)
+    {
+        return std::any_of(tiles.begin(), tiles.end(),
+                           [&](const auto &t) { return t.item.uri == uri; });
+    };
+    std::size_t carried = 0;
+    for (const auto &item : in_progress)
+    {
+        if (item.uri.empty() || shown(item.uri) || carried >= kCarryOnLimit)
+            continue;
+        IdleTile tile;
+        tile.kind = IdleTileKind::carry;
+        tile.item = item;
+        tiles.push_back(std::move(tile));
+        ++carried;
     }
     if (state == RecentState::error)
     {
@@ -75,7 +91,7 @@ std::vector<IdleTile> idle_tiles(const CompanionTrack *paused,
     int added = 0;
     for (const auto &item : recent)
     {
-        if (item.uri.empty() || (paused != nullptr && item.uri == paused->uri))
+        if (item.uri.empty() || shown(item.uri))
             continue;
         if (added++ >= companion_wire::kRecentLimit)
             break;
@@ -112,6 +128,12 @@ IdleText idle_text(const IdleTile &tile, RecentState state, bool has_recent)
     case IdleTileKind::play:
         return {tile.item.title.empty() ? "Untitled" : tile.item.title,
                 joined(detail_parts(tile.item)), "Play"};
+    case IdleTileKind::carry:
+        // Playing it resumes: Music Assistant seeks to where it was left.
+        return {tile.item.title.empty() ? "Untitled" : tile.item.title,
+                std::string(tile.item.media_type == "podcast_episode" ? "Episode" : "Audiobook") +
+                    " · Carry on listening",
+                "Carry on"};
     case IdleTileKind::retry:
         return {"Nothing playing", "Couldn’t load what you played", "Try again"};
     case IdleTileKind::setup:
@@ -198,6 +220,7 @@ bool IdlePoster::press(IdleKey key, const std::vector<IdleTile> &tiles, IdleAct 
         act = IdleAct::resume;
         break;
     case IdleTileKind::play:
+    case IdleTileKind::carry:
         act = IdleAct::play;
         break;
     case IdleTileKind::retry:

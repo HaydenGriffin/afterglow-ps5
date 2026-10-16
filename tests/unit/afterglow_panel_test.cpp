@@ -642,7 +642,8 @@ TEST_F(AfterglowPanel, SearchAsksTheKeyboardAndSendsTheQuery)
     live();
     panel_.open(Page::browse);
     s.browse_pending = false;
-    input(nav(Direction::up)); // from Recently played to Search
+    input(nav(Direction::up)); // past Continue listening
+    input(nav(Direction::up)); // to Search
     cross();
     ASSERT_EQ(panel_.page(), Page::search);
     EXPECT_TRUE(panel_.covers_screen());
@@ -665,6 +666,7 @@ TEST_F(AfterglowPanel, SearchCancelledOrForAnotherFieldSendsNothing)
     live();
     panel_.open(Page::browse);
     s.browse_pending = false;
+    input(nav(Direction::up)); // past Continue listening
     input(nav(Direction::up));
     cross();
     type(KeyboardPurpose::sign_in_host, "music.local");
@@ -682,6 +684,7 @@ TEST_F(AfterglowPanel, SearchResultsGroupByTypeAndArtistsOpenTheirAlbums)
     auto &s = presentation();
     live();
     panel_.open(Page::browse);
+    input(nav(Direction::up)); // past Continue listening
     input(nav(Direction::up));
     cross();
     type(KeyboardPurpose::search, "light");
@@ -728,6 +731,7 @@ TEST_F(AfterglowPanel, SearchAgainAndSquareReopenTheKeyboardWithTheQuery)
     auto &s = presentation();
     live();
     panel_.open(Page::browse);
+    input(nav(Direction::up)); // past Continue listening
     input(nav(Direction::up));
     cross();
     type(KeyboardPurpose::search, "light");

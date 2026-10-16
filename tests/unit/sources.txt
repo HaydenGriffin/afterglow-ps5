@@ -40,6 +40,7 @@ src/afterglow/setup_check.cpp
 src/afterglow/share_link.cpp
 src/afterglow/speakers.cpp
 src/afterglow/speaker_group.cpp
+src/afterglow/spoken_word.cpp
 src/app/shell.cpp
 src/app/tour.cpp
 src/audio/cues.cpp

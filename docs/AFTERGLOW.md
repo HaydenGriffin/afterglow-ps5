@@ -68,8 +68,12 @@ never causes a reconnect every 10 s.
 ### Idle poster
 
 With nothing playing for 8 seconds, or 30 seconds after a pause, the screen
-sets what was played as a poster: the paused song, or Music Assistant's
-recently played music, with its cover, title, one field and a strip of covers
+sets what was played as a poster: the paused song, up to three audiobooks or
+podcast episodes in progress ("Audiobook · Carry on listening", Cross **Carry
+on**: Music Assistant resumes where it was left; read with recent music from
+`music/in_progress_items`, and simply left out when that fails), or Music
+Assistant's recently played music (nothing shown twice), with its cover,
+title, one field and a strip of covers
 that always ends in **Browse**. Left/right walk the strip. Cross resumes the
 paused song, plays a recent item on the command target (replacing its queue),
 tries again when the list could not load, or opens Browse; the field names the
@@ -93,7 +97,9 @@ The current build includes:
   field. Details (the back of the poster) names the stream's quality and
   format (for example "Lossless" and "FLAC 44.1 kHz / 16-bit") when Music
   Assistant supplies them; the poster itself shows no badge (LG 1.5.0).
-- Browse: Search (system keyboard), recently played, favourite
+- Browse: Search (system keyboard), **Continue listening** (audiobooks and
+  episodes started and not finished, newest 30; empty: "Nothing to carry on
+  with"), recently played (where Browse opens), favourite
   playlists/albums/songs/artists, radio stations, all playlists and albums,
   podcasts and audiobooks; artist pages (albums, songs), podcast episodes;
   play now, next, add to queue, start radio and show songs. Rows read as on
@@ -307,8 +313,18 @@ bottom, the playing song with eight tiles: Previous, Play/Pause, Next, Back
 10 s, Ahead 10 s, Favourite, Details and Display. Left/right move along a row,
 up/down switch between the strip and the tiles, Cross activates, L1/R1 step
 through the sections (wrapping), and Circle or Options closes it; it also
-closes after nine idle seconds. Details is the back of the poster (facts,
-music favourite, start radio, Go to a line, and [Scan to save](#scan-to-save)); Display holds the four modes, the lyrics layer,
+closes after nine idle seconds. Details is the back of the poster: the
+facts, then **Go to the album**, **Go to** *artist* (up to three) or, for an
+episode, **Go to the podcast** when Music Assistant gives their ids (Browse
+opens full screen on that page; Circle returns to Details), then, while an
+audiobook or episode with a length plays, **Speed** (0.75×, 1×, 1.25×,
+1.5×, 2×: left/right step and stop at the ends, Cross steps up and wraps;
+`player_queues/set_playback_speed`) and **Chapters** ("Chapter 3 of 24", with
+two or more: a page of up to 300 chapters with their start times, the playing
+one ticked; Cross plays from a chapter's start and stays; Circle returns),
+then the music favourite, start radio (not for audiobooks, episodes or
+radio), Go to a line and [Scan to save](#scan-to-save). Display holds the four
+modes, the lyrics layer,
 **MilkDrop behind album and lyrics**, the track card, visual style (MilkDrop,
 halo, spectrum), **Reduce motion** and **Word-by-word lyrics**.
 
@@ -452,7 +468,8 @@ Settings → **Lyrics** holds, as LG's Display → Lyrics does:
   `online_lyrics`; LG keeps its `onlineLyrics` per TV the same way, so the two
   are not one shared switch).
 - **Retry lyrics**, when the lookup failed or found nothing: asks Music
-  Assistant and LRCLIB again and forgets a remembered "no lyrics".
+  Assistant and LRCLIB again and forgets a remembered "no lyrics". Not offered
+  for audiobooks and episodes, which have no lyrics lookup.
 - **Choose other lyrics** (Online lyrics on, a song with a Music Assistant
   uri, lyrics not loading), for wrong lyrics. The detail says "Chosen for this
   song", "From Music Assistant" or "From lrclib.net". Its page, **Choose

@@ -30,19 +30,23 @@ enum class IdleTileKind
     retry,  // reading recent music failed
     play,   // a recently played item
     browse, // always there, so Cross never dead-ends
-    setup   // Check my setup, after Browse, when there is nothing to offer
+    setup,  // Check my setup, after Browse, when there is nothing to offer
+    carry   // an audiobook or episode in progress, after the paused song
 };
 struct IdleTile
 {
     IdleTileKind kind = IdleTileKind::browse;
     CompanionTrack item;
 };
-// The strip, in order: the paused song, a retry after an error, up to
-// kRecentLimit recent items (the paused one left out), then Browse. With
-// setup on and nothing to offer (reading failed, or nothing played yet),
-// Check my setup comes last (LG idle-view.js).
+// The strip, in order: the paused song, up to kCarryOnLimit audiobooks and
+// episodes in progress, a retry after an error, up to kRecentLimit recent
+// items (none shown twice), then Browse. With setup on and nothing to offer
+// (reading failed, or nothing played yet), Check my setup comes last (LG
+// idle-view.js).
+constexpr std::size_t kCarryOnLimit = 3;
 std::vector<IdleTile> idle_tiles(const CompanionTrack *paused,
                                  const std::vector<CompanionTrack> &recent, RecentState state,
+                                 const std::vector<CompanionTrack> &in_progress = {},
                                  bool setup = false);
 
 // What the poster says for a tile; hint labels the Cross glyph.
