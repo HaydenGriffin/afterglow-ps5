@@ -7,6 +7,7 @@ host/keyboard_host.cpp
 src/afterglow/account.cpp
 src/afterglow/client.cpp
 src/afterglow/cloud_texture.cpp
+src/afterglow/cover_texture.cpp
 src/afterglow/companion.cpp
 src/afterglow/controls.cpp
 src/afterglow/dev_requests.cpp
@@ -28,6 +29,7 @@ src/afterglow/ma_socket.cpp
 src/afterglow/night.cpp
 src/afterglow/preset_colour.cpp
 src/afterglow/preferences.cpp
+src/afterglow/preset_change.cpp
 src/afterglow/preset_quality.cpp
 src/afterglow/preference_store.cpp
 src/afterglow/presentation.cpp
