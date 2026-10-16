@@ -72,7 +72,8 @@ sets what was played as a poster: the paused song, up to three audiobooks or
 podcast episodes in progress ("Audiobook · Carry on listening", Cross **Carry
 on**: Music Assistant resumes where it was left; read with recent music from
 `music/in_progress_items`, and simply left out when that fails), or Music
-Assistant's recently played music (nothing shown twice), with its cover,
+Assistant's recently played music (nothing shown twice; each carried tile
+takes a recent item's place, so Browse always fits), with its cover,
 title, one field and a strip of covers
 that always ends in **Browse**. Left/right walk the strip. Cross resumes the
 paused song, plays a recent item on the command target (replacing its queue),
@@ -721,6 +722,13 @@ Not checked one by one on the console either, so still host-tested only:
 - beat detection and projectM beat sensitivity, album slot recolouring and
   the night register's local time;
 - word-by-word lyrics, lyric timing on L2/R2 and the quality facts in Details;
+- Join, Move here and Volume for each speaker on a real sync group;
+- cover art in the visuals on the console's GPU, and Each song and On big
+  moments with real music;
+- kept lyrics timings, Choose other lyrics against lrclib.net and Go to a
+  line's seek on a real speaker;
+- Go to the album or artist, Continue listening, Speed and Chapters against a
+  real library of audiobooks and podcasts;
 - Scan to save read by a phone camera from across a room, and Check my setup
   against a real server, relay, clock and lrclib.net (only unit fakes and the
   preview's fixed answers have run it).
