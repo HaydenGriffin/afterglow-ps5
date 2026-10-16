@@ -219,8 +219,11 @@ void pump_keyboard(hui::ps5::Keyboard &keyboard, hui::afterglow::Presentation &m
 
 // The light bar follows the artwork (and the beat); off hands it back to the system.
 void drive_lightbar(hui::ps5::Pad &pad, hui::afterglow::LightbarLimiter &limiter,
-                    const hui::afterglow::Presentation &model, std::int64_t now, bool &lit)
+                    const hui::afterglow::Presentation &model, bool connected, std::int64_t now,
+                    bool &lit)
 {
+    if (limiter.reconnected(connected))
+        pad.forget_light_bar();
     if (!model.preferences.lightbar)
     {
         if (lit)
@@ -888,7 +891,7 @@ int main()
             blocked.focus_lost = true;
             input = blocked;
         }
-        drive_lightbar(pad, lightbar_limiter, model, now, lightbar_lit);
+        drive_lightbar(pad, lightbar_limiter, model, input.connected, now, lightbar_lit);
         if (const auto request = poll_dev(dev, now))
             handle_dev_request(dev, *request, model, display);
         pump_dev_presses(dev, input);

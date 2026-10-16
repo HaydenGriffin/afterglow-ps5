@@ -43,6 +43,12 @@ class Pad
     void set_light_bar(std::uint8_t r, std::uint8_t g, std::uint8_t b);
     // Hands the light bar back to the system's own colour (the user's).
     void reset_light_bar();
+    // The controller dropped what set_light_bar() sent (it reconnected): the
+    // next set_light_bar() sends its colour even if it is the same one.
+    void forget_light_bar()
+    {
+        light_bar_ = 0xffffffffu;
+    }
     // Starts a short rumble: strength 0..1, for seconds. tick() stops it.
     void rumble(float strength, float seconds);
     // Call once per frame: ends a rumble whose time is up.

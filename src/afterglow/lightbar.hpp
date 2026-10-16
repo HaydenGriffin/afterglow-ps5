@@ -41,10 +41,15 @@ class LightbarLimiter
     void wrote(const LightbarColor &color, std::int64_t now_us);
     // Forget the last write (after a reset), so the next colour is sent.
     void forget();
+    // Every frame, whether the controller is there. A controller that comes
+    // back has the system's colour again: true then, and the last write is
+    // forgotten, so the caller sends the colour once more.
+    bool reconnected(bool connected);
 
   private:
     LightbarColor last_;
     std::int64_t last_us_ = 0;
     bool written_ = false;
+    bool connected_ = true;
 };
 } // namespace hui::afterglow
