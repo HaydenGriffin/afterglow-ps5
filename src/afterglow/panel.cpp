@@ -451,6 +451,8 @@ const char *select_label(const SheetRow &row)
     default:
         break;
     }
+    if (song_lyrics_tag(row.item.tag))
+        return row.item.tag == try_again_row ? "Try again" : "Select";
     if (row.item.tag >= kGroupTag)
         return row.item.value == "Grouped" ? "Ungroup" : "Group";
     return "Select";
