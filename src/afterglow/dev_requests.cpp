@@ -93,7 +93,7 @@ std::optional<DevRequest> parse_dev_request(std::string_view text, std::string_v
     }
     if (parts[0] == "press")
     {
-        if (!dev_press_action(parts[1]))
+        if (dev_press_actions(parts[1]).empty())
             return std::nullopt;
         request.verb = DevRequest::Verb::press;
         request.argument = std::string(parts[1]);
@@ -129,6 +129,22 @@ std::optional<Action> dev_press_action(std::string_view button)
         if (entry.name == button)
             return entry.action;
     return std::nullopt;
+}
+
+std::vector<Action> dev_press_actions(std::string_view argument)
+{
+    std::vector<Action> out;
+    while (true)
+    {
+        const auto dash = argument.find('-');
+        const auto action = dev_press_action(argument.substr(0, dash));
+        if (!action || out.size() == kMaxDevPresses)
+            return {};
+        out.push_back(*action);
+        if (dash == std::string_view::npos)
+            return out;
+        argument.remove_prefix(dash + 1);
+    }
 }
 
 std::vector<std::uint8_t> encode_bmp(int width, int height, const std::uint8_t *rgba)

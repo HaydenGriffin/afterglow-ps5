@@ -52,6 +52,20 @@ TEST(AfterglowDevRequests, PressNamesAButton)
     EXPECT_FALSE(hui::afterglow::dev_press_action("Cross"));
     EXPECT_FALSE(parse_dev_request("press ps abcdefgh12345678 r4", kToken)) << "no PS button";
     EXPECT_FALSE(parse_dev_request("press - abcdefgh12345678 r4", kToken));
+    const auto actions = hui::afterglow::dev_press_actions("options-right-cross");
+    ASSERT_EQ(actions.size(), 3u);
+    EXPECT_EQ(actions[0], hui::Action::menu);
+    EXPECT_EQ(actions[2], hui::Action::confirm);
+    EXPECT_TRUE(parse_dev_request("press down-down-cross abcdefgh12345678 r5", kToken));
+    EXPECT_TRUE(hui::afterglow::dev_press_actions("down--cross").empty());
+    EXPECT_TRUE(hui::afterglow::dev_press_actions("down-ps").empty());
+    EXPECT_EQ(hui::afterglow::dev_press_actions("down-down-down-down-down-down-down-down-down-"
+                                                "down-down-down")
+                  .size(),
+              12u);
+    EXPECT_TRUE(hui::afterglow::dev_press_actions("down-down-down-down-down-down-down-down-down-"
+                                                  "down-down-down-down")
+                    .empty());
 }
 
 TEST(AfterglowDevRequests, RejectsWrongTokenAndMalformedLines)

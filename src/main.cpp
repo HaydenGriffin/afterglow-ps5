@@ -245,7 +245,13 @@ struct DevChannel
     std::string screenshot, screenshot_id;
     // Screenshot files this run wrote, oldest first (kMaxDevScreenshots kept).
     std::vector<std::string> screenshots;
+    // Buttons a press request still has to tap, one every kDevPressFrames.
+    std::vector<hui::Action> presses;
+    std::size_t next_press = 0;
+    int press_wait = 0;
 };
+// Long enough for a sheet to open before the next tap lands.
+constexpr int kDevPressFrames = 12;
 
 void open_dev_channel(DevChannel &dev, const std::string &token)
 {
@@ -355,10 +361,18 @@ void press_dev_button(hui::InputFrame &input, hui::Action action)
     }
 }
 
+// The next tap of a press request, when its turn has come.
+void pump_dev_presses(DevChannel &dev, hui::InputFrame &input)
+{
+    if (dev.next_press >= dev.presses.size() || dev.press_wait-- > 0)
+        return;
+    press_dev_button(input, dev.presses[dev.next_press++]);
+    dev.press_wait = kDevPressFrames;
+}
+
 // Acts on one dev request. A screenshot is taken later, at the end of the frame.
 void handle_dev_request(DevChannel &dev, const hui::afterglow::DevRequest &request,
-                        hui::afterglow::Presentation &model, const hui::ps5::Display &display,
-                        hui::InputFrame &input)
+                        hui::afterglow::Presentation &model, const hui::ps5::Display &display)
 {
     using Verb = hui::afterglow::DevRequest::Verb;
     switch (request.verb)
@@ -380,9 +394,10 @@ void handle_dev_request(DevChannel &dev, const hui::afterglow::DevRequest &reque
         dev.screenshot_id = request.id;
         break;
     case Verb::press:
-        if (const auto action = hui::afterglow::dev_press_action(request.argument))
-            press_dev_button(input, *action);
-        dev_answer(model, request.id, "ok pressed " + request.argument);
+        dev.presses = hui::afterglow::dev_press_actions(request.argument);
+        dev.next_press = 0;
+        dev.press_wait = 0;
+        dev_answer(model, request.id, "ok pressing " + request.argument);
         break;
     }
 }
@@ -791,7 +806,8 @@ int main()
         }
         drive_lightbar(pad, lightbar_limiter, model, now, lightbar_lit);
         if (const auto request = poll_dev(dev, now))
-            handle_dev_request(dev, *request, model, display, input);
+            handle_dev_request(dev, *request, model, display);
+        pump_dev_presses(dev, input);
         feedback.clear();
         screen->update(input, dt, feedback);
         sync_home(*home, model);

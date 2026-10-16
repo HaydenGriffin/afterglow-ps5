@@ -8,7 +8,7 @@
 //   <verb> <argument or -> <token> <id>
 //
 // verb is quit, screenshot (argument: a file name), status or press
-// (argument: a button, as dev_press_action names them). id names this
+// (argument: buttons joined by '-', as dev_press_actions reads them). id names this
 // request; each id is honoured once. Answers go to the title's storage
 // (/download0/hui/dev), which a PC can read over FTP while the title runs.
 
@@ -52,6 +52,10 @@ std::optional<DevRequest> parse_dev_request(std::string_view text, std::string_v
 // cross, circle, triangle, square, l1, r1, l2, r2, options, touchpad, l3 or r3.
 // Cross and circle are the confirm and back actions, whatever the swap setting.
 std::optional<Action> dev_press_action(std::string_view button);
+// The buttons of a press argument such as "right-right-cross", in order; empty
+// when any of them is unknown or there are more than kMaxDevPresses.
+constexpr std::size_t kMaxDevPresses = 12;
+std::vector<Action> dev_press_actions(std::string_view argument);
 
 // Screenshots the app keeps in its storage; older ones it took are deleted.
 constexpr std::size_t kMaxDevScreenshots = 8;

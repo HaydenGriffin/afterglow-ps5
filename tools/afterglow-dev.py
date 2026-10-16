@@ -9,7 +9,7 @@ usage: PS5_HOST=<address> AFTERGLOW_DEV_TOKEN=<token> tools/afterglow-dev.py <re
   status             write dev/status.json and download it
   screenshot <name>  picture the next frame as dev/<name>.bmp and download it
   quit               close the app the clean way (as holding Circle does)
-  press <button>...  tap buttons in turn, one per request: up, down, left, right,
+  press <button>...  tap buttons in turn, about five a second: up, down, left, right,
                      cross, circle, triangle, square, l1, r1, l2, r2, options,
                      touchpad, l3, r3
 
@@ -91,9 +91,11 @@ def main():
         arguments = [args[1]]
         args = args[2:]
     elif verb == "press":
-        arguments = args[1:]
-        if not arguments or any(button not in BUTTONS for button in arguments):
+        buttons = args[1:]
+        if not buttons or any(button not in BUTTONS for button in buttons):
             raise SystemExit("press needs buttons: " + ", ".join(BUTTONS))
+        # One request taps up to 12 buttons in turn, a fifth of a second apart.
+        arguments = ["-".join(buttons[i:i + 12]) for i in range(0, len(buttons), 12)]
         args = []
     else:
         args = args[1:]
@@ -123,6 +125,8 @@ def main():
                           request_line(verb, argument, token, request_id), request_id, timeout)
             if answer is None or not answer[0]:
                 break
+            if verb == "press":
+                time.sleep(0.25 * (argument.count("-") + 1))
         if answer and answer[0] and verb in ("status", "screenshot"):
             name = "status.json" if verb == "status" else f"{arguments[0]}.bmp"
             fetched = console.read(f"{dev}/{name}")
@@ -149,7 +153,7 @@ def main():
             tour.stop(f"{arguments[0]}.bmp could not be downloaded")
         tour.say(f"Saved {out / (arguments[0] + '.bmp')} ({len(fetched)} bytes)")
     elif verb == "press":
-        tour.say(f"Pressed {' '.join(arguments)}")
+        tour.say(f"Pressed {' '.join(sys.argv[2:])}")
     else:
         tour.say("The app is closing itself")
 

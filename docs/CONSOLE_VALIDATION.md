@@ -101,7 +101,7 @@ The request travels the same way as the tour's: one line in
 | `status` | `-` | Writes `dev/status.json`: version, fps, connected, playing, display size, refresh rate and mode, open page |
 | `screenshot` | a name (1 to 48 letters, digits, `-`, `_`) | Draws the frame once more off-screen at the display size and saves `dev/<name>.bmp` (24-bit, about 6 MB at 1080p) |
 | `quit` | `-` | Closes the app the way holding Circle does: preferences are flushed, then the system is asked to close the title |
-| `press` | a button: `up`, `down`, `left`, `right`, `cross`, `circle`, `triangle`, `square`, `l1`, `r1`, `l2`, `r2`, `options`, `touchpad`, `l3`, `r3` | Taps that button once in the next frame, as the controller would (no holds, and no PS button) |
+| `press` | up to 12 buttons joined by `-` (`options-right-cross`), each one of `up`, `down`, `left`, `right`, `cross`, `circle`, `triangle`, `square`, `l1`, `r1`, `l2`, `r2`, `options`, `touchpad`, `l3`, `r3` | Taps them in turn, 12 frames apart, as the controller would (no holds, and no PS button) |
 
 Each id is honoured once (the last one is kept in `dev/handled.txt`, so a
 request left behind does not repeat on the next launch). Every answer is a
@@ -109,7 +109,7 @@ line `<id> ok <detail>` or `<id> error <detail>` in `dev/result.txt`. `dev/`
 is `/download0/hui/dev`, read from a PC as
 `/mnt/sandbox/<TITLE_ID>_000/download0/hui/dev` while the title runs.
 The app keeps its last 8 screenshots and deletes older ones it took. Requests are
-polled about once a second, so a press takes a second or so.
+polled about once a second.
 
 `tools/afterglow-dev.py` sends requests and fetches their answers:
 
