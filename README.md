@@ -48,7 +48,7 @@ GPL-3.0-or-later.
 - **Light bar and Home.** The DualSense light bar takes the artwork's colour, and an optional Home section shows a
   few Home Assistant sensors and switches.
 
-<img src="docs/images/views.jpg" alt="Four views: the Album poster, Search, the Queue sheet and Sound &amp; sync" width="100%">
+<img src="docs/images/views.jpg" alt="Four views: the Album poster, the idle poster with recent music, Browse and Playing on" width="100%">
 
 ## Requirements
 

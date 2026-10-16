@@ -272,10 +272,13 @@ void draw_slab(const Scene &scene, float ground)
 {
     auto &list = scene.list;
     list.rounded_rect({kSlabWidth, 0, 1920 - kSlabWidth, 1080}, 0, kInk.with_alpha(ground));
-    // A full-height cover slab, cropped rather than stretched.
-    list.rounded_rect({0, 0, kSlabWidth, 1080}, 0, field_a(scene.state));
+    // A full-height cover slab, cropped rather than stretched. It overhangs the
+    // screen by 2 px: an edge at exactly 0 is antialiased, and the visuals
+    // showed through as a coloured line down the left side.
+    const gfx::Rect slab{-2, -2, kSlabWidth + 2, 1084};
+    list.rounded_rect(slab, 0, field_a(scene.state));
     if (scene.state.artwork_texture)
-        list.image(scene.state.artwork_texture, {0, 0, kSlabWidth, 1080}, {0.196f, 0, 0.608f, 1},
+        list.image(scene.state.artwork_texture, slab, {0.196f, 0, 0.608f, 1},
                    Color::rgb(0xffffff).with_alpha(night(scene.state) ? kNightDim : 1));
 }
 
