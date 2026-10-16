@@ -14,7 +14,8 @@
 // Left and right move along the strip and Cross plays (or resumes, or opens
 // Browse) on the command target; every other key keeps its usual meaning.
 // On an OLED it stays calm: it steps down to a dim register after three
-// minutes without a key, and the first key then only wakes it.
+// minutes without a key; the first Cross, left or right then only wakes it,
+// while any other key wakes it and keeps its usual meaning.
 namespace hui::afterglow
 {
 constexpr float kIdleAfterSeconds = 8;
