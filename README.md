@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/brand/afterglow-wordmark-paper.svg">
-    <img src="docs/brand/afterglow-wordmark-ink.svg" alt="Afterglow" width="240">
+    <img src="docs/brand/afterglow-wordmark-ink.svg" alt="Afterglow" width="320">
   </picture>
 </p>
 

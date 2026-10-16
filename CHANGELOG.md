@@ -8,6 +8,8 @@ checked on a PC only (unit tests, mock servers and the off-screen preview).
 
 Built and tested on a PC; not yet installed on a console.
 
+- **New logo, shared with the LG app.** The wordmark's o is the sun setting below the baseline; the home-screen
+  icon is a close-up of that sunset, and the selection and launch backgrounds show the whole word on the horizon.
 - **Lyrics over visuals: Position, Background, Size.** Display adds three rows for the chosen overlay (One line or
   Stage), kept apart and synced: Top / Middle / Bottom, Box / Shade / None and Small / Medium / Large. Overlays stay
   clear of the notice line, the hints and the track card (One line at Bottom stacks above it).
