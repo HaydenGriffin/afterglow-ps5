@@ -48,7 +48,6 @@ Built and tested on a PC; not yet installed on a console.
   were invisible on the PS5 while they drew on a PC; the poster colours are now compile-time constants.
 - The song's artists read "Justice, Tame Impala, SZA" from Music Assistant's queue instead of Sendspin's
   slash-joined line.
-- Online lyrics read the console's own certificate list (its CRLF lines and titles had made every lookup fail).
 - Dev requests can tap controller buttons (`tools/afterglow-dev.py press options right cross`), so a PC can drive
   the app for console screenshots. Off unless `afterglow.conf` sets `dev_requests`.
 
