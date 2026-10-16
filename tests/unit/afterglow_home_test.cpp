@@ -281,7 +281,7 @@ constexpr const char *kAdded = R"({"a":{
  "sensor.living_room_climate_temperature":{"s":"19.46","a":{"state_class":"measurement","unit_of_measurement":"°C","device_class":"temperature","friendly_name":"Living Room Climate Temperature"},"c":"01J","lc":1789655097.36},
  "light.living_room_lights":{"s":"off","a":{"supported_color_modes":["color_temp","xy"],"friendly_name":"Living Room Lights","entity_id":["light.a","light.b"]},"c":"01K","lc":1789655097.1},
  "weather.forecast_home":{"s":"rainy","a":{"temperature":17.3,"temperature_unit":"°C","humidity":94,"friendly_name":"Forecast Home"},"c":"01L","lc":1789655000},
- "person.ewa":{"s":"not_home","a":{"friendly_name":"Ewa","latitude":1.5,"source":"device_tracker.x"},"c":"01M","lc":1},
+ "person.alex":{"s":"not_home","a":{"friendly_name":"Alex","latitude":1.5,"source":"device_tracker.x"},"c":"01M","lc":1},
  "media_player.home_speakers":{"s":"playing","a":{"media_title":"Café \"Live\"","media_artist":"Artist","friendly_name":"Home speakers","group_members":["a","b"]},"c":"01N","lc":2},
  "switch.fan":{"s":"unavailable","a":{"friendly_name":"Fan"},"c":"01O","lc":3}
 }})";
@@ -300,7 +300,7 @@ HomeConfig fixture_config()
     HomeGroupSpec other;
     other.title = "Elsewhere";
     other.entities = {{"weather.forecast_home", "Weather"},
-                      {"person.ewa", ""},
+                      {"person.alex", ""},
                       {"media_player.home_speakers", "Music"}};
     config.groups = {room, other};
     return config;
@@ -332,7 +332,7 @@ TEST(AfterglowHomeSnapshot, BuildsFromAddedStates)
     const auto &other = groups[1].entities;
     EXPECT_EQ(other[0].state, "Rain · 17.3 °C");
     EXPECT_TRUE(other[0].unit.empty());
-    EXPECT_EQ(other[1].name, "Ewa");
+    EXPECT_EQ(other[1].name, "Alex");
     EXPECT_EQ(other[1].state, "Away");
     EXPECT_EQ(other[2].state, "Café \"Live\" · Artist");
 }
@@ -357,8 +357,8 @@ TEST(AfterglowHomeSnapshot, AppliesChangesAndRemovals)
 
     EXPECT_FALSE(table.apply(R"({"c":{"light.unknown":{"+":{"s":"on"}}}})"))
         << "changes for entities never added are ignored";
-    EXPECT_TRUE(table.apply(R"({"r":["person.ewa"]})"));
-    EXPECT_EQ(table.find("person.ewa"), nullptr);
+    EXPECT_TRUE(table.apply(R"({"r":["person.alex"]})"));
+    EXPECT_EQ(table.find("person.alex"), nullptr);
     EXPECT_FALSE(table.apply("garbage"));
     EXPECT_FALSE(table.apply(R"({"a":{"bad id":{"s":"on"}}})"));
 }

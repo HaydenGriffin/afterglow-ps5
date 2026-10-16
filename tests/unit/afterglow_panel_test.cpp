@@ -1403,7 +1403,7 @@ TEST_F(AfterglowPanel, SignInAsksAddressNameAndSecretPasswordInTurn)
     input(idle());
     ASSERT_TRUE(s.keyboard_pending);
     EXPECT_EQ(s.keyboard.purpose, KeyboardPurpose::sign_in_username);
-    type(KeyboardPurpose::sign_in_username, "ewa");
+    type(KeyboardPurpose::sign_in_username, "alex");
     input(idle());
     ASSERT_TRUE(s.keyboard_pending);
     EXPECT_EQ(s.keyboard.purpose, KeyboardPurpose::sign_in_password);
@@ -1413,7 +1413,7 @@ TEST_F(AfterglowPanel, SignInAsksAddressNameAndSecretPasswordInTurn)
     input(idle());
     EXPECT_EQ(s.account_command, AccountCommand::sign_in);
     EXPECT_EQ(s.sign_in_host, "music.local");
-    EXPECT_EQ(s.sign_in_username, "ewa");
+    EXPECT_EQ(s.sign_in_username, "alex");
     EXPECT_EQ(s.sign_in_password, " pass word ") << "passwords are taken as typed";
     EXPECT_TRUE(s.keyboard_result.text.empty()) << "the password is not left behind";
     EXPECT_TRUE(panel_.back());
