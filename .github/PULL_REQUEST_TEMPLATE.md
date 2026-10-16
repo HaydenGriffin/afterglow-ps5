@@ -7,14 +7,15 @@
 
 ## How it was tested
 
-- [ ] Builds on the PC
-- [ ] Tests and lint pass
-- [ ] Run on a PS5 (system software version: )
+- [ ] `make app` builds
+- [ ] `make test` and `make lint` pass
+- [ ] Preview pictures looked at, for anything on screen
+- [ ] Run on a PS5 (system software version: , homebrew enabler: )
 
 ## Checks
 
 - [ ] It does one thing; unrelated changes are in their own pull request.
-- [ ] It contains no Sony SDK files, firmware, decrypted system files or keys.
+- [ ] It contains no Sony SDK files, firmware, decrypted system files, keys, tokens or home addresses.
 - [ ] Code I did not write is named, with its licence, in `THIRD_PARTY_NOTICES.md`.
 - [ ] I agree to license it under this repository's licence.
 

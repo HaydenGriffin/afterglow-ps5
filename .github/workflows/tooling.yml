@@ -1,14 +1,18 @@
-# ps5-homebrew-ui - Lint, test, build, and publish a release for each new version.
+# Afterglow - Lint, test, build, and publish a release for each new version.
 # Copyright (C) 2026 BlackBearReloaded
+# Copyright (C) 2026 Afterglow contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 name: Build
 
 on:
-  # A build on main is started by hand (Run workflow): pushes to main build nothing.
+  # Every push and pull request is linted, tested and built; a version tag (v1.6.0, matching
+  # param.json's contentVersion 01.006.000) also publishes a draft release.
   push:
+    branches:
+      - "**"
     tags:
-      - "[0-9][0-9].[0-9][0-9][0-9].[0-9][0-9][0-9]"
+      - "v[0-9]+.[0-9]+.[0-9]+"
   pull_request:
   workflow_dispatch:
     inputs:
@@ -50,10 +54,13 @@ jobs:
         with:
           python-version: "3.13"
 
+      # The same packages as Dockerfile.afterglow, the local build container.
       - name: Install native toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install --yes clang-18 clang-format-18 clang-tidy-18 lld-18 make ninja-build ccache pkg-config tar unzip wget
+          sudo apt-get install --yes clang-18 clang-format-18 clang-tidy-18 lld-18 llvm-18 libclang-rt-18-dev make ninja-build ccache pkg-config tar unzip wget git libegl-dev libgl-dev libgl1-mesa-dri
+          echo "HOST_CXX=clang++-18" >> "$GITHUB_ENV"
+          echo "HOST_CC=clang-18" >> "$GITHUB_ENV"
 
       - name: Restore dependencies
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -63,7 +70,8 @@ jobs:
             .deps/test
             .deps/pacbrew
             .deps/ps5-opengl
-          key: deps-${{ runner.os }}-${{ runner.arch }}-ubuntu24-python313-${{ hashFiles('tools/setup-*-dependencies.sh', 'tools/fetch-opengl-sdk.sh') }}
+            .deps/projectm
+          key: deps-${{ runner.os }}-${{ runner.arch }}-ubuntu24-python313-${{ hashFiles('tools/setup-*-dependencies.sh', 'tools/fetch-opengl-sdk.sh', 'tools/build-projectm.sh', 'third_party/projectm/**') }}
 
       - name: Restore compiler cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
@@ -101,9 +109,11 @@ jobs:
           metadata=$(python3 -c 'import json; p=json.load(open("sce_sys/param.json")); print(p["titleId"], p["contentVersion"])')
           read -r title_id content_version <<< "$metadata"
           [[ $title_id =~ ^PPSA[0-9]{5}$ ]] || exit 2
-          [[ $content_version =~ ^[0-9]{2}\.[0-9]{3}\.[0-9]{3}$ ]] || exit 2
-          if [[ $GITHUB_REF_TYPE == tag && $GITHUB_REF_NAME != "$content_version" ]]; then
-            echo "Release tag must exactly match param.json contentVersion: $content_version" >&2
+          [[ $content_version =~ ^([0-9]{2})\.([0-9]{3})\.([0-9]{3})$ ]] || exit 2
+          # 01.006.000 is the release 1.6.0, tagged v1.6.0.
+          version=$((10#${BASH_REMATCH[1]})).$((10#${BASH_REMATCH[2]})).$((10#${BASH_REMATCH[3]}))
+          if [[ $GITHUB_REF_TYPE == tag && $GITHUB_REF_NAME != "v$version" ]]; then
+            echo "Release tag must be v$version, from param.json contentVersion $content_version" >&2
             exit 2
           fi
           echo "TITLE_ID=$title_id" >> "$GITHUB_ENV"
@@ -113,9 +123,9 @@ jobs:
           if [[ $GITHUB_REF_TYPE == tag ]]; then
             release=true
           fi
-          echo "version=$content_version" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "release=$release" >> "$GITHUB_OUTPUT"
-          echo "Release this build: $release ($content_version)"
+          echo "Release this build: $release ($version)"
 
       # A pull request's build is named by its number and its own commit, on the
       # artifact and inside the app folder (docs/PULL_REQUEST_BUILDS.md); the version
@@ -132,7 +142,7 @@ jobs:
             echo "artifact=${GITHUB_REPOSITORY##*/}-PR$PR_NUMBER-$short" >> "$GITHUB_OUTPUT"
             echo "BUILD_LABEL=PR $PR_NUMBER, $short" >> "$GITHUB_ENV"
           else
-            echo "artifact=ps5-homebrew-ui-$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+            echo "artifact=afterglow-ps5-$GITHUB_SHA" >> "$GITHUB_OUTPUT"
           fi
 
       # Clang static analysis stays a local check (make lint, make tidy).
@@ -145,14 +155,22 @@ jobs:
       - name: Run host integration tests
         run: make test-integration
 
+      # Disposable local mock servers; nothing outside the runner is contacted.
+      - name: Run the network smoke tests
+        run: |
+          for script in tests/integration/run-*.sh; do
+            echo "::group::$script"
+            CXX=clang++-18 bash "$script"
+            echo "::endgroup::"
+          done
+
       - name: Reproduce clean-room runtime shim
         run: make libc
 
       - name: Verify generated runtime is unchanged
         run: cd runtime && sha256sum -c libc.prx.sha256
 
-      # The ZIP is the one release format: in-app updates and ProsperoStore install from
-      # it. No compressed image is built or published here.
+      # The ZIP of the app folder is the one release format. No filesystem image is built.
       - name: Build the release folder and ZIP
         run: make app
 
@@ -229,7 +247,7 @@ jobs:
         run: >-
           gh run download "$GITHUB_RUN_ID"
           --repo "$GITHUB_REPOSITORY"
-          --name "ps5-homebrew-ui-$GITHUB_SHA"
+          --name "afterglow-ps5-$GITHUB_SHA"
           --dir release
 
       - name: Prepare release assets
@@ -250,6 +268,28 @@ jobs:
           echo "folder_zip=${folder_zips[0]}" >> "$GITHUB_OUTPUT"
           echo "checksum=SHA256SUMS" >> "$GITHUB_OUTPUT"
 
+      - name: Check out the changelog
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: CHANGELOG.md
+          sparse-checkout-cone-mode: false
+          path: source
+
+      # The release notes are the version's section of CHANGELOG.md.
+      - name: Write release notes
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          python3 - "$VERSION" source/CHANGELOG.md > notes.md <<'PY'
+          import re, sys
+          version, path = sys.argv[1], sys.argv[2]
+          text = open(path, encoding="utf-8").read()
+          match = re.search(rf"^# {re.escape(version)}\b.*?\n(.*?)(?=^# |\Z)", text, re.S | re.M)
+          if not match:
+              raise SystemExit(f"CHANGELOG.md has no section for {version}")
+          print(re.sub(r"<!--.*?-->\n?", "", match.group(1), flags=re.S).strip())
+          PY
+
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -259,7 +299,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG=$VERSION
+          TAG=v$VERSION
           assets=("release/$FOLDER_ZIP" "release/$CHECKSUM")
           # The files of a release come from the run of its tag, once. A release without a
           # ZIP (notes written in advance, or a draft) gets them and keeps its title and
@@ -276,10 +316,11 @@ jobs:
               gh release upload "$TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY"
             fi
           else
-            # Creates the version tag at the commit that was just built and tested.
-            gh release create "$VERSION" "${assets[@]}" \
+            # A draft, so the notes can be read over before the release is published.
+            gh release create "$TAG" "${assets[@]}" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
-              --generate-notes \
-              --title "ps5-homebrew-ui $VERSION"
+              --notes-file notes.md \
+              --draft \
+              --title "Afterglow for PS5 $VERSION"
           fi

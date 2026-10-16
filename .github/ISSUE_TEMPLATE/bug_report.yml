@@ -1,9 +1,10 @@
-# ps5-homebrew-ui - Bug report form.
+# Afterglow - Bug report form.
 # Copyright (C) 2026 BlackBearReloaded
+# Copyright (C) 2026 Afterglow contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 name: "Bug report"
-description: "Something in ps5-homebrew-ui does not work as it should"
+description: "Something in Afterglow for PS5 does not work as it should"
 title: "[Bug] "
 labels: ["bug"]
 body:
@@ -13,71 +14,66 @@ body:
         **Before you post**
 
         - Do not post Sony SDK files, firmware, decrypted system files, keys or links to them.
+        - Remove tokens (`ma_token`, `ha_token`, `dev_requests`) from anything you paste, and any addresses you
+          would rather not share.
   - type: input
     id: version
     attributes:
-      label: "Version or commit"
-      description: "Release tag or commit hash"
-    validations:
-      required: true
-  - type: input
-    id: host
-    attributes:
-      label: "Build machine"
-      description: "Operating system and compiler, for example Ubuntu 24.04 in WSL, clang 18"
+      label: "Afterglow version"
+      description: "Settings → Status shows it; or the release tag or commit you built"
     validations:
       required: true
   - type: input
     id: system
     attributes:
       label: "PS5 system software version"
-      description: "Leave empty if the problem happens on the PC only"
+      description: "Leave empty if the problem is in the build or the PC preview only"
+    validations:
+      required: false
+  - type: input
+    id: enabler
+    attributes:
+      label: "Jailbreak and homebrew enabler, with versions"
+      description: "For example the enabler and ShadowMount Plus versions you run"
+    validations:
+      required: false
+  - type: input
+    id: music_assistant
+    attributes:
+      label: "Music Assistant version"
+      description: "Settings → About in Music Assistant's web interface"
     validations:
       required: false
   - type: dropdown
-    id: enabler
+    id: source
     attributes:
-      label: "Homebrew enabler"
+      label: "Source"
+      description: "Settings → Source on the PS5"
       options:
-        - "etaHEN"
-        - "kstuff-lite"
-        - "onionHEN"
-        - "Other (name it below)"
+        - "This PS5 (playing on the console)"
+        - "Active speaker"
+        - "A chosen speaker"
         - "Not sure"
-    validations:
-      required: false
-  - type: input
-    id: enabler_version
-    attributes:
-      label: "Homebrew enabler version"
-      description: "For example etaHEN 2.5b. Name it here if you chose Other."
-    validations:
-      required: false
-  - type: input
-    id: shadowmount
-    attributes:
-      label: "ShadowMountPlus version"
-      description: "Leave empty if you do not use it"
     validations:
       required: false
   - type: textarea
     id: what
     attributes:
       label: "What happened?"
-      description: "What you saw, and what you expected instead"
+      description: "What you saw or heard, and what you expected instead"
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
-      label: "Steps or code to reproduce"
-      description: "The smallest example that shows it"
+      label: "Steps to reproduce"
     validations:
       required: true
   - type: textarea
     id: logs
     attributes:
-      label: "Build output or log"
+      label: "Log or build output"
+      description: "The app's log is /mnt/sandbox/PPSA99481_000/download0/hui/dev/app.log over FTP while Afterglow runs"
       render: text
     validations:
       required: false

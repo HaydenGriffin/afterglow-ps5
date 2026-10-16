@@ -1,5 +1,13 @@
-# ps5-homebrew-ui - Issue chooser.
+# Afterglow - Issue chooser.
 # Copyright (C) 2026 BlackBearReloaded
+# Copyright (C) 2026 Afterglow contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 blank_issues_enabled: true
+contact_links:
+  - name: "Afterglow for LG webOS"
+    url: "https://github.com/HaydenGriffin/afterglow/issues"
+    about: "Problems with the LG TV app go to its own repository."
+  - name: "Music Assistant"
+    url: "https://github.com/music-assistant/support"
+    about: "Problems with Music Assistant itself, its players or providers."

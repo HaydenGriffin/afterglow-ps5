@@ -1,38 +1,37 @@
 # Contributing
 
-New to the repository? Start with [AGENTS.md](AGENTS.md) (it is written for
-people too) and [docs/CRAFT.md](docs/CRAFT.md). A new design follows
-[docs/BUILDING_A_DESIGN.md](docs/BUILDING_A_DESIGN.md) and comes with tour
-pictures you have looked at and behaviour tests.
+Bug reports and pull requests are welcome. New to the repository? Start with [AGENTS.md](AGENTS.md) (it is written
+for people too), [docs/AFTERGLOW.md](docs/AFTERGLOW.md) for how Afterglow works, and [DESIGN.md](DESIGN.md) for how it
+looks. Afterglow follows [Afterglow for LG webOS](https://github.com/HaydenGriffin/afterglow) in behaviour and wording;
+a change that makes the two differ should say why.
 
 Before committing a change:
 
-1. Run `make test` and `make lint`; add a focused unit or integration regression
-   for behavior changed by the patch.
+1. Run `make test` and `make lint`; add a focused unit or integration regression for behaviour changed by the patch.
+   A change to what is on screen comes with the preview pictures you looked at
+   (`AFTERGLOW_PREVIEW=1 tools/host-snapshots.sh build/afterglow-preview afterglow`).
 2. Run `make`; it must reproduce the clean-room `runtime/libc.prx` digest.
 3. Confirm the build reports zero static FSELF errors.
-4. Do not commit `.env`, `build/`, `dist/`, `.local/`, `results/`, proprietary
-   PRXs, game files, SDK binaries, generated `runtime/libc.prx`, console dumps,
-   keys, or credentials.
-5. Include the firmware and loader context for platform-specific behavioral
-   claims.
-6. Name release tags with the exact `sce_sys/param.json` `contentVersion`
-   (`NN.NNN.NNN`, without a `v` prefix).
+4. Do not commit `.env`, `afterglow.conf`, `build/`, `dist/`, `.local/`, `results/`, proprietary PRXs, game files, SDK
+   binaries, generated `runtime/libc.prx`, console dumps, keys, tokens, credentials, or your own network's addresses
+   (examples use `192.0.2.x`).
+5. Include the firmware and homebrew enabler for platform-specific behavioural claims, and say plainly what was not
+   checked on a console.
+6. Release tags are `v` and the version (`v1.6.0`), matching `src/afterglow/version.hpp` and
+   `sce_sys/param.json`'s `contentVersion` (`01.006.000`); add the version's section to [CHANGELOG.md](CHANGELOG.md)
+   first, because the release notes are taken from it.
 
-Every comment-capable project file must start with this header (adapt the
-comment syntax and the one-line description):
+Every comment-capable file must start with a header like this (adapt the comment syntax and the one-line
+description). Files from upstream keep their original header:
 
 ```cpp
-// ps5-homebrew-ui - One-line description of the file.
-// Copyright (C) 2026 BlackBearReloaded
+// Afterglow - One-line description of the file.
+// Copyright (C) 2026 Afterglow contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 ```
 
-Files inherited from `ps5-native-app-boilerplate` keep their original header.
-Vendored upstream code under `src/third_party/` and `third_party/` keeps its
-upstream license header and is listed in `THIRD_PARTY_NOTICES.md`; local changes to it live
-as patches under `patches/`.
+Vendored upstream code under `src/third_party/` and `third_party/` keeps its upstream license header and is listed in
+`THIRD_PARTY_NOTICES.md`.
 
-Changes to `tooling/native/` must include a deterministic host check and a
-narrowly scoped static-format regression. Loader-visible changes also require
-hardware results before release.
+Changes to `tooling/native/` must include a deterministic host check and a narrowly scoped static-format regression.
+Loader-visible changes also require hardware results before release.
