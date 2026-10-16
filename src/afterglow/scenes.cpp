@@ -211,7 +211,7 @@ IdleCopy idle_copy(const Presentation &state)
 {
     if (!state.configured)
         return {"Ready when you are.", "Add your Music Assistant server",
-                "Set host and ma_token in afterglow.conf, then reopen Afterglow."};
+                "Press Options, then Settings, Account, Sign in."};
     if (!state.connected)
         return {"Ready when you are.", "Connecting to Music Assistant…", state.status};
     return {"Ready when you are.", "Choose Afterglow PS5 in Music Assistant",
