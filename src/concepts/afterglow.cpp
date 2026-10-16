@@ -93,6 +93,7 @@ constexpr app::TourStep kTour[] = {
     {0.1f, action_bit(Action::confirm)},
     {0.1f, 0, Direction::down},
     {0.1f, 0, Direction::down},
+    {0.1f, 0, Direction::down},
     {0.8f, 0, Direction::none, "details-go-to-line"},
     {0.1f, action_bit(Action::confirm)},
     {0.8f, 0, Direction::none, "go-to-a-line"},
@@ -125,9 +126,8 @@ constexpr app::TourStep kTour[] = {
     {0.1f, action_bit(Action::confirm)},
     {0.8f, 0, Direction::none, "players"},
     {0.1f, action_bit(Action::back)},
+    // Settings opens on the row it was left at: Lyrics.
     {0.1f, action_bit(Action::page_next)},
-    {0.1f, 0, Direction::down},
-    {0.1f, 0, Direction::down},
     {0.1f, 0, Direction::down},
     {0.1f, 0, Direction::down},
     {0.1f, action_bit(Action::confirm)},
@@ -140,6 +140,7 @@ constexpr app::TourStep kTour[] = {
     {0.1f, action_bit(Action::page_next)},
     {0.8f, 0, Direction::none, "home"},
     {0.1f, action_bit(Action::page_next)},
+    {0.1f, 0, Direction::up},
     {0.1f, 0, Direction::up},
     {0.1f, action_bit(Action::confirm)},
     {0.8f, 0, Direction::none, "search"},
@@ -211,7 +212,9 @@ constexpr app::TourStep kTour[] = {
     {30.6f, 0, Direction::none, "idle-paused"},
     {0.1f, 0, Direction::right},
     {0.8f, 0, Direction::none, "idle-recent"},
-    // Tonight's programme: its tile before Browse, the page, Keep it.
+    // Tonight's programme: its tile before Browse (after the two carried
+    // tiles and the five recent ones that leaves room for), the page, Keep it.
+    {0.1f, 0, Direction::right},
     {0.1f, 0, Direction::right},
     {0.1f, 0, Direction::right},
     {0.1f, 0, Direction::right},
@@ -230,9 +233,12 @@ constexpr app::TourStep kTour[] = {
     {0.1f, 0, Direction::left},
     {0.1f, 0, Direction::left},
     {0.1f, 0, Direction::left},
+    {0.1f, 0, Direction::left},
     {180.4f, 0, Direction::none, "idle-rest"},
     {0.1f, action_bit(Action::page_next)},
     {1.2f, 0, Direction::none, "idle-nothing"},
+    // The book, first now the paused song has gone.
+    {0.1f, 0, Direction::left},
     {0.1f, action_bit(Action::confirm)},
     {0.8f, 0, Direction::none, "idle-played"},
     // The idle poster carried on with a book: Details offers Speed and
