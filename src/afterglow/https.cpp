@@ -102,10 +102,36 @@ void add_certificate(Anchors &into, const std::vector<unsigned char> &der)
         return;
     into.list.push_back(anchor);
 }
-void add_pem(Anchors &into, std::string text)
+// Only the BEGIN..END blocks, with LF line ends. The console's CA_LIST.cer
+// has CRLF lines and a "#SCEI Root CA 01" title before each certificate,
+// which BearSSL's decoder rejects as an error, so not one anchor loaded.
+std::string pem_blocks(std::string_view text)
+{
+    std::string out;
+    bool inside = false;
+    while (!text.empty())
+    {
+        const auto end = text.find('\n');
+        std::string_view line = text.substr(0, end);
+        text = end == std::string_view::npos ? std::string_view{} : text.substr(end + 1);
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' '))
+            line.remove_suffix(1);
+        if (line.starts_with("-----BEGIN "))
+            inside = true;
+        if (inside)
+        {
+            out.append(line);
+            out += '\n';
+        }
+        if (line.starts_with("-----END "))
+            inside = false;
+    }
+    return out;
+}
+void add_pem(Anchors &into, std::string_view source)
 {
     // The decoder ends an object on the newline after its END line.
-    text += '\n';
+    std::string text = pem_blocks(source) + '\n';
     br_pem_decoder_context pem;
     br_pem_decoder_init(&pem);
     std::vector<unsigned char> der;
@@ -193,14 +219,21 @@ const Anchors &trust_anchors()
     {
         std::string text;
         if (!save::read_file(file, &text, 8u << 20))
+        {
+            sys::log("[Afterglow] https: cannot read %s", file.c_str());
             continue;
+        }
         Anchors found;
         if (text.find("-----BEGIN") != std::string::npos)
-            add_pem(found, std::move(text));
+            add_pem(found, text);
         else
             add_der_list(found, text);
         if (found.list.empty())
+        {
+            sys::log("[Afterglow] https: no usable certificates in %s (%zu bytes)", file.c_str(),
+                     text.size());
             continue;
+        }
         found.source = file;
         found.loaded = true;
         anchors = std::move(found);

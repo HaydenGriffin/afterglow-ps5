@@ -52,6 +52,12 @@ smoke="$out/lyrics_https_smoke"
 
 SSL_CERT_FILE="$out/trusted-ca.pem" "$smoke" lyrics localhost "$port"
 SSL_CERT_FILE="$out/trusted-ca.pem" "$smoke" get localhost "$port" /chunked ok 200
+# The console's CA_LIST.cer layout: CRLF lines and a "#" title before each certificate.
+for name in other trusted; do
+    printf '#Afterglow test CA %s\n' "$name"
+    cat "$out/$name-ca.pem"
+done | sed 's/$/\r/' >"$out/console-ca-list.cer"
+SSL_CERT_FILE="$out/console-ca-list.cer" "$smoke" get localhost "$port" /chunked ok 200
 SSL_CERT_FILE="$out/trusted-ca.pem" "$smoke" get localhost "$port" /limited ok 429
 # Certificate checks are on: another CA, or a name the certificate lacks, fail.
 SSL_CERT_FILE="$out/other-ca.pem" "$smoke" get localhost "$port" /chunked fail
