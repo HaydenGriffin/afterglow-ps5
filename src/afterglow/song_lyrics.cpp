@@ -279,6 +279,13 @@ SongLyricsStep confirm_song_lyrics(Presentation &s, int tag)
         return SongLyricsStep::stay;
     case choose_lyrics_row:
     case try_again_row:
+        // A host preview has no LRCLIB: it lists the demo versions it was given.
+        if (s.preview && !state.candidates.empty())
+        {
+            state.candidates_state = CandidateState::ready;
+            state.candidates_song = song_key(s);
+            return tag == choose_lyrics_row ? SongLyricsStep::open_choice : SongLyricsStep::stay;
+        }
         state.candidates_wanted = true;
         state.candidates_state = CandidateState::loading;
         state.candidates_song = song_key(s);
