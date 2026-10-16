@@ -21,9 +21,12 @@ struct Service
 };
 // The order after the service the song played from (LG share-link.js SERVICES).
 constexpr Service kServices[] = {
-    {"spotify", "Spotify", "spotify.com"},     {"tidal", "Tidal", "tidal.com"},
-    {"apple_music", "Apple Music", "apple.com"}, {"ytmusic", "YouTube Music", "youtube.com"},
-    {"deezer", "Deezer", "deezer.com"},        {"qobuz", "Qobuz", "qobuz.com"},
+    {"spotify", "Spotify", "spotify.com"},
+    {"tidal", "Tidal", "tidal.com"},
+    {"apple_music", "Apple Music", "apple.com"},
+    {"ytmusic", "YouTube Music", "youtube.com"},
+    {"deezer", "Deezer", "deezer.com"},
+    {"qobuz", "Qobuz", "qobuz.com"},
     {"soundcloud", "SoundCloud", "soundcloud.com"},
 };
 constexpr int kServiceCount = static_cast<int>(std::size(kServices));
@@ -74,9 +77,8 @@ bool public_share_url(std::string_view url, std::string_view domain)
     const auto host = lower(rest.substr(0, host_end));
     if (host.empty() || host.find_first_of("@:") != std::string::npos)
         return false;
-    const bool own = host == domain ||
-                     (host.size() > domain.size() && host.ends_with(domain) &&
-                      host[host.size() - domain.size() - 1] == '.');
+    const bool own = host == domain || (host.size() > domain.size() && host.ends_with(domain) &&
+                                        host[host.size() - domain.size() - 1] == '.');
     if (!own)
         return false;
     if (host_end == std::string_view::npos)
@@ -166,9 +168,8 @@ void draw_share_block(ui::Canvas &canvas, const ShareLink &link, const QrGrid &g
         }
     // The label wraps under the code, as on LG; the service follows it.
     const auto &fonts = canvas.fonts;
-    const auto label =
-        ui::paragraph_lines(fonts.semibold, "Scan to open on your phone", style::kTypeMin,
-                            kShareCodeSize, 2);
+    const auto label = ui::paragraph_lines(fonts.semibold, "Scan to open on your phone",
+                                           style::kTypeMin, kShareCodeSize, 2);
     const float after = ui::paragraph(list, fonts.semibold, label, left, top + kShareCodeSize + 40,
                                       style::kTypeMin, kShareLineHeight, style::kPaper);
     ui::text(list, fonts.regular, link.service, left, after, style::kTypeMin, style::kMuted);
