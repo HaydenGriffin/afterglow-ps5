@@ -4,6 +4,7 @@
 
 #include "afterglow/panel.hpp"
 #include "afterglow/lyric_overlay.hpp"
+#include "afterglow/speaker_group.hpp"
 #include "afterglow/speakers.hpp"
 #include "afterglow/style.hpp"
 #include "afterglow/version.hpp"
@@ -195,9 +196,12 @@ enum Row : int
     overlay_position,
     overlay_background,
     overlay_size,
+    join_here,
 };
 // "Group with" rows carry this plus the speaker's index in players.
 constexpr int kGroupTag = 100000;
+// "Volume for each speaker" rows carry this minus the member's index in member_volumes.
+constexpr int kVolumeTag = -100000;
 
 // The look the Display rows under "Lyrics over visuals" change: the chosen
 // overlay's; null while lyrics are off.
@@ -360,11 +364,12 @@ std::string speaker_detail(const Presentation &s, const CompanionPlayer &player)
 {
     if (!player.available)
         return "Unavailable";
-    const std::string kind = player.id == s.companion.own_player_id ? "This PS5"
-                             : player.type == "group"               ? "Group"
-                             : !player.synced_to.empty() || !player.group_members.empty()
-                                 ? "Grouped"
-                                 : "Speaker";
+    // What it plays (speaker_group.hpp), as LG's Play on says it.
+    std::string kind = !player.activity.empty() ? player.activity
+                       : player.type == "group" ? "Group"
+                                                : "Speaker";
+    if (player.id == s.companion.own_player_id)
+        kind = "This PS5 · " + kind;
     return player.takes_music && s.companion.connected ? kind + " · moves the music here" : kind;
 }
 std::string account_summary(const AccountState &a)
@@ -409,6 +414,36 @@ struct Rows
         r.artwork = item.artwork;
     }
 };
+
+// Join <speaker> and Move here (lanes R2 speakers spec), each only when offered.
+void speaker_offers(Rows &rows, const Presentation &s)
+{
+    const auto &c = s.companion;
+    if (c.can_join)
+        rows.row("Join " + c.join_leader_name, join_here, "Plays here too").item.disabled =
+            !c.connected;
+    if (!c.can_move_here)
+        return;
+    const CompanionPlayer *from = player_named(s, c.queue_id);
+    const std::string name = from != nullptr ? from->name : c.target_name;
+    rows.row("Move here", move_here, "Moves the music from " + name).item.disabled = !c.connected;
+}
+// Volume for each speaker: a step for one member joins the transport presses
+// (Companion::action), so it never waits behind another action.
+bool step_member_volume(Presentation &s, int index, int direction)
+{
+    const auto volumes = member_volumes(s.companion.players, s.companion.queue_id);
+    if (index < 0 || index >= static_cast<int>(volumes.size()) || s.companion_action_pending ||
+        !s.companion.connected)
+        return false;
+    CompanionAction action;
+    action.kind = CompanionActionKind::member_volume;
+    action.text = volumes[static_cast<std::size_t>(index)].id;
+    action.value = direction * 5;
+    s.companion_action = std::move(action);
+    s.companion_action_pending = true;
+    return true;
+}
 
 void draw_facts(ui::Canvas &canvas, const std::vector<std::pair<std::string, std::string>> &facts,
                 float top, float column, float row)
@@ -725,8 +760,7 @@ std::vector<SheetRow> Panel::queue_rows() const
     const bool live = c.connected;
     Rows rows;
     rows.row("Playing on", playing_on, speaker_name(s)).item.chevron = true;
-    if (c.can_move_here)
-        rows.row("Play on this PS5", move_here, "Moves the music here").item.disabled = !live;
+    speaker_offers(rows, s);
     const int shown = std::min(static_cast<int>(c.upcoming.size()), kQueueWindow);
     const int first = up_next_first(c);
     const int remaining = std::max(c.queue_total - up_next_start(c), first + shown);
@@ -776,11 +810,9 @@ std::vector<SheetRow> Panel::players_rows() const
     const auto &p = s.preferences;
     const auto &c = s.companion;
     Rows rows;
-    // With music elsewhere that can move here, this PS5's row brings it along.
-    if (c.can_move_here)
-        rows.row("Play on this PS5", move_here, "Moves the music here").item.disabled =
-            !c.connected;
-    else
+    // With music elsewhere this PS5 can join or take, those come first.
+    speaker_offers(rows, s);
+    if (!c.can_move_here)
         rows.row("This PS5", play_here, "Sound from the PS5").chosen = !p.follow;
     auto &automatic =
         rows.row("Active speaker", follow_auto,
@@ -798,7 +830,9 @@ std::vector<SheetRow> Panel::players_rows() const
     }
     // Speakers together: who sounds the target's music (LG pick.js groupOptions).
     const auto options = group_options(c.players, c.queue_id);
-    if (std::none_of(options.begin(), options.end(), [](const auto &o) { return o.allowed; }))
+    const auto volumes = member_volumes(c.players, c.queue_id);
+    if (std::none_of(options.begin(), options.end(), [](const auto &o) { return o.allowed; }) &&
+        volumes.empty())
         return std::move(rows.list);
     rows.header("Speakers together");
     for (const auto &option : options)
@@ -814,6 +848,15 @@ std::vector<SheetRow> Panel::players_rows() const
                                               : "Can’t join");
         row.chosen = option.member;
         row.item.disabled = !c.connected || !option.allowed;
+    }
+    if (!volumes.empty())
+        rows.header("Volume for each speaker");
+    for (std::size_t i = 0; i < volumes.size(); ++i)
+    {
+        auto &row = rows.row(volumes[i].name, kVolumeTag - static_cast<int>(i),
+                             std::to_string(volumes[i].level) + "%");
+        row.adjustable = true;
+        row.item.disabled = !c.connected;
     }
     return std::move(rows.list);
 }
@@ -1819,6 +1862,14 @@ void Panel::confirm(const SheetRow &row)
     case play_here:
         p.follow = false;
         break;
+    case join_here:
+        // Sounds the leader's music through the PS5's own player, beside the others.
+        action.kind = CompanionActionKind::group_add;
+        action.option = c.join_leader;
+        action.text = c.own_player_id;
+        if (send(action, ("Joined " + c.join_leader_name).c_str()))
+            p.follow = false;
+        break;
     case move_here:
         // Starts it here even when it had stopped, and plays it through the PS5.
         action.kind = CompanionActionKind::transfer;
@@ -1958,6 +2009,12 @@ void Panel::adjust(const SheetRow &row, int direction, ui::Feedback &feedback)
     if (!row.adjustable || row.item.disabled)
         return;
     auto &s = presentation();
+    if (row.item.tag <= kVolumeTag)
+    {
+        if (step_member_volume(s, kVolumeTag - row.item.tag, direction))
+            feedback.play(audio::Cue::slider);
+        return;
+    }
     auto &p = s.preferences;
     bool changed = true;
     switch (row.item.tag)

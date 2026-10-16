@@ -30,6 +30,11 @@ struct CompanionPlayer
     bool can_set_members = false;
     // Picking this speaker in Playing on moves the target's music to it.
     bool takes_music = false;
+    // What it plays (speaker_group.hpp speaker_activity), its own volume
+    // (-1 unknown) and whether Music Assistant can set it.
+    std::string activity;
+    int volume = -1;
+    bool volume_settable = false;
 };
 struct CompanionTrack
 {
@@ -102,7 +107,10 @@ enum class CompanionActionKind
     group_remove,
     // Moves the target's queue to the player text (player_queues/transfer);
     // enabled starts it there even when it was stopped (Play on this PS5).
-    transfer
+    transfer,
+    // value = percentage points for the one player text (players/cmd/volume_set);
+    // it joins the transport presses, so quick steps add up instead of waiting.
+    member_volume
 };
 // Why commands act on the target (speakers.hpp command_target).
 enum class TargetReason
@@ -192,6 +200,10 @@ struct CompanionSnapshot
     // lost to a disconnect) and whether Music Assistant accepted it.
     std::uint64_t action_done = 0;
     bool action_done_ok = false;
+    // Join <speaker>: this PS5's own player can join the target's group
+    // (speaker_group.hpp join_plan); join_leader leads it.
+    bool can_join = false;
+    std::string join_leader, join_leader_name;
 };
 
 namespace companion_wire
@@ -285,6 +297,11 @@ struct VolumeTarget
 };
 VolumeTarget volume_target(std::string_view player);
 Request volume_request(const VolumeTarget &target, int level);
+// Whether one player's own volume can be set (players/cmd/volume_set): it has
+// volume_set, is not fixed (volume_control "none"), shows a level and is not a
+// group player. A linked control (volume_control naming one) counts: Music
+// Assistant sets the volume through it.
+bool volume_settable(std::string_view player);
 // What the open visualizer relay needs while its queue plays (LG 1.4.4
 // follow.js watchFrames). Frames that stop for 10 s without stream/end get a
 // fresh socket, so the server taps the player afresh; a socket that has

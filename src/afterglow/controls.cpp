@@ -29,13 +29,13 @@ int Assumed::value_or(const std::string &key, int actual, std::int64_t now_us)
     return value_;
 }
 
-bool ControlQueue::press(Control kind, int amount)
+bool ControlQueue::press(Control kind, int amount, const std::string &player)
 {
-    const auto same = std::find_if(waiting_.begin(), waiting_.end(),
-                                   [kind](const ControlJob &job) { return job.kind == kind; });
+    const auto same = std::find_if(waiting_.begin(), waiting_.end(), [&](const ControlJob &job)
+                                   { return job.kind == kind && job.player == player; });
     if (same != waiting_.end())
     {
-        if (kind == Control::volume || kind == Control::seek)
+        if (kind == Control::volume || kind == Control::seek || kind == Control::member_volume)
         {
             same->amount += amount;
             return true;
@@ -46,7 +46,11 @@ bool ControlQueue::press(Control kind, int amount)
     }
     if (waiting_.size() >= kMaxWaiting)
         return false;
-    waiting_.push_back({kind, amount});
+    ControlJob job;
+    job.kind = kind;
+    job.amount = amount;
+    job.player = player;
+    waiting_.push_back(std::move(job));
     return true;
 }
 std::optional<ControlJob> ControlQueue::take(std::int64_t now_us)

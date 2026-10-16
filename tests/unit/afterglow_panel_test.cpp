@@ -1056,6 +1056,98 @@ TEST_F(AfterglowPanel, PlayOnThisPs5BringsTheMusicHere)
     EXPECT_FALSE(s.preferences.follow) << "followed, its own player would play silently";
 }
 
+TEST_F(AfterglowPanel, JoinAndMoveHereComeFirstAndEachSpeakerSaysWhatItPlays)
+{
+    auto &s = presentation();
+    live();
+    CompanionPlayer room{"room", "Living room"};
+    room.activity = "Low tide — Demo";
+    CompanionPlayer own{"ps5", "Afterglow PS5"};
+    own.activity = "Idle";
+    own.takes_music = true;
+    CompanionPlayer den{"den", "Den"};
+    den.activity = "Paused · Second kettle";
+    s.companion.players = {room, own, den};
+    s.companion.queue_id = "room";
+    s.companion.own_player_id = "ps5";
+    s.companion.can_move_here = true;
+    s.companion.can_join = true;
+    s.companion.join_leader = "room";
+    s.companion.join_leader_name = "Living room";
+    s.preferences.follow = true;
+    const auto value = [&](const std::string &title)
+    {
+        for (const auto &row : panel_.rows())
+            if (row.item.title == title)
+                return row.item.value;
+        return std::string("(missing)");
+    };
+    panel_.open(Page::queue);
+    ASSERT_GE(panel_.rows().size(), 3u);
+    EXPECT_EQ(panel_.rows()[1].item.title, "Join Living room");
+    EXPECT_EQ(panel_.rows()[1].item.value, "Plays here too");
+    EXPECT_EQ(panel_.rows()[2].item.title, "Move here");
+    EXPECT_EQ(panel_.rows()[2].item.value, "Moves the music from Living room");
+    panel_.open(Page::players);
+    EXPECT_EQ(panel_.rows()[0].item.title, "Join Living room");
+    EXPECT_EQ(panel_.rows()[1].item.title, "Move here");
+    EXPECT_EQ(value("This PS5"), "(missing)") << "Move here stands in for it";
+    EXPECT_EQ(value("Living room"), "Low tide — Demo");
+    EXPECT_EQ(value("Den"), "Paused · Second kettle");
+    EXPECT_EQ(value("Afterglow PS5"), "This PS5 · Idle · moves the music here");
+    cross();
+    ASSERT_TRUE(s.companion_action_pending);
+    EXPECT_EQ(s.companion_action.kind, CompanionActionKind::group_add);
+    EXPECT_EQ(s.companion_action.option, "room");
+    EXPECT_EQ(s.companion_action.text, "ps5");
+    EXPECT_EQ(s.toast, "Joined Living room");
+    EXPECT_FALSE(s.preferences.follow) << "the PS5 now sounds it through its own player";
+    s.companion_action_pending = false;
+    s.preferences.follow = true;
+    s.companion.can_join = false;
+    panel_.open(Page::players);
+    EXPECT_EQ(panel_.rows()[0].item.title, "Move here") << "Join only while it is offered";
+}
+
+TEST_F(AfterglowPanel, SpeakersTogetherSetsTheVolumeOfOneMember)
+{
+    auto &s = presentation();
+    live();
+    CompanionPlayer lead{"lead", "Lead"};
+    lead.group_members = {"lead", "kitchen", "hall"};
+    lead.volume = 35;
+    lead.volume_settable = true;
+    CompanionPlayer kitchen{"kitchen", "Kitchen"};
+    kitchen.volume = 20;
+    kitchen.volume_settable = true;
+    CompanionPlayer hall{"hall", "Hall"};
+    s.companion.players = {lead, kitchen, hall};
+    s.companion.queue_id = "lead";
+    s.preferences.follow = true;
+    panel_.open(Page::players);
+    std::vector<std::string> volumes;
+    for (const auto &row : panel_.rows())
+        if (row.adjustable)
+            volumes.push_back(row.item.title + " " + row.item.value);
+    EXPECT_EQ(volumes, (std::vector<std::string>{"Lead 35%", "Kitchen 20%"}))
+        << "the hall's volume is fixed; the group cannot be edited, yet its volumes show";
+    // Active speaker, three speakers, the three ticks, then Lead's and Kitchen's volume.
+    down(9);
+    input(nav(Direction::right));
+    ASSERT_TRUE(s.companion_action_pending);
+    EXPECT_EQ(s.companion_action.kind, CompanionActionKind::member_volume);
+    EXPECT_EQ(s.companion_action.text, "kitchen");
+    EXPECT_EQ(s.companion_action.value, 5);
+    s.companion_action_pending = false;
+    input(nav(Direction::left));
+    EXPECT_EQ(s.companion_action.value, -5);
+    s.companion_action_pending = false;
+    s.companion.players[0].group_members = {"lead"};
+    panel_.open(Page::players);
+    for (const auto &row : panel_.rows())
+        EXPECT_FALSE(row.adjustable) << "one speaker alone has the Queue's volume";
+}
+
 TEST_F(AfterglowPanel, SpeakersTogetherBelongsToTheTargetAndRefusesWhoCannotJoin)
 {
     auto &s = presentation();
