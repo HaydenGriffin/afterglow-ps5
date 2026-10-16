@@ -8,6 +8,13 @@ checked on a PC only (unit tests, mock servers and the off-screen preview).
 
 Built and tested on a PC; not yet installed on a console.
 
+- **Lyrics over visuals: Position, Background, Size.** Display adds three rows for the chosen overlay (One line or
+  Stage), kept apart and synced: Top / Middle / Bottom, Box / Shade / None and Small / Medium / Large. Overlays stay
+  clear of the notice line, the hints and the track card (One line at Bottom stacks above it).
+- **Smooth progress.** The song progress bar and the lyric underline (line and word by word) move every frame from
+  the interpolated position, easing small clock corrections and snapping only on seeks and new songs.
+- **"More" on long lists.** Sheets and lists that run past their edge fade the edge row and say **More** with a
+  chevron, top or bottom; the focused row always keeps a row of context.
 - **Lyrics from Music Assistant, with an online fallback.** When Music Assistant has none (or errs, or takes more
   than 5 s), the PS5 searches [LRCLIB](https://lrclib.net) itself over HTTPS (BearSSL, certificates checked
   against the console's own CA list), sending only the song's title and first artist. Settings → **Lyrics** holds
