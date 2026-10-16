@@ -36,13 +36,18 @@ std::string clock_label(std::int64_t local)
     return two(t.hour) + ":" + two(t.minute);
 }
 
+LocalTime evening_of(const LocalTime &now)
+{
+    return now.hour < 5 ? local_time_at(now.utc - 86400, now.local - 86400) : now;
+}
+
 Headline headline(const LocalTime &now)
 {
     Headline out;
     out.word = now.hour >= 17 || now.hour < 5 ? "Tonight" : "Today";
-    const auto day = now.hour < 5 ? local_time_at(now.utc - 86400, now.local - 86400) : now;
-    out.date = std::to_string(day.day) + " " +
-               playlist_wire::kMonths[std::clamp(day.month, 1, 12) - 1];
+    const auto day = evening_of(now);
+    out.date =
+        std::to_string(day.day) + " " + playlist_wire::kMonths[std::clamp(day.month, 1, 12) - 1];
     return out;
 }
 
@@ -243,7 +248,8 @@ std::optional<Programme::Tile> Programme::tile(const LocalTime &now) const
     const auto list = songs(now);
     if (!programme_wire::offered(list))
         return std::nullopt;
-    return Tile{programme_wire::headline(now).word, programme_wire::offer_detail(list, queue_name_)};
+    return Tile{programme_wire::headline(now).word,
+                programme_wire::offer_detail(list, queue_name_)};
 }
 
 void Programme::open()
@@ -252,6 +258,56 @@ void Programme::open()
     focus = 0;
     queue_items_.clear();
     items_wanted_ = !queue_id_.empty();
+}
+
+ProgrammeAct Programme::press(ProgrammeKey key)
+{
+    switch (key)
+    {
+    case ProgrammeKey::up:
+    case ProgrammeKey::down:
+    {
+        const int next = key == ProgrammeKey::up ? 0 : 1;
+        if (next == focus)
+            return ProgrammeAct::refused;
+        focus = next;
+        return ProgrammeAct::moved;
+    }
+    case ProgrammeKey::confirm:
+        if (focus == 0)
+            return ProgrammeAct::keep;
+        break;
+    case ProgrammeKey::back:
+        break;
+    }
+    close();
+    return ProgrammeAct::closed;
+}
+
+bool Programme::keep(Playlists &lists, const LocalTime &now) const
+{
+    std::vector<std::string> uris;
+    for (const auto &song : songs(now))
+        uris.push_back(song.uri);
+    return lists.keep(std::move(uris), programme_wire::headline(now).word, kKeepKey,
+                      programme_wire::evening_of(now));
+}
+
+ProgrammePage Programme::page(const LocalTime &now, const Playlists &lists) const
+{
+    const auto list = songs(now);
+    ProgrammePage out;
+    out.where = queue_name_.empty() ? "Music Assistant" : queue_name_;
+    out.summary = programme_wire::summary(list);
+    out.headline = programme_wire::headline(now);
+    out.columns = programme_wire::columns(list);
+    out.focus = focus;
+    if (const auto done = lists.confirmation(kKeepKey, lists.clock()))
+    {
+        out.keep_value = done->text;
+        out.keep_tick = done->tick;
+    }
+    return out;
 }
 
 void Programme::update(std::vector<ApiReply> &replies, std::vector<ApiCall> &calls,
@@ -288,8 +344,8 @@ void Programme::update(std::vector<ApiReply> &replies, std::vector<ApiCall> &cal
         calls.push_back(std::move(call));
     };
     if (std::exchange(history_wanted_, false))
-        send("music/recently_played_items",
-             programme_wire::history_args(queue_id_, history_utc_), history_waiting_);
+        send("music/recently_played_items", programme_wire::history_args(queue_id_, history_utc_),
+             history_waiting_);
     if (std::exchange(items_wanted_, false))
         send("player_queues/items", programme_wire::queue_items_args(queue_id_), items_waiting_);
 }

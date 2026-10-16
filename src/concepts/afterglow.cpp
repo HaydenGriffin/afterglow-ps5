@@ -8,12 +8,14 @@
 #include "afterglow/panel.hpp"
 #include "afterglow/progress_clock.hpp"
 #include "afterglow/presentation.hpp"
+#include "afterglow/programme_scene.hpp"
 #include "afterglow/scenes.hpp"
 #include "afterglow/style.hpp"
 #include "ui/glyphs.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <optional>
 
 namespace hui::concepts
 {
@@ -251,7 +253,9 @@ class Afterglow final : public app::Concept
         const float drift = p.oled_drift ? std::sin(clock_.time * 0.025f) * 6.0f : 0;
         list.push_transform(1, 0, 0, drift, 0);
         list.push_opacity(static_cast<float>(p.text_brightness) / 100.0f);
-        if (idle)
+        if (idle && state.programme.is_open())
+            afterglow::draw_programme(scene, programme_page_, idle_view_.level);
+        else if (idle)
             afterglow::draw_idle_poster(scene, idle_view_);
         else if (sheet_open_ && !panel_.covers_screen())
             afterglow::draw_slab(scene, 1);
@@ -392,6 +396,7 @@ class Afterglow final : public app::Concept
         in.recent = c.recent_state;
         in.tiles = static_cast<int>(idle_tiles_.size());
         idle_.set_reduced_motion(state.preferences.reduce_motion);
+        const bool was_showing = idle_.showing();
         if (idle_.update(dt, in))
             state.recent_pending = true;
         state.idle_showing = idle_.showing();
@@ -399,9 +404,12 @@ class Afterglow final : public app::Concept
         {
             idle_tiles_.clear();
             state.idle_artwork.clear();
+            state.programme.close();
             return;
         }
-        idle_tiles_ = afterglow::idle_tiles(paused ? &c.track : nullptr, c.recent, c.recent_state);
+        const auto offer = programme_offer(state, !was_showing);
+        idle_tiles_ = afterglow::idle_tiles(paused ? &c.track : nullptr, c.recent, c.recent_state,
+                                            offer ? &*offer : nullptr);
         const auto &tile = idle_tiles_[static_cast<std::size_t>(
             std::clamp(idle_.focus(), 0, static_cast<int>(idle_tiles_.size()) - 1))];
         const bool has_recent =
@@ -416,12 +424,65 @@ class Afterglow final : public app::Concept
         idle_view_.level = idle_.level();
         state.idle_artwork = tile.item.artwork;
     }
+    // Tonight's programme (programme.hpp): read when the poster appears,
+    // offered on the strip, its page prepared while it is open.
+    std::optional<afterglow::IdleOffer> programme_offer(afterglow::Presentation &state,
+                                                        bool appeared)
+    {
+        const auto now = afterglow::local_time();
+        auto &programme = state.programme;
+        if (appeared)
+            programme.refresh(state.companion.queue_id, state.companion.target_name, now);
+        if (programme.is_open())
+            programme_page_ = programme.page(now, state.playlists);
+        return programme.tile(now);
+    }
+    // The open page takes Cross, Circle and the D-pad; the first key after
+    // the dim register only wakes it, as on the poster.
+    bool programme_input(const InputFrame &input, app::Feedback &feedback)
+    {
+        auto &state = afterglow::presentation();
+        const bool woke = idle_.resting();
+        auto act = afterglow::IdleAct::none;
+        idle_.press(afterglow::IdleKey::other, idle_tiles_, act);
+        auto key = afterglow::ProgrammeKey::back;
+        if (input.is_pressed(Action::confirm))
+            key = afterglow::ProgrammeKey::confirm;
+        else if (input.nav == Direction::up || input.nav == Direction::left)
+            key = afterglow::ProgrammeKey::up;
+        else if (input.nav == Direction::down || input.nav == Direction::right)
+            key = afterglow::ProgrammeKey::down;
+        else if (!input.is_pressed(Action::back))
+            return false;
+        if (woke)
+            return true;
+        switch (state.programme.press(key))
+        {
+        case afterglow::ProgrammeAct::moved:
+            feedback.play(audio::Cue::focus);
+            break;
+        case afterglow::ProgrammeAct::refused:
+            if (!input.nav_repeat)
+                feedback.play(audio::Cue::error);
+            break;
+        case afterglow::ProgrammeAct::keep:
+            state.programme.keep(state.playlists, afterglow::local_time());
+            feedback.play(audio::Cue::select);
+            break;
+        case afterglow::ProgrammeAct::closed:
+            feedback.play(audio::Cue::back);
+            break;
+        }
+        return true;
+    }
     // While the idle poster shows it takes Cross, left and right; any key
     // wakes it, and every other key keeps its usual meaning.
     bool idle_input(const InputFrame &input, app::Feedback &feedback)
     {
         if (!idle_.showing() || (input.pressed == 0 && input.nav == Direction::none))
             return false;
+        if (afterglow::presentation().programme.is_open())
+            return programme_input(input, feedback);
         auto key = afterglow::IdleKey::other;
         if (input.is_pressed(Action::confirm))
             key = afterglow::IdleKey::confirm;
@@ -468,6 +529,10 @@ class Afterglow final : public app::Concept
             break;
         case afterglow::IdleAct::retry:
             state.recent_pending = true;
+            break;
+        case afterglow::IdleAct::programme:
+            state.programme.open();
+            programme_page_ = state.programme.page(afterglow::local_time(), state.playlists);
             break;
         case afterglow::IdleAct::none:
             break;
@@ -897,6 +962,7 @@ class Afterglow final : public app::Concept
     afterglow::IdlePoster idle_;
     std::vector<afterglow::IdleTile> idle_tiles_;
     afterglow::IdleView idle_view_;
+    afterglow::ProgrammePage programme_page_;
     afterglow::SceneClock clock_;
     afterglow::ProgressClock progress_;
     afterglow::LyricView view_;

@@ -4,6 +4,7 @@
 
 #pragma once
 #include "afterglow/companion.hpp"
+#include "afterglow/idle.hpp"
 #include "afterglow/playlists.hpp"
 #include <array>
 #include <functional>
@@ -52,6 +53,8 @@ namespace programme_wire
 {
 // "21:04" for a LocalTime::local value.
 std::string clock_label(std::int64_t local);
+// The evening a moment belongs to: before 05:00 it is still the day before.
+LocalTime evening_of(const LocalTime &now);
 // Tonight from 17:00 to 05:00; before 05:00 the evening is the day before.
 Headline headline(const LocalTime &now);
 std::string history_args(const std::string &queue_id, std::int64_t utc_now);
@@ -88,16 +91,39 @@ class SessionLog
     std::string last_;
 };
 
+// Everything the programme page shows (draw_programme, programme_scene.hpp).
+struct ProgrammePage
+{
+    std::string where, summary; // the top line: the queue's name, "14 songs · 19:40 to 22:15"
+    Headline headline;
+    std::array<std::vector<ProgrammeRow>, 2> columns;
+    int focus = 0;          // 0 Keep it as a playlist, 1 Back
+    std::string keep_value; // "Keeping…", "Kept as “Tonight · 16 Oct”", a refusal
+    bool keep_tick = false;
+};
+
+enum class ProgrammeKey
+{
+    up,
+    down,
+    confirm,
+    back,
+};
+enum class ProgrammeAct
+{
+    moved,
+    refused, // already at the end it pointed to
+    keep,    // Keep it as a playlist was pressed
+    closed,
+};
+
 // The programme's data and its page's state; pumped every frame by
-// pump_playlists (main.cpp), drawn by draw_programme (scenes).
+// pump_playlists (main.cpp), drawn by draw_programme (programme_scene.hpp).
 class Programme
 {
   public:
     static constexpr const char *kKeepKey = "programme";
-    struct Tile
-    {
-        std::string word, detail;
-    };
+    using Tile = IdleOffer;
     void observe(const CompanionSnapshot &c, const LocalTime &now)
     {
         log_.observe(c, now);
@@ -121,6 +147,13 @@ class Programme
         return queue_name_;
     }
     int focus = 0; // 0 Keep it as a playlist, 1 Back
+    // Up and down (left and right too) move between the two actions, Cross
+    // acts on the focused one, Circle closes. keep is for the caller to do.
+    ProgrammeAct press(ProgrammeKey key);
+    // Keep it as a playlist: every song in order, named for the evening
+    // ("Tonight · 16 Oct"). False while another playlist job runs.
+    bool keep(Playlists &lists, const LocalTime &now) const;
+    ProgrammePage page(const LocalTime &now, const Playlists &lists) const;
     void update(std::vector<ApiReply> &replies, std::vector<ApiCall> &calls,
                 std::uint64_t &next_id);
     const SessionLog &log() const

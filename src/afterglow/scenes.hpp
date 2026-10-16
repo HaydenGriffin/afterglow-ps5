@@ -132,4 +132,8 @@ struct IdleView
 // Only the paused song wears its own colours; every other tile is set on the
 // neutral fields.
 void draw_idle_poster(const Scene &scene, const IdleView &idle);
+// Paper and secondary text as the poster sets them (stepped down in the night
+// register), for pages drawn outside this file (programme_scene.cpp).
+gfx::Color poster_paper(const Presentation &state);
+gfx::Color poster_muted(const Presentation &state);
 } // namespace hui::afterglow
