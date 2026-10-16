@@ -29,17 +29,21 @@ enum class IdleTileKind
     resume, // the paused song
     retry,  // reading recent music failed
     play,   // a recently played item
-    browse  // always last, so Cross never dead-ends
+    browse, // always last, so Cross never dead-ends
+    carry   // an audiobook or episode in progress, after the paused song
 };
 struct IdleTile
 {
     IdleTileKind kind = IdleTileKind::browse;
     CompanionTrack item;
 };
-// The strip, in order: the paused song, a retry after an error, up to
-// kRecentLimit recent items (the paused one left out), then Browse.
+// The strip, in order: the paused song, up to kCarryOnLimit audiobooks and
+// episodes in progress, a retry after an error, up to kRecentLimit recent
+// items (none shown twice), then Browse.
+constexpr std::size_t kCarryOnLimit = 3;
 std::vector<IdleTile> idle_tiles(const CompanionTrack *paused,
-                                 const std::vector<CompanionTrack> &recent, RecentState state);
+                                 const std::vector<CompanionTrack> &recent, RecentState state,
+                                 const std::vector<CompanionTrack> &in_progress = {});
 
 // What the poster says for a tile; hint labels the Cross glyph.
 struct IdleText

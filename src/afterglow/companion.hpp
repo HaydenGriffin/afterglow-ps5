@@ -31,6 +31,17 @@ struct CompanionPlayer
     // Picking this speaker in Playing on moves the target's music to it.
     bool takes_music = false;
 };
+// An album, artist or podcast a playing item links to (Details' Go to rows).
+struct CompanionLink
+{
+    std::string item_id, provider, name, uri;
+};
+// One of metadata.chapters (audiobooks, some episodes): name and start in seconds.
+struct CompanionChapter
+{
+    std::string name;
+    int start = 0;
+};
 struct CompanionTrack
 {
     std::string title, artist, album, year, label, uri, artwork, lyrics, lrc_lyrics;
@@ -52,6 +63,12 @@ struct CompanionTrack
     // lyrics_request numbers the request that answered (lyrics_lookup.hpp MaLyrics).
     int lyrics_reply = 0;
     std::uint64_t lyrics_request = 0;
+    // Go to rows: a song's album and artists (up to three), an episode's
+    // podcast; kept only when Music Assistant gave the ids.
+    CompanionLink album_link, podcast_link;
+    std::vector<CompanionLink> artist_links;
+    // An audiobook's or episode's chapters, by start (spoken_word.hpp kMaxChapters).
+    std::vector<CompanionChapter> chapters;
 };
 enum class BrowseCategory
 {
@@ -67,10 +84,12 @@ enum class BrowseCategory
     podcasts,
     audiobooks,
     // Below here are drill-downs or queries, not category-column entries.
-    search,          // query = text, results of every media type
-    artist_albums,   // item_id/provider of an artist
-    artist_tracks,   // item_id/provider of an artist
-    podcast_episodes // item_id/provider of a podcast
+    search,           // query = text, results of every media type
+    artist_albums,    // item_id/provider of an artist
+    artist_tracks,    // item_id/provider of an artist
+    podcast_episodes, // item_id/provider of a podcast
+    // A category-column entry added later (panel.cpp kCategories orders the column):
+    in_progress // Continue listening: audiobooks and episodes started, not finished
 };
 struct BrowseRequest
 {
@@ -102,7 +121,9 @@ enum class CompanionActionKind
     group_remove,
     // Moves the target's queue to the player text (player_queues/transfer);
     // enabled starts it there even when it was stopped (Play on this PS5).
-    transfer
+    transfer,
+    // value = hundredths (75..200) for an audiobook or episode (player_queues/set_playback_speed).
+    speed
 };
 // Why commands act on the target (speakers.hpp command_target).
 enum class TargetReason
@@ -192,6 +213,11 @@ struct CompanionSnapshot
     // lost to a disconnect) and whether Music Assistant accepted it.
     std::uint64_t action_done = 0;
     bool action_done_ok = false;
+    // The drawn queue's playback speed in hundredths (Details' Speed).
+    int playback_speed = 100;
+    // Idle poster: audiobooks and episodes started and not finished, read with
+    // recent music; empty when Music Assistant cannot say.
+    std::vector<CompanionTrack> in_progress;
 };
 
 namespace companion_wire
@@ -274,6 +300,11 @@ Request transfer_request(std::string_view from, std::string_view to, bool auto_p
 constexpr int kRecentLimit = 8;
 Request recent_request();
 std::vector<CompanionTrack> decode_recent(std::string_view result);
+// Continue listening on the idle poster: music/in_progress_items, a few more
+// than the three it shows.
+constexpr int kInProgressLimit = 5;
+Request in_progress_request();
+std::vector<CompanionTrack> decode_in_progress(std::string_view result);
 // The volume a press changes. A group player, or a sync leader with members,
 // moves the whole group with players/cmd/group_volume and reads group_volume
 // (LG playback.js isGroupPlayer); any other player sets its own level.
