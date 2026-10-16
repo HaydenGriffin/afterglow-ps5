@@ -34,7 +34,8 @@ GPL-3.0-or-later.
   by hand. Visuals is MilkDrop on its own or with a track card, and MilkDrop can keep running behind the artwork.
 - **Lyrics from Music Assistant, with an online fallback.** When Music Assistant has none, the PS5 looks the song
   up on [LRCLIB](https://lrclib.net) itself (see [Privacy](#privacy)). **Lyrics timing** moves the words up to 10 s
-  earlier or later, and **Retry lyrics** asks again.
+  earlier or later (and can be kept for one song), **Retry lyrics** asks again, **Choose other lyrics** swaps wrong
+  lyrics for another LRCLIB version, and **Go to a line** plays the song from a chosen line.
 - **Browse and Search.** Search with the system keyboard, recently played, favourite playlists, albums, songs and
   artists, radio, podcasts and audiobooks, artist pages. Play now, play next, add to the queue or start radio.
 - **Queue.** Play, move and remove upcoming songs; shuffle, repeat, crossfade, keep playing when the queue ends,
@@ -118,7 +119,8 @@ you list.
 
 The one other service is lyrics. When Music Assistant has none for a song, the PS5 asks
 [lrclib.net](https://lrclib.net) directly over HTTPS, sending only the song's title and first artist (no account,
-token or device id); LRCLIB sees the request coming from your network. Turn **Online lyrics** off (Options →
+token or device id). **Choose other lyrics** sends the same search, and a song whose lyrics you chose is fetched by
+that LRCLIB record's id. LRCLIB sees the request coming from your network. Turn **Online lyrics** off (Options →
 Settings → Lyrics) to stop it; it is on by default.
 
 The console stores its Music Assistant token in the app's own storage (`/download0/hui/afterglow.auth`), never your

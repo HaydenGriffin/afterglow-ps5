@@ -4,6 +4,17 @@ Afterglow for PS5. Builds before 1.6.0 were private builds for one console; they
 the version where one was set. "Checked on hardware" means on one PS5 on firmware 7.20; anything else was
 checked on a PC only (unit tests, mock servers and the off-screen preview).
 
+# Unreleased
+
+- **Keep a lyrics timing for one song.** Changing **Lyrics timing** during a song (in Settings → Lyrics, or with
+  L2/R2 on the Lyrics poster) offers once, in Settings → Lyrics, **Keep this timing for this song?** (Keep / Not
+  now). A kept timing applies to that song's lyrics only, the other songs keep theirs, and **Forget timing for this
+  song** drops it. Kept for the 100 most recently changed songs, synced with this PS5's account settings (as LG's).
+- **Choose other lyrics.** Settings → Lyrics → **Choose other lyrics** swaps wrong lyrics for another version from
+  lrclib.net (up to six, with length, Timed or Plain and album; a much longer one says so). The pick is kept for the
+  song and fetched by its LRCLIB id on later plays; **Automatic** goes back.
+- **Go to a line.** Details → **Go to a line**: with timed lyrics, pick a line and the song plays from it.
+
 # 1.6.0 — First public release (unreleased)
 
 Built and tested on a PC; not yet installed on a console.
