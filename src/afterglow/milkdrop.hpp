@@ -15,6 +15,7 @@
 #include <vector>
 
 struct projectm;
+struct projectm_texture_load_data;
 
 namespace hui::afterglow
 {
@@ -83,6 +84,8 @@ class Milkdrop
     };
     static void on_switch_requested(bool hard_cut, void *self);
     static void on_switch_failed(const char *file, const char *message, void *self);
+    static void on_texture_requested(const char *name, projectm_texture_load_data *data,
+                                     void *self);
     void load(std::size_t index, bool smooth);
     bool eligible(std::size_t index) const;
     void advance(bool forward);
@@ -117,5 +120,7 @@ class Milkdrop
     // when a recolour last reloaded the preset.
     Colouring applied_;
     std::int64_t colouring_changed_at_ = 0, recoloured_at_ = 0;
+    // Handed to projectM for every texture a preset names that is not shipped.
+    std::vector<std::uint8_t> clouds_;
 };
 } // namespace hui::afterglow

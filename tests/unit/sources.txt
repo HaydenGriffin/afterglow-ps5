@@ -6,6 +6,7 @@ host/platform_host.cpp
 host/keyboard_host.cpp
 src/afterglow/account.cpp
 src/afterglow/client.cpp
+src/afterglow/cloud_texture.cpp
 src/afterglow/companion.cpp
 src/afterglow/dev_requests.cpp
 src/afterglow/icons.cpp
