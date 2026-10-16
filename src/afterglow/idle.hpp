@@ -4,6 +4,7 @@
 
 #pragma once
 #include "afterglow/companion.hpp"
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -13,7 +14,8 @@
 // Left and right move along the strip and Cross plays (or resumes, or opens
 // Browse) on the command target; every other key keeps its usual meaning.
 // On an OLED it stays calm: it steps down to a dim register after three
-// minutes without a key, and the first key then only wakes it.
+// minutes without a key; the first Cross, left or right then only wakes it,
+// while any other key wakes it and keeps its usual meaning.
 namespace hui::afterglow
 {
 constexpr float kIdleAfterSeconds = 8;
@@ -59,6 +61,15 @@ std::vector<IdleTile> idle_tiles(const CompanionTrack *paused,
                                  const std::vector<CompanionTrack> &recent, RecentState state,
                                  const std::vector<CompanionTrack> &in_progress = {},
                                  bool setup = false, const IdleOffer *offer = nullptr);
+// The part of an item a tile keeps: what the poster draws and Cross acts on
+// (title, artist, year, duration, kind, uri, artwork), never its lyrics.
+CompanionTrack poster_item(const CompanionTrack &item);
+// A fingerprint of everything idle_tiles() keeps from the same arguments: the
+// screen builds the strip again only when it changes, not every frame.
+std::uint64_t idle_tiles_key(const CompanionTrack *paused,
+                             const std::vector<CompanionTrack> &recent, RecentState state,
+                             const std::vector<CompanionTrack> &in_progress, bool setup,
+                             const IdleOffer *offer);
 
 // What the poster says for a tile; hint labels the Cross glyph.
 struct IdleText

@@ -226,6 +226,24 @@ class ToolTests(unittest.TestCase):
         self.assertIn('make -C "$root" --no-print-directory app\n', deploy)
         self.assertNotIn("$format", deploy)
 
+    def test_unit_tests_ask_for_leak_checks_only_on_linux(self):
+        # macOS AddressSanitizer aborts at start-up when detect_leaks=1.
+        dry_run = subprocess.run(
+            ["make", "-n", "--no-print-directory", "test-unit"],
+            cwd=ROOT, check=True, capture_output=True, text=True,
+        ).stdout
+        expected = "1" if os.uname().sysname == "Linux" else "0"
+        self.assertIn(f"ASAN_OPTIONS=detect_leaks={expected} ", dry_run)
+
+    def test_smokes_target_runs_every_native_smoke(self):
+        dry_run = subprocess.run(
+            ["make", "-n", "--no-print-directory", "test-smokes"],
+            cwd=ROOT, check=True, capture_output=True, text=True,
+        ).stdout
+        self.assertIn("tests/integration/run-*.sh", dry_run)
+        self.assertIn("|| exit 1", dry_run)
+        self.assertTrue(list((ROOT / "tests/integration").glob("run-*.sh")))
+
     def test_release_job_never_replaces_published_files(self):
         workflow = (ROOT / ".github/workflows/tooling.yml").read_text(encoding="utf-8")
         self.assertNotIn("--clobber", workflow)

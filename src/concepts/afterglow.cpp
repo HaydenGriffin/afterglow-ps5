@@ -26,7 +26,7 @@ using afterglow::Panel;
 using afterglow::Tile;
 using gfx::Color;
 using namespace afterglow::style;
-const auto kAmber = Color::rgb(0xeeb875);
+constexpr auto kAmber = Color::rgb(0xeeb875);
 constexpr const char *kModes[] = {"Visuals only", "Visuals + track", "Album", "Lyrics"};
 constexpr const char *kLayers[] = {"Lyrics off", "Lyrics: one line", "Lyrics: stage"};
 // LG shows the track card for nine seconds and hides its controls after nine.
@@ -323,6 +323,8 @@ class Afterglow final : public app::Concept
         if (state.scanning && !was_scanning_)
             close_all();
         was_scanning_ = state.scanning;
+        // The key that stops a scan does only that, not its shortcut too.
+        InputFrame keys = input;
         if (state.scanning &&
             (input.is_pressed(Action::back) || input.is_pressed(Action::menu) ||
              input.is_pressed(Action::jump_prev) || input.is_pressed(Action::jump_next) ||
@@ -330,6 +332,8 @@ class Afterglow final : public app::Concept
         {
             state.scanning = false;
             state.show_toast("Preset scan stopped");
+            keys.pressed = 0;
+            keys.nav = Direction::none;
         }
 
         close_hold_ = input.is_held(Action::back) ? close_hold_ + dt : 0;
@@ -339,13 +343,13 @@ class Afterglow final : public app::Concept
         // A delay step taken just before the sheet closed still saves.
         panel_.tick(dt);
         if (sheet_open_)
-            update_sheet(input, dt, feedback);
+            update_sheet(keys, dt, feedback);
         else if (transport_open_)
-            update_transport(input, dt, feedback);
-        else if (!idle_input(input, feedback))
-            update_listening(input, feedback);
+            update_transport(keys, dt, feedback);
+        else if (!idle_input(keys, feedback))
+            update_listening(keys, feedback);
         if (!sheet_open_)
-            update_shortcuts(input, feedback);
+            update_shortcuts(keys, feedback);
         state.page = sheet_open_ ? panel_.page_name() : "";
 
         update_layers(dt);
@@ -556,8 +560,17 @@ class Afterglow final : public app::Concept
             return;
         }
         const auto offer = programme_offer(state, !was_showing);
-        idle_tiles_ = afterglow::idle_tiles(paused ? &c.track : nullptr, c.recent, c.recent_state,
-                                            c.in_progress, true, offer ? &*offer : nullptr);
+        const auto *paused_track = paused ? &c.track : nullptr;
+        const auto *offered = offer ? &*offer : nullptr;
+        // Built again only when what it shows changed, not every frame.
+        const auto key = afterglow::idle_tiles_key(paused_track, c.recent, c.recent_state,
+                                                   c.in_progress, true, offered);
+        if (idle_tiles_.empty() || key != idle_tiles_key_)
+        {
+            idle_tiles_ = afterglow::idle_tiles(paused_track, c.recent, c.recent_state,
+                                                c.in_progress, true, offered);
+            idle_tiles_key_ = key;
+        }
         const auto &tile = idle_tiles_[static_cast<std::size_t>(
             std::clamp(idle_.focus(), 0, static_cast<int>(idle_tiles_.size()) - 1))];
         const bool has_recent =
@@ -830,9 +843,10 @@ class Afterglow final : public app::Concept
         }
         if (input.is_pressed(Action::r3) && !state.preset.empty())
         {
-            p.toggle_favorite(state.preset);
-            state.show_toast(p.favorite(state.preset) ? "Favourite preset"
-                                                      : "Removed from favourite presets");
+            const bool done = p.toggle_favorite(state.preset);
+            state.show_toast(!done                      ? "Favourite presets are full"
+                             : p.favorite(state.preset) ? "Favourite preset"
+                                                        : "Removed from favourite presets");
         }
     }
 
@@ -1121,6 +1135,7 @@ class Afterglow final : public app::Concept
     Panel panel_;
     afterglow::IdlePoster idle_;
     std::vector<afterglow::IdleTile> idle_tiles_;
+    std::uint64_t idle_tiles_key_ = 0;
     afterglow::IdleView idle_view_;
     afterglow::ProgrammePage programme_page_;
     afterglow::SceneClock clock_;

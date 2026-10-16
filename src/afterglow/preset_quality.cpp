@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "afterglow/preset_quality.hpp"
+#include "afterglow/preferences.hpp"
 #include "afterglow/protocol.hpp"
 #include <algorithm>
 #include <charconv>
@@ -12,9 +13,9 @@ namespace hui::afterglow
 {
 namespace
 {
-// Matches the preferences file's limit for this value. The packaged library
-// encodes to about 27 KB, so this leaves room for long names and 1000 records.
-constexpr std::size_t kMaxDocument = 262144;
+// The preferences file's limit for this value. The packaged library encodes
+// to about 27 KB, so this leaves room for long names and 1000 records.
+constexpr std::size_t kMaxDocument = kMaxPreferenceDocument;
 
 bool valid_name(std::string_view name)
 {
@@ -99,25 +100,41 @@ bool PresetQuality::eligible(const std::string &name, int minimum_fps, bool skip
 }
 std::string PresetQuality::encode() const
 {
-    std::string result;
-    for (const auto &[name, rating] : ratings_)
-        result += "rating=" + std::to_string(static_cast<int>(std::lround(rating.fps * 1000))) +
-                  "\t" + std::to_string(rating.measured) + "\t" +
-                  std::to_string(rating.quarantined) + "\t" + std::to_string(rating.keep) + "\t" +
-                  name + "\n";
     // Keep records in one escaped string: the bounded protocol parser has 512
     // tokens, while a collection can contain hundreds of independently rated presets.
-    return "{\"version\":1,\"pending\":" + json_quote(pending_) +
-           ",\"ratings\":" + json_quote(result) + "}";
+    const std::string head = "{\"version\":1,\"pending\":" + json_quote(pending_) + ",\"ratings\":";
+    const std::size_t room = kMaxDocument - std::min(kMaxDocument, head.size() + 3);
+    std::string result;
+    std::size_t quoted = 0, kept = 0;
+    for (const auto &[name, rating] : ratings_)
+    {
+        if (kept == kMaxRatings)
+            break;
+        const std::string line =
+            "rating=" + std::to_string(static_cast<int>(std::lround(rating.fps * 1000))) + "\t" +
+            std::to_string(rating.measured) + "\t" + std::to_string(rating.quarantined) + "\t" +
+            std::to_string(rating.keep) + "\t" + name + "\n";
+        const std::size_t size = json_quote(line).size() - 2;
+        if (quoted + size > room)
+            continue;
+        result += line;
+        quoted += size;
+        ++kept;
+    }
+    return head + json_quote(result) + "}";
 }
-PresetQuality PresetQuality::decode(std::string_view text)
+PresetQuality PresetQuality::decode(std::string_view text, bool *ok)
 {
     PresetQuality result;
+    if (ok != nullptr)
+        *ok = text.empty();
     if (text.size() > kMaxDocument)
         return result;
     const Json json(text, kMaxDocument);
     if (!json.valid() || json.integer(json.get(0, "version")) != 1)
         return result;
+    if (ok != nullptr)
+        *ok = true;
     const std::string interrupted = json.string(json.get(0, "pending"));
     const std::string records = json.string(json.get(0, "ratings"));
     text = records;
@@ -128,7 +145,7 @@ PresetQuality PresetQuality::decode(std::string_view text)
         text = end == text.npos ? std::string_view{} : text.substr(end + 1);
         if (!line.empty() && line.back() == '\r')
             line.remove_suffix(1);
-        if (!line.starts_with("rating=") || result.ratings_.size() >= 1000)
+        if (!line.starts_with("rating=") || result.ratings_.size() >= kMaxRatings)
             continue;
         line.remove_prefix(7);
         int fields[4]{};

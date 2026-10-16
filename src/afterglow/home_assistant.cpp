@@ -934,7 +934,8 @@ class HomeSocket
                 if (fin)
                 {
                     fragment_open_ = false;
-                    if (!message(fragment_.data(), fragment_.size()))
+                    // Only text is JSON; a binary message is read through and dropped.
+                    if (fragment_text_ && !message(fragment_.data(), fragment_.size()))
                         return false;
                     fragment_.clear();
                 }
@@ -951,6 +952,7 @@ class HomeSocket
                 else
                 {
                     fragment_open_ = true;
+                    fragment_text_ = opcode == 1;
                     fragment_.assign(payload, payload + size);
                 }
             }
@@ -966,7 +968,7 @@ class HomeSocket
 
     std::atomic<bool> &stopping_;
     int fd_ = -1;
-    bool fragment_open_ = false;
+    bool fragment_open_ = false, fragment_text_ = false;
     std::vector<std::uint8_t> incoming_, fragment_;
 };
 } // namespace
@@ -992,6 +994,9 @@ struct HomeAssistant::Impl
     std::map<int, Pending> pending;
     int next_id = 1, subscribe_id = 0;
     bool authenticated = false, refused = false;
+    // Set with refused: how the link reads and what presses are told.
+    HomeLink refused_link = HomeLink::auth_failed;
+    std::string refusal;
 
     void publish(HomeLink link, std::string status)
     {
@@ -1036,6 +1041,14 @@ struct HomeAssistant::Impl
         pending.clear();
     }
 
+    void refuse(HomeLink link, std::string why)
+    {
+        refused = true;
+        refused_link = link;
+        refusal = std::move(why);
+        sys::log("[Afterglow] %s", refusal.c_str());
+    }
+
     bool on_message(HomeSocket &socket, std::string_view text)
     {
         const auto m = home_wire::parse_message(text);
@@ -1051,8 +1064,7 @@ struct HomeAssistant::Impl
         }
         if (m.type == "auth_invalid")
         {
-            refused = true;
-            sys::log("[Afterglow] home assistant refused the token");
+            refuse(HomeLink::auth_failed, "Home Assistant refused the token");
             return false;
         }
         if (m.type == "event" && m.id == subscribe_id)
@@ -1063,8 +1075,10 @@ struct HomeAssistant::Impl
         }
         if (m.type == "result" && m.id == subscribe_id)
         {
+            // Asking again gets the same answer: say so and stop, as for the token.
             if (!m.success)
-                sys::log("[Afterglow] home assistant subscribe refused: %s", m.error.c_str());
+                refuse(HomeLink::refused, "Home Assistant refused the entity subscription" +
+                                              (m.error.empty() ? std::string() : ": " + m.error));
             return m.success;
         }
         if (m.type == "result")
@@ -1177,11 +1191,11 @@ struct HomeAssistant::Impl
         }
         if (refused)
         {
-            publish(HomeLink::auth_failed, "Home Assistant refused the token");
+            publish(refused_link, refusal);
             while (!stopping)
             {
                 for (const auto &command : take_commands())
-                    answer(command, false, "Home Assistant refused the token");
+                    answer(command, false, refusal);
                 usleep(50000);
             }
         }

@@ -76,3 +76,19 @@ TEST(AfterglowLightbar, LimiterWritesOnlyChangesAtMostThirtyTimesASecond)
     limiter.forget();
     EXPECT_TRUE(limiter.due(blue, LightbarLimiter::kMinIntervalUs + 1)) << "after a reset";
 }
+
+TEST(AfterglowLightbar, AReconnectedControllerGetsTheColourAgain)
+{
+    LightbarLimiter limiter;
+    const LightbarColor red{255, 0, 0};
+    EXPECT_FALSE(limiter.reconnected(true));
+    limiter.wrote(red, 0);
+    EXPECT_FALSE(limiter.due(red, 1000000));
+    EXPECT_FALSE(limiter.reconnected(false)) << "gone";
+    EXPECT_FALSE(limiter.reconnected(false));
+    EXPECT_TRUE(limiter.reconnected(true)) << "back, with the system's colour";
+    EXPECT_TRUE(limiter.due(red, 1000001)) << "the same colour is sent again";
+    limiter.wrote(red, 1000001);
+    EXPECT_FALSE(limiter.reconnected(true)) << "once";
+    EXPECT_FALSE(limiter.due(red, 2000000));
+}

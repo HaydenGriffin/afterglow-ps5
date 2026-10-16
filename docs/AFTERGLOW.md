@@ -81,8 +81,9 @@ tries again when the list could not load, or opens Browse; the field names the
 button and says so when a start has not taken after ten seconds. Every other
 button keeps its usual meaning, and Options opens the controls over it. Only
 the paused song wears its own colours; any other item sits on the neutral
-fields. After three minutes without a button it dims to 35 %, and the first
-button then only wakes it. It moves with OLED text movement, follows the night
+fields. After three minutes without a button it dims to 35 %; the first
+Cross, left or right then only wakes it, while any other button wakes it and
+does its usual job too. It moves with OLED text movement, follows the night
 register, rests MilkDrop while it shows, and with reduce motion the dimming is
 immediate. It needs Music Assistant; without it the poster says how to set up.
 When it has nothing to offer (recent music could not be read, or nothing has

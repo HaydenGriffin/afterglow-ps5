@@ -40,8 +40,9 @@ Decoded decode(Kind kind, std::string_view data);
 std::uint32_t crc32(std::string_view data);
 
 // Writes path via "path.tmp": write, fsync, close, rename (unlinking and
-// retrying if the rename fails). Returns an error or "".
-std::string write_atomic(const std::string &path, std::string_view data);
+// retrying if the rename fails). Returns an error or "". mode is the new
+// file's permissions (before the umask): 0600 for anything secret.
+std::string write_atomic(const std::string &path, std::string_view data, unsigned mode = 0644);
 
 // Reads a whole file of at most max_bytes. Returns false if it is missing or
 // unreadable.

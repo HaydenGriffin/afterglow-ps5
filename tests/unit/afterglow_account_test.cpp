@@ -8,6 +8,7 @@
 #include <deque>
 #include <gtest/gtest.h>
 #include <map>
+#include <sys/stat.h>
 #include <unistd.h>
 
 using namespace hui::afterglow;
@@ -107,7 +108,13 @@ TEST(AfterglowAccount, TokenFileUsesCheckedContainer)
     auth.username = "u";
     auth.token = "t";
     auth.token_name = kName;
+    chmod(path.c_str(), 0644); // a token file saved before it was kept private
     EXPECT_EQ(account_wire::save_auth(path, auth), "");
+    struct stat info
+    {
+    };
+    ASSERT_EQ(stat(path.c_str(), &info), 0);
+    EXPECT_EQ(info.st_mode & 0777, 0600U) << "only the owner may read the token";
     const auto loaded = account_wire::load_auth(path);
     EXPECT_TRUE(loaded.valid());
     EXPECT_EQ(loaded.port, 9000);

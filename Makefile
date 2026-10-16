@@ -54,8 +54,10 @@ RUNTIME_INPUTS := tools/rebuild-libc.sh tools/build-host-tools.sh tools/ninja-bu
 	$(wildcard tooling/native/*.cpp tooling/native/*.hpp) \
 	$(wildcard tooling/native/runtime/*.txt)
 HOST_UNIT_TEST := build/tests/unit_tests
+# LeakSanitizer runs on Linux only; on macOS detect_leaks=1 aborts before any test.
+DETECT_LEAKS := $(if $(filter Linux,$(shell uname -s)),1,0)
 
-.PHONY: all app build init doctor test test-deps test-unit test-integration libc deps opengl host-snapshots fonts pacbrew pacbrew-list assets-check format format-check tidy lint check deploy undeploy clean distclean help
+.PHONY: all app build init doctor test test-deps test-unit test-integration test-smokes libc deps opengl host-snapshots fonts pacbrew pacbrew-list assets-check format format-check tidy lint check deploy undeploy clean distclean help
 
 all: app
 build: app
@@ -77,13 +79,21 @@ test-deps:
 test-unit:
 	@bash tools/build-tests.sh
 	@printf '%s\n' '==> [test-unit] Running host-native GoogleTest application tests'
-	@ASAN_OPTIONS=detect_leaks=1 LSAN_OPTIONS=suppressions=tests/unit/lsan.supp \
+	@ASAN_OPTIONS=detect_leaks=$(DETECT_LEAKS) LSAN_OPTIONS=suppressions=tests/unit/lsan.supp \
 		UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
 		$(HOST_UNIT_TEST) --gtest_brief=1 $(GTEST_ARGS)
 
 test-integration:
 	@printf '%s\n' '==> [test-integration] Running host tooling integration tests'
 	@python3 -m unittest discover -s tests -p 'test_*.py' -v
+
+# The native clients against disposable loopback servers (tests/integration/README.md).
+# Each script compiles its client afresh; the lyrics one also builds BearSSL and needs openssl.
+test-smokes:
+	@printf '%s\n' '==> [test-smokes] Running the native client smokes on loopback'
+	@for script in tests/integration/run-*.sh; do \
+		printf '%s\n' "--> $$script"; bash "$$script" || exit 1; \
+	done
 
 deps: test-deps
 	@printf '%s\n' '==> [deps] Fetching declared native dependencies'
@@ -178,6 +188,7 @@ help:
 	  'make test-deps       Fetch verified host-only GoogleTest source' \
 	  'make test-unit       Run host-native GoogleTest application tests' \
 	  'make test-integration  Run host tooling integration tests' \
+	  'make test-smokes     Run the native client smokes on loopback servers' \
 	  'make deps            Fetch native dependencies into .deps/' \
 	  'make pacbrew         Fetch the pinned PacBrew ports sysroot' \
 	  'make pacbrew-list    List PacBrew pkg-config module names' \

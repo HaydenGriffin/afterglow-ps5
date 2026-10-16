@@ -15,13 +15,24 @@ bool Preferences::favorite(std::string_view name) const
 {
     return std::find(favorites.begin(), favorites.end(), name) != favorites.end();
 }
-void Preferences::toggle_favorite(const std::string &name)
+namespace
+{
+bool keepable_favorite(std::string_view name)
+{
+    return !name.empty() && name.size() <= kMaxFavoriteName &&
+           name.find_first_of("\r\n") == std::string_view::npos;
+}
+} // namespace
+bool Preferences::toggle_favorite(const std::string &name)
 {
     const auto found = std::find(favorites.begin(), favorites.end(), name);
     if (found != favorites.end())
         favorites.erase(found);
-    else if (!name.empty() && name.find_first_of("\r\n") == std::string::npos)
+    else if (keepable_favorite(name) && favorites.size() < kMaxFavorites)
         favorites.push_back(name);
+    else
+        return false;
+    return true;
 }
 namespace
 {
@@ -75,14 +86,20 @@ std::string Preferences::encode() const
     number("stage_size", stage_look.size);
     number("cover_art", cover_art);
     number("preset_change", preset_change);
-    if (quality.find_first_of("\r\n") == std::string::npos)
+    const auto document = [](const std::string &value)
+    {
+        return value.size() <= kMaxPreferenceDocument &&
+               value.find_first_of("\r\n") == std::string::npos;
+    };
+    if (document(quality))
         out += "quality=" + quality + "\n";
-    if (favorite_pending.find_first_of("\r\n") == std::string::npos)
+    if (document(favorite_pending))
         out += "favorite_pending=" + favorite_pending + "\n";
-    if (player.find_first_of("\r\n") == std::string::npos)
+    if (player.size() <= 256 && player.find_first_of("\r\n") == std::string::npos)
         out += "player=" + player + "\n";
+    std::size_t kept = 0;
     for (const auto &name : favorites)
-        if (name.find_first_of("\r\n") == std::string::npos)
+        if (keepable_favorite(name) && kept++ < kMaxFavorites)
             out += "favorite=" + name + "\n";
     for (const auto &song : songs)
         out += "lyrics_song=" + encode_song_line(song) + "\n";
@@ -102,14 +119,14 @@ Preferences Preferences::decode(std::string_view text)
         if (eq == line.npos)
             continue;
         const auto key = line.substr(0, eq), value = line.substr(eq + 1);
-        if (key == "quality" && value.size() <= 262144)
+        if (key == "quality" && value.size() <= kMaxPreferenceDocument)
             p.quality = value;
-        if (key == "favorite_pending" && value.size() <= 262144)
+        if (key == "favorite_pending" && value.size() <= kMaxPreferenceDocument)
             p.favorite_pending = value;
         if (key == "player" && value.size() <= 256)
             p.player = value;
-        if (key == "favorite" && !value.empty() && value.find('\r') == value.npos &&
-            value.size() <= 512 && p.favorites.size() < 1000 && !p.favorite(value))
+        if (key == "favorite" && keepable_favorite(value) && p.favorites.size() < kMaxFavorites &&
+            !p.favorite(value))
             p.favorites.emplace_back(value);
         if (key == "lyrics_song" && p.songs.size() < kSongLimit * 2)
         {

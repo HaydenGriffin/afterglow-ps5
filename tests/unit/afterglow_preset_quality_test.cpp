@@ -155,6 +155,51 @@ TEST(AfterglowPresetQuality, RoundTripsTheWholeLibraryWithLongNames)
     EXPECT_EQ(PresetQuality::decode(restored.encode()).encode(), restored.encode());
 }
 
+TEST(AfterglowPresetQuality, EncodesNoMoreThanTheNextStartReads)
+{
+    PresetQuality quality;
+    // 1200 records of about a kilobyte: far past both limits.
+    for (int i = 0; i < 1200; ++i)
+    {
+        auto name = "Preset " + std::to_string(1000 + i) + " \"quoted\" ";
+        name.resize(1000, '~');
+        quality.record(name, 60);
+    }
+    quality.begin("still pending");
+    const auto encoded = quality.encode();
+    EXPECT_LE(encoded.size(), 262144U);
+    bool ok = false;
+    const auto restored = PresetQuality::decode(encoded, &ok);
+    EXPECT_TRUE(ok);
+    EXPECT_GT(restored.ratings().size(), 200U);
+    EXPECT_TRUE(restored.ratings().at("still pending").quarantined)
+        << "the checkpoint is never the part left out";
+    EXPECT_EQ(PresetQuality::decode(restored.encode()).encode(), restored.encode());
+
+    PresetQuality many;
+    for (int i = 0; i < 1200; ++i)
+        many.record("P" + std::to_string(i), 60);
+    EXPECT_EQ(PresetQuality::decode(many.encode()).ratings().size(), PresetQuality::kMaxRatings);
+}
+
+TEST(AfterglowPresetQuality, SaysWhenADocumentCouldNotBeRead)
+{
+    bool ok = false;
+    PresetQuality::decode("", &ok);
+    EXPECT_TRUE(ok) << "nothing saved yet";
+    PresetQuality::decode(PresetQuality{}.encode(), &ok);
+    EXPECT_TRUE(ok);
+    PresetQuality::decode("{\"version\":1,\"ratings\":\"rating=nan\"}", &ok);
+    EXPECT_TRUE(ok) << "a bad record is skipped, the document is read";
+    for (const std::string &text :
+         {std::string("not json"), std::string("{\"version\":2}"), std::string(300000, ' ')})
+    {
+        ok = true;
+        EXPECT_TRUE(PresetQuality::decode(text, &ok).ratings().empty());
+        EXPECT_FALSE(ok) << text.substr(0, 20);
+    }
+}
+
 TEST(AfterglowPresetQuality, KeepsAQuarantineThatSortsLast)
 {
     PresetQuality quality;

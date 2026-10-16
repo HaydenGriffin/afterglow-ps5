@@ -103,6 +103,46 @@ class AfterglowPanel : public hui::testing::ConceptFixture
     hui::afterglow::Panel panel_;
 };
 
+TEST_F(AfterglowPanel, MovingTheFocusBuildsNoRows)
+{
+    auto &s = presentation();
+    s.companion.connected = true;
+    for (int i = 0; i < 40; ++i)
+    {
+        const auto id = std::to_string(i);
+        s.companion.upcoming.push_back(track(("Song " + id).c_str(), id.c_str()));
+    }
+    s.companion.queue_total = 40;
+    panel_.open(Page::queue);
+    input(idle());
+    const int built = panel_.rebuilds();
+    for (int i = 0; i < 20; ++i)
+    {
+        auto frame = nav(Direction::down);
+        frame.nav_repeat = i > 0;
+        input(frame);
+    }
+    EXPECT_EQ(panel_.rebuilds(), built) << "a held direction only moves the focus";
+    wait(0.2f);
+    EXPECT_GT(panel_.rebuilds(), built) << "the half-second refresh still runs";
+    const int refreshed = panel_.rebuilds();
+    cross();
+    EXPECT_GT(panel_.rebuilds(), refreshed) << "a button acts on the rows as they are now";
+}
+
+TEST_F(AfterglowPanel, ABrowseAnswerShowsAtOnce)
+{
+    auto &s = presentation();
+    live();
+    panel_.open(Page::browse);
+    s.browse_pending = false;
+    input(idle());
+    deliver({item("Blue Hour", "8", "album")});
+    input(idle());
+    ASSERT_FALSE(panel_.rows().empty());
+    EXPECT_EQ(panel_.rows()[0].item.title, "Blue Hour") << "not half a second later";
+}
+
 TEST_F(AfterglowPanel, QueueOpensPlayersFromPlayingOnAndReturns)
 {
     presentation().companion.connected = true;
@@ -660,6 +700,48 @@ TEST_F(AfterglowPanel, SearchAsksTheKeyboardAndSendsTheQuery)
     EXPECT_EQ(s.browse_request.offset, 0);
 }
 
+TEST_F(AfterglowPanel, HeadingsAreNeverTakenForTheFirstResult)
+{
+    auto &s = presentation();
+    live();
+    panel_.open(Page::browse);
+    input(nav(Direction::up)); // past Continue listening
+    input(nav(Direction::up));
+    cross();
+    type(KeyboardPurpose::search, "light");
+    input(idle());
+    // The song is the first result (tag 0) but sorts last, under its heading.
+    deliver({item("A song", "1", "track"), item("The Band", "2", "artist"),
+             item("A record", "3", "album")});
+    input(idle());
+    down(2); // The Band, A record, A song
+    cross();
+    ASSERT_EQ(panel_.page(), Page::item_actions);
+
+    down(1); // Play next
+    cross();
+    ASSERT_EQ(s.companion_action.option, "next");
+    s.companion_action_pending = false;
+    s.companion.action_done = s.companion_action.id;
+    s.companion.action_done_ok = true;
+    input(idle());
+    input(idle());
+    ASSERT_EQ(panel_.page(), Page::search);
+    int headings = 0;
+    for (const auto &row : panel_.rows())
+    {
+        if (row.item.header)
+        {
+            ++headings;
+            EXPECT_FALSE(row.chosen) << row.item.title;
+            EXPECT_TRUE(row.item.subtitle.empty()) << row.item.title;
+        }
+        else if (row.item.title == "A song")
+            EXPECT_EQ(row.item.subtitle, "Plays next");
+    }
+    EXPECT_EQ(headings, 3);
+}
+
 TEST_F(AfterglowPanel, SearchCancelledOrForAnotherFieldSendsNothing)
 {
     auto &s = presentation();
@@ -954,6 +1036,7 @@ TEST_F(AfterglowPanel, PlayersChooseASpeakerAndToggleItsGroup)
     cross();
     EXPECT_EQ(s.preferences.player, "room");
     down(2); // past the Speakers together heading and the leader to Kitchen
+    EXPECT_STREQ(panel_.select_hint(), "Group");
     cross();
     ASSERT_TRUE(s.companion_action_pending);
     EXPECT_EQ(s.companion_action.kind, CompanionActionKind::group_add);
@@ -962,6 +1045,7 @@ TEST_F(AfterglowPanel, PlayersChooseASpeakerAndToggleItsGroup)
     s.companion_action_pending = false;
     s.companion.players[0].group_members = {"room", "kitchen"};
     input(idle());
+    EXPECT_STREQ(panel_.select_hint(), "Ungroup") << "Kitchen is in the group now";
     cross();
     EXPECT_EQ(s.companion_action.kind, CompanionActionKind::group_remove);
     s.companion_action_pending = false;
@@ -1319,7 +1403,7 @@ TEST_F(AfterglowPanel, SignInAsksAddressNameAndSecretPasswordInTurn)
     input(idle());
     ASSERT_TRUE(s.keyboard_pending);
     EXPECT_EQ(s.keyboard.purpose, KeyboardPurpose::sign_in_username);
-    type(KeyboardPurpose::sign_in_username, "ewa");
+    type(KeyboardPurpose::sign_in_username, "alex");
     input(idle());
     ASSERT_TRUE(s.keyboard_pending);
     EXPECT_EQ(s.keyboard.purpose, KeyboardPurpose::sign_in_password);
@@ -1329,7 +1413,7 @@ TEST_F(AfterglowPanel, SignInAsksAddressNameAndSecretPasswordInTurn)
     input(idle());
     EXPECT_EQ(s.account_command, AccountCommand::sign_in);
     EXPECT_EQ(s.sign_in_host, "music.local");
-    EXPECT_EQ(s.sign_in_username, "ewa");
+    EXPECT_EQ(s.sign_in_username, "alex");
     EXPECT_EQ(s.sign_in_password, " pass word ") << "passwords are taken as typed";
     EXPECT_TRUE(s.keyboard_result.text.empty()) << "the password is not left behind";
     EXPECT_TRUE(panel_.back());

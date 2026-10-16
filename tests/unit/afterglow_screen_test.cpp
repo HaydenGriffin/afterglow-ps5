@@ -98,6 +98,29 @@ TEST_F(AfterglowMain, QuickSeeksAddUpAndTheToastFollowsThem)
     EXPECT_EQ(s.toast, "Back 10 s · 0:50") << "once the report is due, it is the base again";
 }
 
+TEST_F(AfterglowMain, TheKeyThatStopsAPresetScanDoesNothingElse)
+{
+    playing_song();
+    auto &s = presentation();
+    s.milkdrop_texture = 7; // L2/R2 step presets while MilkDrop shows
+    const int display = s.preferences.display_mode, layer = s.preferences.lyrics_layer;
+    for (const auto action : {Action::west, Action::north, Action::jump_next, Action::menu})
+    {
+        s.scanning = true;
+        step(idle());
+        step(press(action));
+        EXPECT_FALSE(s.scanning);
+        EXPECT_EQ(s.toast, "Preset scan stopped");
+        EXPECT_EQ(s.preferences.display_mode, display) << "Square did not cycle the display";
+        EXPECT_EQ(s.preferences.lyrics_layer, layer) << "Triangle did not change the lyrics";
+        EXPECT_EQ(s.command, UiCommand::none) << "R2 did not step the preset";
+    }
+    step(nav(Direction::right));
+    EXPECT_EQ(s.seek_seconds, 10) << "Options did not open the controls";
+    step(press(Action::west));
+    EXPECT_EQ(s.preferences.display_mode, display + 1) << "the next press does its usual job";
+}
+
 TEST_F(AfterglowMain, SeekingALiveStreamExplainsInsteadOfActing)
 {
     playing_song();
