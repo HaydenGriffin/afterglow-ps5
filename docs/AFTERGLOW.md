@@ -102,7 +102,7 @@ The current build includes:
   animation, LG 1.5.0), and the night register dims the poster from 22:00 to
   06:00. With nothing playing, an idle poster offers the paused song or recent
   music.
-- A preset browser, favourites shared with Music Assistant and LG viz-man,
+- A preset browser, favourites shared with Music Assistant and LG Afterglow,
   shuffle or sequential order, preset locking, a change timer, beat
   sensitivity (projectM's and the halo/spectrum beat detector's) and album
   colour that recolours each preset's waveform, border and motion-vector slots.
@@ -548,7 +548,7 @@ to investigate, not proof that a buffer-size increase alone will fix the issue.
 
 Album colour rewrites each preset's waveform, outer/inner border and
 motion-vector base colours in the preset text before projectM loads it, as LG
-viz-man recolours those slots: the artwork hue at the preset's own brightness,
+Afterglow recolours those slots: the artwork hue at the preset's own brightness,
 wide borders (over 0.05) keep their colour, blended by the 25-100 % strength.
 LG fills the slots from Music Assistant palette roles; the PS5 has two artwork
 colours, so the accent takes the waveform and inner border and the secondary
