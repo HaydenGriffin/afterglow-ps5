@@ -4,6 +4,7 @@
 
 #include "afterglow/panel.hpp"
 #include "afterglow/lyric_overlay.hpp"
+#include "afterglow/share_link.hpp"
 #include "afterglow/speakers.hpp"
 #include "afterglow/style.hpp"
 #include "afterglow/version.hpp"
@@ -89,6 +90,8 @@ constexpr float kStatusLabelColumn = 320;
 constexpr float kLyricsListTop = 400;
 constexpr float kFigureHeight = 190;
 constexpr float kQueueThumbnail = 56;
+// Between the facts and the Scan to save code (LG's 2.5vw gutter).
+constexpr float kShareGap = 48;
 
 // Browse covers the screen: LG's 9vh title, categories in grid columns 1-3,
 // the collection or an item's actions in columns 4-12.
@@ -411,7 +414,7 @@ struct Rows
 };
 
 void draw_facts(ui::Canvas &canvas, const std::vector<std::pair<std::string, std::string>> &facts,
-                float top, float column, float row)
+                float top, float column, float row, float right = kRight)
 {
     auto &list = canvas.list;
     const auto &font = canvas.fonts.semibold;
@@ -423,9 +426,9 @@ void draw_facts(ui::Canvas &canvas, const std::vector<std::pair<std::string, std
         ui::text(list, font, font.font->fit(facts[i].first, style::kTypeMin, column - 16), kLeft,
                  y + label, style::kTypeMin, style::kMuted);
         ui::text(list, font,
-                 font.font->fit(facts[i].second, style::kTypeLabel, kRight - kLeft - column),
+                 font.font->fit(facts[i].second, style::kTypeLabel, right - kLeft - column),
                  kLeft + column, y + value, style::kTypeLabel, style::kPaper);
-        list.rounded_rect({kLeft, y + row - 2, kRight - kLeft, 2}, 0, style::kRule);
+        list.rounded_rect({kLeft, y + row - 2, right - kLeft, 2}, 0, style::kRule);
     }
 }
 
@@ -711,6 +714,9 @@ float Panel::list_top() const
     if (page_ == Page::lyrics_timing)
         return kLyricsListTop;
     const float top = rule_y() + 12;
+    if (page_ == Page::details && !share_link().url.empty())
+        return top + std::max(fact_row() * static_cast<float>(facts().size()), kShareBlockHeight) +
+               24;
     if (page_ == Page::details || page_ == Page::account)
         return top + fact_row() * static_cast<float>(facts().size()) + 24;
     if (page_ == Page::sync)
@@ -2220,6 +2226,31 @@ void Panel::draw_sync_figure(ui::Canvas &canvas, float top) const
     ui::text(list, fonts.semibold, label, label_x, axis - 44, style::kTypeLabel, style::kPaper);
 }
 
+// Scan to save: the playing song's public page, or empty.
+ShareLink Panel::share_link() const
+{
+    const auto &track = presentation().companion.track;
+    ShareLink link;
+    link.url = track.share_url;
+    link.service = track.share_service;
+    return link;
+}
+
+// Details with a Scan to save code: the facts stop short of it, and the code
+// (encoded once per url) stands at the right, level with the first fact.
+void Panel::draw_share_details(ui::Canvas &canvas, float rule) const
+{
+    const auto link = share_link();
+    if (link.url != share_url_)
+    {
+        share_url_ = link.url;
+        share_grid_ = qr_grid(link.url);
+    }
+    draw_facts(canvas, facts(), rule + 12, kDetailsLabelColumn, fact_row(),
+               kRight - kShareCodeSize - kShareGap);
+    draw_share_block(canvas, link, share_grid_, kRight, rule + 24);
+}
+
 gfx::Rect Panel::home_area() const
 {
     const float x = home_.covers_screen() ? kBrowseLeft : kLeft;
@@ -2263,7 +2294,9 @@ void Panel::draw_sheet(ui::Canvas &canvas) const
     const float rule = rule_y();
     list.rounded_rect({kLeft, rule, width, 2}, 0, style::kRule);
 
-    if (page_ == Page::details || page_ == Page::account)
+    if (page_ == Page::details && !share_link().url.empty())
+        draw_share_details(canvas, rule);
+    else if (page_ == Page::details || page_ == Page::account)
         draw_facts(canvas, facts(), rule + 12, kDetailsLabelColumn, fact_row());
     else if (page_ == Page::status)
         draw_facts(canvas, facts(), rule + 12, kStatusLabelColumn, fact_row());

@@ -52,6 +52,8 @@ struct CompanionTrack
     // lyrics_request numbers the request that answered (lyrics_lookup.hpp MaLyrics).
     int lyrics_reply = 0;
     std::uint64_t lyrics_request = 0;
+    // Scan to save (share_link.hpp): the song's public page and its service, or empty.
+    std::string share_url, share_service;
 };
 enum class BrowseCategory
 {

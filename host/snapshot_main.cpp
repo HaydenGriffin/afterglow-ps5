@@ -450,6 +450,9 @@ int main(int argc, char **argv)
         model.companion.track.uri = "library://track/7";
         model.companion.track.media_type = "track";
         model.companion.track.artwork = "preview:now-playing";
+        // Scan to save in Details: an invented page, never fetched.
+        model.companion.track.share_url = "https://open.spotify.com/track/afterglowdemo0001";
+        model.companion.track.share_service = "Spotify";
         model.companion.playing = true;
         model.companion.queue_state = "playing";
         model.companion.queue_id = "preview-room";
