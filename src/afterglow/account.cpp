@@ -17,6 +17,7 @@
 #include <netinet/in.h>
 #include <poll.h>
 #include <sys/socket.h>
+#include <utility>
 
 namespace hui::afterglow
 {
@@ -257,11 +258,13 @@ std::string token_name(std::string_view client_id)
 }
 std::string encode_auth(const StoredAuth &auth)
 {
-    if (!clean(auth.host) || !clean(auth.username) || !clean(auth.token) || !clean(auth.token_name))
+    if (!clean(auth.host) || !clean(auth.username) || !clean(auth.token) ||
+        !clean(auth.token_name) || !clean(auth.token_id))
         return {};
     return "host=" + auth.host + "\nport=" + std::to_string(auth.port) +
            "\nusername=" + auth.username + "\ntoken=" + auth.token +
-           "\ntoken_name=" + auth.token_name + "\n";
+           "\ntoken_name=" + auth.token_name +
+           (auth.token_id.empty() ? "" : "\ntoken_id=" + auth.token_id) + "\n";
 }
 StoredAuth decode_auth(std::string_view text)
 {
@@ -284,6 +287,8 @@ StoredAuth decode_auth(std::string_view text)
             auth.token = value;
         else if (key == "token_name" && value.size() <= 256)
             auth.token_name = value;
+        else if (key == "token_id" && value.size() <= 256)
+            auth.token_id = value;
         else if (key == "port")
         {
             unsigned int port = 0;
@@ -504,32 +509,73 @@ std::vector<std::string> named_tokens(const std::vector<Token> &tokens, std::str
             ids.push_back(token.id);
     return ids;
 }
-std::vector<std::string> superseded_tokens(const std::vector<Token> &tokens, std::string_view name)
+std::string newest_token(const std::vector<Token> &tokens, std::string_view name)
 {
-    std::vector<const Token *> ours;
+    const Token *newest = nullptr;
     for (const auto &token : tokens)
-        if (token.name == name && token.long_lived)
-            ours.push_back(&token);
-    // The list carries no token text, so the newest is taken to be the fresh one.
-    std::stable_sort(ours.begin(), ours.end(), [](const Token *a, const Token *b)
-                     { return parse_time_ms(a->created_at) > parse_time_ms(b->created_at); });
+        if (token.name == name && token.long_lived &&
+            (newest == nullptr ||
+             parse_time_ms(token.created_at) > parse_time_ms(newest->created_at)))
+            newest = &token;
+    return newest == nullptr ? std::string{} : newest->id;
+}
+std::vector<std::string> own_tokens(const std::vector<Token> &tokens, std::string_view name,
+                                    std::string_view id)
+{
+    if (id.empty())
+        return named_tokens(tokens, name);
     std::vector<std::string> ids;
-    for (std::size_t i = 1; i < ours.size(); ++i)
-        ids.push_back(ours[i]->id);
+    for (const auto &token : tokens)
+        if (token.id == id)
+            ids.push_back(token.id);
     return ids;
 }
-bool needs_renewal(const std::vector<Token> &tokens, std::string_view name, std::int64_t now)
+std::vector<std::string> superseded_tokens(const std::vector<Token> &tokens, std::string_view name,
+                                           std::string_view old_id, std::string_view fresh_id)
 {
+    std::int64_t fresh_at = 0;
+    for (const auto &token : tokens)
+        if (token.id == fresh_id)
+            fresh_at = parse_time_ms(token.created_at);
+    std::vector<std::string> ids;
+    if (fresh_id.empty())
+        return ids; // the fresh token was not found: nothing can be told apart from it
+    for (const auto &token : tokens)
+    {
+        if (token.id == fresh_id)
+            continue;
+        if (old_id.empty() ? token.name == name && token.long_lived &&
+                                 parse_time_ms(token.created_at) < fresh_at
+                           : token.id == old_id)
+            ids.push_back(token.id);
+    }
+    return ids;
+}
+bool needs_renewal(const std::vector<Token> &tokens, std::string_view name, std::string_view id,
+                   std::int64_t now)
+{
+    bool by_id = false;
+    for (const auto &token : tokens)
+        by_id = by_id || (!id.empty() && token.id == id);
     std::int64_t soonest = 0;
     for (const auto &token : tokens)
-        if (token.name == name && token.long_lived && token.expires_ms > 0 &&
-            (soonest == 0 || token.expires_ms < soonest))
+        if ((by_id ? token.id == id : token.name == name && token.long_lived) &&
+            token.expires_ms > 0 && (soonest == 0 || token.expires_ms < soonest))
             soonest = token.expires_ms;
     return soonest != 0 && soonest - now <= kRenewWithinMs;
 }
 
+Replaces replaces_for(const StoredAuth &stored, const StoredAuth &target)
+{
+    Replaces replaces;
+    if (!stored.valid() || stored.host != target.host || stored.port != target.port)
+        return replaces;
+    replaces.token_id = stored.token_id;
+    replaces.by_name = stored.token_id.empty();
+    return replaces;
+}
 Outcome sign_in(const Call &call, const std::string &username, const std::string &password,
-                const std::string &token_name)
+                const std::string &token_name, const Replaces &replaces)
 {
     Outcome outcome;
     const auto login = call("auth/login", "{\"username\":" + json_quote(username) +
@@ -548,8 +594,9 @@ Outcome sign_in(const Call &call, const std::string &username, const std::string
         outcome.message = "Music Assistant did not accept the new session";
         return outcome;
     }
-    // Taken before the new token exists, so revoking these never revokes it.
-    const auto superseded = long_lived_tokens(list_tokens(call), token_name);
+    // Taken before the new token exists, so retiring these never retires it.
+    const auto superseded = replaces.by_name ? long_lived_tokens(list_tokens(call), token_name)
+                                             : std::vector<std::string>{};
     const auto created = call("auth/token/create", "{\"name\":" + json_quote(token_name) + "}");
     outcome.token = created.ok ? string_value(created.result) : std::string{};
     if (outcome.token.empty())
@@ -558,11 +605,15 @@ Outcome sign_in(const Call &call, const std::string &username, const std::string
                                                 : "Token not created: " + created.error;
         return outcome;
     }
-    // The login's session token and this console's earlier long-lived tokens
-    // are revoked, so the account shows one token per console. Failure is
-    // harmless: session tokens expire, and a later sign-in tries again.
-    revoke(call, session_tokens(list_tokens(call), token_name));
-    revoke(call, superseded);
+    // The login's session token is revoked now, so the account shows one token
+    // per console. Failure is harmless: session tokens expire on their own.
+    const auto tokens = list_tokens(call);
+    outcome.token_id = newest_token(tokens, token_name);
+    revoke(call, session_tokens(tokens, token_name));
+    // The sign-in this one replaces is retired once the app runs on the new token.
+    outcome.retire = superseded;
+    if (!replaces.token_id.empty() && replaces.token_id != outcome.token_id)
+        outcome.retire.push_back(replaces.token_id);
     outcome.ok = outcome.token_changed = true;
     outcome.username = text_field(field(login.result, "user"), "username");
     if (outcome.username.empty())
@@ -570,7 +621,8 @@ Outcome sign_in(const Call &call, const std::string &username, const std::string
     outcome.message = "Signed in as " + outcome.username;
     return outcome;
 }
-Outcome log_out(const Call &call, const std::string &token, const std::string &token_name)
+Outcome log_out(const Call &call, const std::string &token, const std::string &token_name,
+                const std::string &token_id)
 {
     Outcome outcome;
     // Forgotten here whatever happens; the message says what the account still holds.
@@ -588,21 +640,22 @@ Outcome log_out(const Call &call, const std::string &token, const std::string &t
                           reply.error + "). Remove it in Music Assistant's settings.";
         return outcome;
     }
-    revoke(call, named_tokens(decode_tokens(reply.result), token_name));
+    revoke(call, own_tokens(decode_tokens(reply.result), token_name, token_id));
     outcome.message = "Signed out. This PS5's token was removed from the account.";
     return outcome;
 }
 Outcome renew(const Call &call, const std::string &token, const std::string &token_name,
-              std::int64_t now)
+              const std::string &token_id, std::int64_t now)
 {
     Outcome outcome;
     outcome.token = token;
+    outcome.token_id = token_id;
     if (!authenticated(call("auth", token_args(token))))
     {
         outcome.message = "Token check: Music Assistant refused this PS5's token";
         return outcome;
     }
-    if (!needs_renewal(list_tokens(call), token_name, now))
+    if (!needs_renewal(list_tokens(call), token_name, token_id, now))
     {
         outcome.ok = true;
         return outcome;
@@ -614,10 +667,31 @@ Outcome renew(const Call &call, const std::string &token, const std::string &tok
         outcome.message = "Token renewal failed";
         return outcome;
     }
-    revoke(call, superseded_tokens(list_tokens(call), token_name));
+    const auto tokens = list_tokens(call);
+    const auto fresh_id = newest_token(tokens, token_name);
     outcome.ok = outcome.token_changed = true;
     outcome.token = fresh;
+    outcome.token_id = fresh_id;
+    outcome.retire = superseded_tokens(tokens, token_name, token_id, fresh_id);
     outcome.message = "Token renewed";
+    return outcome;
+}
+Outcome retire(const Call &call, const std::string &token, const std::vector<std::string> &ids)
+{
+    Outcome outcome;
+    outcome.token = token;
+    if (!authenticated(call("auth", token_args(token))))
+    {
+        outcome.message = "Old token not removed: Music Assistant refused this PS5's token";
+        return outcome;
+    }
+    for (const auto &id : ids)
+        if (!call("auth/token/revoke", "{\"token_id\":" + json_quote(id) + "}").ok)
+        {
+            outcome.message = "Old token not removed; it expires on its own";
+            return outcome;
+        }
+    outcome.ok = true;
     return outcome;
 }
 } // namespace account_wire
@@ -630,8 +704,15 @@ Account::~Account()
     stop();
     join();
 }
-bool Account::sign_in(const StoredAuth &target, std::string password)
+bool Account::sign_in(const StoredAuth &target, std::string password,
+                      account_wire::Replaces replaces)
 {
+    if (busy())
+        return false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        replaces_ = std::move(replaces);
+    }
     return begin(AccountJob::sign_in, target, std::move(password));
 }
 bool Account::log_out(const StoredAuth &current)
@@ -641,6 +722,16 @@ bool Account::log_out(const StoredAuth &current)
 bool Account::renew(const StoredAuth &current)
 {
     return begin(AccountJob::renew, current, {});
+}
+bool Account::retire(const StoredAuth &current, std::vector<std::string> ids)
+{
+    if (busy() || ids.empty())
+        return false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        retire_ = std::move(ids);
+    }
+    return begin(AccountJob::retire, current, {});
 }
 bool Account::busy() const
 {
@@ -712,11 +803,15 @@ void Account::run()
     AccountJob job;
     StoredAuth auth;
     std::string password;
+    account_wire::Replaces replaces;
+    std::vector<std::string> retiring;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         job = job_;
         auth = auth_;
         password.swap(password_);
+        replaces = std::exchange(replaces_, {});
+        retiring.swap(retire_);
     }
     AccountResult result;
     result.job = job;
@@ -729,11 +824,11 @@ void Account::run()
     if (!open && job != AccountJob::log_out)
         outcome.message = "Could not connect to Music Assistant at " + auth.host;
     else if (job == AccountJob::sign_in)
-        outcome = account_wire::sign_in(call, auth.username, password, auth.token_name);
+        outcome = account_wire::sign_in(call, auth.username, password, auth.token_name, replaces);
     else if (job == AccountJob::log_out)
     {
         if (open)
-            outcome = account_wire::log_out(call, auth.token, auth.token_name);
+            outcome = account_wire::log_out(call, auth.token, auth.token_name, auth.token_id);
         else
         {
             outcome.ok = true;
@@ -743,11 +838,14 @@ void Account::run()
         }
     }
     else if (job == AccountJob::renew)
-        outcome = account_wire::renew(call, auth.token, auth.token_name, now_ms());
+        outcome = account_wire::renew(call, auth.token, auth.token_name, auth.token_id, now_ms());
+    else if (job == AccountJob::retire)
+        outcome = account_wire::retire(call, auth.token, retiring);
     password.assign(password.size(), '\0');
     result.ok = outcome.ok;
     result.token_changed = outcome.token_changed;
     result.message = outcome.message;
+    result.retire = std::move(outcome.retire);
     if (job == AccountJob::log_out)
     {
         result.auth = {};
@@ -758,6 +856,7 @@ void Account::run()
     else if (outcome.ok && outcome.token_changed)
     {
         result.auth.token = outcome.token;
+        result.auth.token_id = outcome.token_id;
         if (!outcome.username.empty())
             result.auth.username = outcome.username;
         const auto error = account_wire::save_auth(path_, result.auth);

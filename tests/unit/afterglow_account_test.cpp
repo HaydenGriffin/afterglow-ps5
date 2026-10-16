@@ -5,6 +5,7 @@
 #include "afterglow/account.hpp"
 #include "afterglow/protocol.hpp"
 #include <cstdio>
+#include <deque>
 #include <gtest/gtest.h>
 #include <map>
 #include <unistd.h>
@@ -18,15 +19,28 @@ namespace
 struct FakeServer
 {
     std::map<std::string, account_wire::Reply> replies;
+    // Answers used once each, in order, before `replies` (a list that changes).
+    std::map<std::string, std::deque<account_wire::Reply>> once;
     std::vector<std::pair<std::string, std::string>> requests;
     account_wire::Call call()
     {
         return [this](const std::string &command, const std::string &args)
         {
             requests.emplace_back(command, args);
+            auto &queued = once[command];
+            if (!queued.empty())
+            {
+                const auto reply = queued.front();
+                queued.pop_front();
+                return reply;
+            }
             const auto it = replies.find(command);
             return it == replies.end() ? account_wire::Reply{false, {}, "unknown"} : it->second;
         };
+    }
+    void answer_once(const std::string &command, const std::string &result)
+    {
+        once[command].push_back({true, result, {}});
     }
     std::vector<std::string> revoked() const
     {
@@ -71,6 +85,9 @@ TEST(AfterglowAccount, TokenNameAndStoredAuthRoundTrip)
     EXPECT_EQ(decoded.username, "hayden");
     EXPECT_EQ(decoded.token, "abc.def");
     EXPECT_EQ(decoded.token_name, kName);
+    EXPECT_TRUE(decoded.token_id.empty()) << "a sign-in saved before ids were kept";
+    auth.token_id = "id-1";
+    EXPECT_EQ(account_wire::decode_auth(account_wire::encode_auth(auth)).token_id, "id-1");
     auth.token = "bad\ntoken";
     EXPECT_TRUE(account_wire::encode_auth(auth).empty());
     EXPECT_FALSE(account_wire::decode_auth("host=not-an-ip\ntoken=x\ntoken_name=n\n").valid());
@@ -186,32 +203,91 @@ TEST(AfterglowAccount, TokenSelectionsMatchTheLgApp)
     EXPECT_EQ(account_wire::session_tokens(tokens, kName), std::vector<std::string>{"session"});
     EXPECT_EQ(account_wire::named_tokens(tokens, kName),
               (std::vector<std::string>{"old", "new", "session"}));
-    EXPECT_EQ(account_wire::superseded_tokens(tokens, kName), std::vector<std::string>{"old"});
     EXPECT_EQ(account_wire::long_lived_tokens(tokens, kName),
               (std::vector<std::string>{"old", "new"}));
+    EXPECT_EQ(account_wire::newest_token(tokens, kName), "new");
+    EXPECT_EQ(account_wire::newest_token(tokens, "Nobody"), "");
+    // Renewal retires the old token by id, else the older ones in the name; never the fresh one.
+    EXPECT_EQ(account_wire::superseded_tokens(tokens, kName, "old", "new"),
+              std::vector<std::string>{"old"});
+    EXPECT_EQ(account_wire::superseded_tokens(tokens, kName, "", "new"),
+              std::vector<std::string>{"old"});
+    EXPECT_TRUE(account_wire::superseded_tokens(tokens, kName, "new", "new").empty());
+    EXPECT_TRUE(account_wire::superseded_tokens(tokens, kName, "", "").empty())
+        << "without the fresh token's id nothing can be told apart from it";
+    // Log out: our own token by id; every token in the name only without one.
+    EXPECT_EQ(account_wire::own_tokens(tokens, kName, "new"), std::vector<std::string>{"new"});
+    EXPECT_TRUE(account_wire::own_tokens(tokens, kName, "gone").empty());
+    EXPECT_EQ(account_wire::own_tokens(tokens, kName, ""),
+              (std::vector<std::string>{"old", "new", "session"}));
     const auto now = account_wire::parse_time_ms("2026-10-15T00:00:00Z");
     // "old" ends 17 days from now: inside the 30-day window.
-    EXPECT_TRUE(account_wire::needs_renewal(tokens, kName, now));
+    EXPECT_TRUE(account_wire::needs_renewal(tokens, kName, "", now));
+    EXPECT_TRUE(account_wire::needs_renewal(tokens, kName, "old", now));
+    EXPECT_FALSE(account_wire::needs_renewal(tokens, kName, "new", now))
+        << "a namesake's expiry is not ours";
+    EXPECT_TRUE(account_wire::needs_renewal(tokens, kName, "unlisted", now))
+        << "an id the list does not show falls back to the name";
     std::vector<account_wire::Token> fresh(tokens.begin() + 1, tokens.end());
-    EXPECT_FALSE(account_wire::needs_renewal(fresh, kName, now));
-    EXPECT_FALSE(account_wire::needs_renewal(tokens, "viz-man on Living Room C1", now));
+    EXPECT_FALSE(account_wire::needs_renewal(fresh, kName, "", now));
+    EXPECT_FALSE(account_wire::needs_renewal(tokens, "viz-man on Living Room C1", "", now));
 }
 
-TEST(AfterglowAccount, SignInCreatesNamedTokenAndRevokesSessionAndSupersededTokens)
+TEST(AfterglowAccount, SignInReplacesOnlyTheStoredSignInOnTheSameServer)
+{
+    StoredAuth stored;
+    stored.host = "10.0.0.2";
+    stored.port = 8095;
+    stored.token = "t";
+    stored.token_name = kName;
+    stored.token_id = "mine";
+    StoredAuth target = stored;
+    target.token.clear();
+    auto replaces = account_wire::replaces_for(stored, target);
+    EXPECT_EQ(replaces.token_id, "mine");
+    EXPECT_FALSE(replaces.by_name);
+    stored.token_id.clear();
+    replaces = account_wire::replaces_for(stored, target);
+    EXPECT_TRUE(replaces.token_id.empty());
+    EXPECT_TRUE(replaces.by_name) << "saved before ids were kept: the name stands in";
+    target.host = "10.0.0.3";
+    replaces = account_wire::replaces_for(stored, target);
+    EXPECT_TRUE(replaces.token_id.empty());
+    EXPECT_FALSE(replaces.by_name) << "another server's tokens are not this sign-in's";
+    EXPECT_FALSE(account_wire::replaces_for(StoredAuth{}, target).by_name);
+}
+
+// The account as one console sees it while signing in: its session token,
+// the token it is replacing and a namesake of another device. lists_first:
+// the sign-in reads the list once before its token exists.
+FakeServer signing_in(bool lists_first = false)
 {
     FakeServer server;
     server.answer("auth/login", "{\"success\":true,\"access_token\":\"session-token\","
                                 "\"user\":{\"username\":\"Hayden\"}}");
     server.answer("auth", "{\"authenticated\":true}");
     server.answer("auth/token/create", "\"long-lived\"");
+    const std::string before =
+        token_json("s1", kName, false, "2026-10-15T00:00:00Z", nullptr) + "," +
+        token_json("old", kName, true, "2026-01-15T00:00:01Z", nullptr) + "," +
+        token_json("twin", kName, true, "2026-02-15T00:00:01Z", nullptr);
+    if (lists_first)
+        server.answer_once("auth/tokens", "[" + before + "]");
     server.answer("auth/tokens",
-                  "[" + token_json("s1", kName, false, "2026-10-15T00:00:00Z", nullptr) + "," +
-                      token_json("old", kName, true, "2026-01-15T00:00:01Z", nullptr) + "]");
+                  "[" + before + "," +
+                      token_json("made", kName, true, "2026-10-15T00:00:02Z", nullptr) + "]");
     server.answer("auth/token/revoke", "null");
+    return server;
+}
+
+TEST(AfterglowAccount, SignInCreatesNamedTokenAndRevokesOnlyTheSessionToken)
+{
+    FakeServer server = signing_in();
     const auto outcome = account_wire::sign_in(server.call(), "hayden", "p\"w", kName);
     EXPECT_TRUE(outcome.ok);
     EXPECT_TRUE(outcome.token_changed);
     EXPECT_EQ(outcome.token, "long-lived");
+    EXPECT_EQ(outcome.token_id, "made") << "the newest long-lived token in the name";
     EXPECT_EQ(outcome.username, "Hayden");
     ASSERT_GE(server.requests.size(), 4u);
     Json login(server.requests[0].second);
@@ -220,12 +296,34 @@ TEST(AfterglowAccount, SignInCreatesNamedTokenAndRevokesSessionAndSupersededToke
     EXPECT_EQ(login.string(login.get(0, "device_name")), kName);
     Json auth(server.requests[1].second);
     EXPECT_EQ(auth.string(auth.get(0, "token")), "session-token");
-    // The earlier long-lived tokens are listed before the new one exists.
-    EXPECT_EQ(server.requests[2].first, "auth/tokens");
-    EXPECT_EQ(server.requests[3].first, "auth/token/create");
-    Json create(server.requests[3].second);
+    EXPECT_EQ(server.requests[2].first, "auth/token/create");
+    Json create(server.requests[2].second);
     EXPECT_EQ(create.string(create.get(0, "name")), kName);
-    EXPECT_EQ(server.revoked(), (std::vector<std::string>{"s1", "old"}));
+    // A first sign-in leaves every namesake alone: another device may share the name.
+    EXPECT_EQ(server.revoked(), std::vector<std::string>{"s1"});
+    EXPECT_TRUE(outcome.retire.empty());
+}
+
+TEST(AfterglowAccount, SignInAgainRetiresTheReplacedTokenAfterTheHandOver)
+{
+    FakeServer server = signing_in();
+    account_wire::Replaces replaces;
+    replaces.token_id = "old";
+    auto outcome = account_wire::sign_in(server.call(), "hayden", "pw", kName, replaces);
+    EXPECT_TRUE(outcome.ok);
+    EXPECT_EQ(server.revoked(), std::vector<std::string>{"s1"}) << "nothing else revoked yet";
+    EXPECT_EQ(outcome.retire, std::vector<std::string>{"old"});
+
+    // A sign-in saved before ids were kept: its name's long-lived tokens,
+    // listed before the new one existed, so never the new one.
+    FakeServer legacy = signing_in(true);
+    replaces = {};
+    replaces.by_name = true;
+    outcome = account_wire::sign_in(legacy.call(), "hayden", "pw", kName, replaces);
+    EXPECT_EQ(legacy.requests[2].first, "auth/tokens");
+    EXPECT_EQ(legacy.requests[3].first, "auth/token/create");
+    EXPECT_EQ(outcome.retire, (std::vector<std::string>{"old", "twin"}));
+    EXPECT_EQ(outcome.token_id, "made");
 }
 
 TEST(AfterglowAccount, SignInReportsLoginErrors)
@@ -247,54 +345,79 @@ TEST(AfterglowAccount, SignInReportsLoginErrors)
     EXPECT_TRUE(outcome.token.empty());
 }
 
-TEST(AfterglowAccount, LogOutRevokesEveryTokenInThisName)
+TEST(AfterglowAccount, LogOutRevokesOnlyThisConsolesOwnToken)
 {
     FakeServer server;
     server.answer("auth", "{\"authenticated\":true}");
     server.answer("auth/tokens",
                   "[" + token_json("a", kName, true, "2026-01-01T00:00:00Z", nullptr) + "," +
                       token_json("b", "Other", true, "2026-01-01T00:00:00Z", nullptr) + "," +
-                      token_json("c", kName, false, "2026-01-01T00:00:00Z", nullptr) + "]");
+                      token_json("c", kName, false, "2026-01-01T00:00:00Z", nullptr) + "," +
+                      token_json("twin", kName, true, "2026-01-02T00:00:00Z", nullptr) + "]");
     server.answer("auth/token/revoke", "null");
-    auto outcome = account_wire::log_out(server.call(), "mine", kName);
+    auto outcome = account_wire::log_out(server.call(), "mine", kName, "a");
     EXPECT_TRUE(outcome.ok);
-    EXPECT_EQ(server.revoked(), (std::vector<std::string>{"a", "c"}));
+    EXPECT_EQ(server.revoked(), std::vector<std::string>{"a"}) << "the namesake survives";
+    // A sign-in saved before ids were kept removes every token in its name.
+    FakeServer legacy;
+    legacy.replies = server.replies;
+    outcome = account_wire::log_out(legacy.call(), "mine", kName, "");
+    EXPECT_EQ(legacy.revoked(), (std::vector<std::string>{"a", "c", "twin"}));
     FakeServer refused;
     refused.answer("auth", "{\"authenticated\":false}");
-    outcome = account_wire::log_out(refused.call(), "mine", kName);
+    outcome = account_wire::log_out(refused.call(), "mine", kName, "a");
     EXPECT_TRUE(outcome.ok) << "forgotten locally even when the server refuses";
     EXPECT_NE(outcome.message.find(kName), std::string::npos);
     EXPECT_TRUE(refused.revoked().empty());
 }
 
-TEST(AfterglowAccount, RenewalOnlyWithinThirtyDaysAndRevokesOlder)
+TEST(AfterglowAccount, RenewalOnlyWithinThirtyDaysAndRetiresTheOldTokenAfterTheHandOver)
 {
     const auto now = account_wire::parse_time_ms("2026-10-15T00:00:00Z");
     FakeServer later;
     later.answer("auth", "{\"authenticated\":true}");
     later.answer(
         "auth/tokens",
-        "[" + token_json("a", kName, true, "2026-01-01T00:00:00Z", "2027-01-01T00:00:00Z") + "]");
-    auto outcome = account_wire::renew(later.call(), "mine", kName, now);
+        "[" + token_json("a", kName, true, "2026-01-01T00:00:00Z", "2027-01-01T00:00:00Z") + "," +
+            token_json("twin", kName, true, "2026-01-01T00:00:00Z", "2026-10-20T00:00:00Z") + "]");
+    auto outcome = account_wire::renew(later.call(), "mine", kName, "a", now);
     EXPECT_TRUE(outcome.ok);
-    EXPECT_FALSE(outcome.token_changed);
+    EXPECT_FALSE(outcome.token_changed) << "a namesake near expiry is not ours to renew";
     EXPECT_EQ(outcome.token, "mine");
+    EXPECT_EQ(outcome.token_id, "a");
     for (const auto &request : later.requests)
         EXPECT_NE(request.first, "auth/token/create");
 
     FakeServer soon;
     soon.answer("auth", "{\"authenticated\":true}");
-    soon.answer(
-        "auth/tokens",
-        "[" + token_json("old", kName, true, "2026-01-01T00:00:00Z", "2026-11-01T00:00:00Z") + "," +
-            token_json("fresh", kName, true, "2026-10-15T00:00:00Z", "2027-10-15T00:00:00Z") + "]");
+    const std::string before =
+        token_json("old", kName, true, "2026-01-01T00:00:00Z", "2026-11-01T00:00:00Z") + "," +
+        token_json("twin", kName, true, "2026-02-01T00:00:00Z", "2027-02-01T00:00:00Z");
+    soon.answer_once("auth/tokens", "[" + before + "]");
+    soon.answer("auth/tokens", "[" + before + "," +
+                                   token_json("fresh", kName, true, "2026-10-15T00:00:00Z",
+                                              "2027-10-15T00:00:00Z") +
+                                   "]");
     soon.answer("auth/token/create", "\"fresh-token\"");
     soon.answer("auth/token/revoke", "null");
-    outcome = account_wire::renew(soon.call(), "mine", kName, now);
+    outcome = account_wire::renew(soon.call(), "mine", kName, "old", now);
     EXPECT_TRUE(outcome.ok);
     EXPECT_TRUE(outcome.token_changed);
     EXPECT_EQ(outcome.token, "fresh-token");
+    EXPECT_EQ(outcome.token_id, "fresh");
+    EXPECT_TRUE(soon.revoked().empty()) << "nothing is revoked before the hand-over";
+    EXPECT_EQ(outcome.retire, std::vector<std::string>{"old"}) << "by id: the twin survives";
+    // After the hand-over: signed in with the fresh token, the old one goes.
+    soon.requests.clear();
+    const auto retired = account_wire::retire(soon.call(), "fresh-token", outcome.retire);
+    EXPECT_TRUE(retired.ok);
+    Json auth(soon.requests[0].second);
+    EXPECT_EQ(auth.string(auth.get(0, "token")), "fresh-token");
     EXPECT_EQ(soon.revoked(), std::vector<std::string>{"old"});
+    FakeServer refused;
+    refused.answer("auth", "{\"authenticated\":false}");
+    EXPECT_FALSE(account_wire::retire(refused.call(), "fresh-token", {"old"}).ok);
+    EXPECT_TRUE(refused.revoked().empty());
 }
 
 TEST(AfterglowAccount, AccountWorkerReportsUnreachableServer)
