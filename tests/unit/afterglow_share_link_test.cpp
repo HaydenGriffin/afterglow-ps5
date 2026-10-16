@@ -70,7 +70,7 @@ TEST(AfterglowShareLink, NoPublicLinkMeansNothingToShow)
         pick_share_link({link("plex", "plex--a", "https://plex.example/library/1")}, "plex--a")
             .url.empty());
     EXPECT_TRUE(
-        pick_share_link({link("spotify", "spotify--a", "http://192.168.0.9/track")}, "spotify--a")
+        pick_share_link({link("spotify", "spotify--a", "http://music.local/track")}, "spotify--a")
             .url.empty());
 }
 
