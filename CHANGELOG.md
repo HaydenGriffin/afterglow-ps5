@@ -6,24 +6,34 @@ checked on a PC only (unit tests, mock servers and the off-screen preview).
 
 # 1.6.0 — First public release (unreleased)
 
-<!-- TODO(owner): correct this section after the lane merge; it lists what the round set out to build. If the
-     46 texture presets ship, add them here and update the preset counts in README.md and docs/install.md. -->
+Built and tested on a PC; not yet installed on a console.
 
-- **Lyrics from Music Assistant, with an online fallback.** When Music Assistant has none, the PS5 looks the song
-  up on [LRCLIB](https://lrclib.net) itself. **Online lyrics** (on by default, synced) turns that off; **Retry
-  lyrics** asks again after a failed or empty lookup; **Lyrics timing** moves the words up to 10 s earlier or later.
+- **Lyrics from Music Assistant, with an online fallback.** When Music Assistant has none (or errs, or takes more
+  than 5 s), the PS5 searches [LRCLIB](https://lrclib.net) itself over HTTPS (BearSSL, certificates checked
+  against the console's own CA list), sending only the song's title and first artist. Settings → **Lyrics** holds
+  **Online lyrics** (on by default), **Retry lyrics** after a failed or empty lookup, and **Lyrics timing** up to
+  10 s earlier or later in 100 ms steps with **Reset lyrics timing**.
+- A positive LRC `[offset:]` now brings lyrics sooner, as the format defines.
 - **Commands go to the right speaker.** Browse, the idle poster and the controls act on a command target: the
   chosen speaker, else the one followed, else the last one, else this PS5. Play now works with nothing playing.
-- **Play on moves the music.** Picking an idle speaker under **Playing on** moves the music there, and **Play on
-  this PS5** brings it back to the console.
+- **Play on moves the music.** Picking a silent speaker under **Playing on** moves the music there, and **Play on
+  this PS5** brings it to the console. **Speakers together** lists sync groups and explains refusals.
 - **Idle poster.** With nothing playing, the paused song or recent music is set as a poster, one press away from
-  playing.
-- Browse rows carry subtitles, and ticks mark what a row already is (a favourite, the speaker in use).
-- The picture comes back when Music Assistant stops sending the waveform without ending the stream: the follow
-  relay reconnects after a stall.
-- **Log out** and token renewal revoke tokens by id, so they only ever remove this console's own token.
-- The poster no longer shows a stream-quality badge (Details still has the format), and the song-change slide is
-  gone, as on LG 1.5.0.
+  playing; it dims after three quiet minutes.
+- **Browse** rows read kind · artist · year (or length). Play now and Start radio return to Now playing; Play next
+  and Add to the queue confirm on the item's own row with a tick.
+- **Controls**: quick seek and held volume presses add up, skips collapse to one waiting skip per direction, a
+  second Play/Pause before Music Assistant answers undoes the first, and synced speakers use group volume.
+- The picture comes back when Music Assistant stops sending the waveform: the follow relay reconnects after 10 s
+  without frames while the queue plays, without looping on a paused speaker.
+- **Account**: token renewal hands the fresh token to every connection before the old one is revoked; **Log out**
+  revokes only this console's own token, by id.
+- **All 395 presets LG Afterglow ships**, 393 enabled. Presets that sample MilkDrop's texture images get a cloud
+  texture the app generates (as Butterchurn does on LG); a projectM shader fix makes the two Mandelbox presets and
+  "Martin - disco mix 6" render.
+- The poster no longer shows a stream-quality badge (Details still has the format), the song-change slide is gone
+  and "Next" reads "Up next", as on LG 1.5.0.
+- With no server set up, the screen points at Settings → Account → Sign in.
 - The PS5 home screen shows the Afterglow poster block: a new icon, and selection and start-up backgrounds.
 - Publishing: README, [install guide](docs/install.md), this changelog, issue and pull request templates,
   GitHub Actions for tests, lint and a release ZIP per version tag.

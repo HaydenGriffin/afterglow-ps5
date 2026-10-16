@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "afterglow/milkdrop.hpp"
+#include "afterglow/cloud_texture.hpp"
 #include "core/save_file.hpp"
 #include "platform/ps5/system.hpp"
 #include <EGL/egl.h>
@@ -121,6 +122,8 @@ bool Milkdrop::init(int width, int height, const std::string &preset_dir)
     projectm_set_hard_cut_enabled(handle_, false);
     projectm_set_preset_switch_requested_event_callback(handle_, on_switch_requested, this);
     projectm_set_preset_switch_failed_event_callback(handle_, on_switch_failed, this);
+    clouds_ = cloud_texture();
+    projectm_set_texture_load_event_callback(handle_, on_texture_requested, this);
     random_.seed(static_cast<std::uint32_t>(sys::monotonic_us()));
     order_.resize(presets_.size());
     for (std::size_t i = 0; i < order_.size(); ++i)
@@ -364,5 +367,18 @@ void Milkdrop::on_switch_failed(const char *file, const char *message, void *sel
              message ? message : "?");
     ++view.failures_in_row_;
     view.switch_pending_ = true;
+}
+
+// projectM copies the pixels into a texture of its own for each name, so one
+// buffer serves them all. Built-in textures (main, blur, noise) never reach it.
+void Milkdrop::on_texture_requested(const char *name, projectm_texture_load_data *data, void *self)
+{
+    const auto &view = *static_cast<const Milkdrop *>(self);
+    sys::log("[Afterglow] milkdrop texture=%s not shipped, using generated clouds",
+             name ? name : "?");
+    data->data = view.clouds_.data();
+    data->width = kCloudTextureSize;
+    data->height = kCloudTextureSize;
+    data->channels = 4;
 }
 } // namespace hui::afterglow

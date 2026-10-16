@@ -21,7 +21,7 @@ in the app folder's `licenses/` directory.
 | `sce_module/libc.prx` | The project's clean-room runtime shim | GPL-3.0-or-later | `LICENSE` |
 | `assets/fonts/archivo-*.huifont` | Archivo, baked to distance fields | SIL OFL 1.1 | `fonts/Archivo-LICENSE.txt` |
 | `assets/fonts/dejavu-sans-mono.huifont` | DejaVu Sans Mono, baked | Bitstream Vera licence; DejaVu changes public domain | `fonts/DejaVu-LICENSE.txt` |
-| `assets/presets/` | 349 MilkDrop presets from butterchurn-presets | No explicit licence for the presets themselves (below) | `presets/` |
+| `assets/presets/` | 395 MilkDrop presets from butterchurn-presets | No explicit licence for the presets themselves (below) | `presets/` |
 | `sce_sys/icon0.png`, `pic0.dds`, `pic1.dds` | Afterglow's logo on the home screen | GPL-3.0-or-later, with the project | `LICENSE` |
 
 Not shipped, though in the repository: the upstream kit's sound effects, music and selection music
@@ -50,7 +50,7 @@ projectM is statically linked into `eboot.bin`, so the LGPL-2.1 terms for a "wor
 
 ### The presets' licence, plainly
 
-The 349 presets are community works collected in
+The 395 presets are community works collected in
 [jberg/butterchurn-presets](https://github.com/jberg/butterchurn-presets). That repository carries Jordan Berg's MIT
 licence for the collection, but no explicit licence grant from the individual preset authors has been found. Don't
 read them as public domain, or as covered by this project's licence. Author names are kept in
@@ -246,9 +246,16 @@ Jonathan Dummer's public-domain DXT routines. License texts and upstream
 notices are in `third_party/projectm/licenses`; source-level notices remain
 in the pinned source tree.
 
-The 349 bundled community presets retain author names in `assets/presets/index.tsv`.
+The 395 bundled community presets retain author names in `assets/presets/index.tsv`.
 Their origin and the limits of the available licensing information are recorded
 in `third_party/presets/README.md`, alongside the upstream repository's MIT text.
+
+No MilkDrop texture images are bundled. The images some presets sample (from
+MilkDrop's textures folder, as collected in projectM's
+presets-milkdrop-texture-pack and in butterchurn-presets' image data) carry no
+licence that permits redistribution; see `third_party/presets/README.md`. Those
+presets get a cloud texture the app generates itself
+(`src/afterglow/cloud_texture.cpp`, GPL-3.0-or-later).
 
 ### BearSSL (online lyrics)
 

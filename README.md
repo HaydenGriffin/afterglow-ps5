@@ -38,8 +38,9 @@ GPL-3.0-or-later.
 - **Browse and Search.** Search with the system keyboard, recently played, favourite playlists, albums, songs and
   artists, radio, podcasts and audiobooks, artist pages. Play now, play next, add to the queue or start radio.
 - **Queue.** Play, move and remove upcoming songs; shuffle, repeat, crossfade, keep playing when the queue ends,
-  volume and sleep timer. **Playing on** picks the speaker and edits sync groups.
-- **Presets.** 347 MilkDrop presets through [projectM](https://github.com/projectM-visualizer/projectm). A preset
+  volume and sleep timer. **Playing on** picks the speaker, and picking a silent one moves the music there
+  (**Play on this PS5** brings it to the console). **Speakers together** joins or leaves a sync group.
+- **Presets.** 395 MilkDrop presets (393 enabled) through [projectM](https://github.com/projectM-visualizer/projectm). A preset
   scan measures each one on your console and keeps the ones that run smoothly. Presets can take their colours from
   the artwork, and favourites are shared with Music Assistant and your LG TVs.
 - **Sound & sync.** TV output compensation sets this PS5's delay in Music Assistant, so it plays in time with your

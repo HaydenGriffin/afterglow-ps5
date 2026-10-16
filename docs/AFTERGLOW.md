@@ -551,16 +551,19 @@ inside projectM; the application keeps its existing exception-free build.
 The PS5 adapter avoids `std::random_device` because its `arc4random` import
 is unavailable to this native title. Host builds retain the upstream generator.
 
-349 preset files are included, with 347 enabled in `assets/presets/index.tsv`.
-Two Mandelbox presets render black with this projectM build and are disabled.
-Original author names are retained in the index.
-46 presets requiring external image textures are excluded. Licensing and source
-provenance are in `THIRD_PARTY_NOTICES.md` and `third_party/presets/README.md`.
+All 395 presets LG Afterglow ships are included (`tools/prepare-presets.py`),
+with 393 enabled in `assets/presets/index.tsv`; original author names are
+retained in the index. 46 presets name MilkDrop texture images, which are not
+shipped because no licence permits it. Like Butterchurn on LG, which draws its
+clouds image in their place, the app hands projectM a generated cloud texture
+for any such image. Two presets that use an image as a colour ramp fade to
+black without it and are disabled. Licensing and source provenance are in
+`THIRD_PARTY_NOTICES.md` and `third_party/presets/README.md`.
 Notices are also copied into the application folder's `licenses` directory.
 
 ```sh
 # One hard-cut capture per preset, in index order, using synthetic audio.
-AFTERGLOW_MILKDROP=347 AFTERGLOW_MILKDROP_WIDTH=320 AFTERGLOW_MILKDROP_FRAMES=15 \
+AFTERGLOW_MILKDROP=393 AFTERGLOW_MILKDROP_WIDTH=320 AFTERGLOW_MILKDROP_FRAMES=15 \
   tools/host-snapshots.sh build/milkdrop-all afterglow
 # Default captures use the console's 1280 x 720 visualiser resolution.
 AFTERGLOW_MILKDROP=3 tools/host-snapshots.sh build/milkdrop-preview afterglow
@@ -585,9 +588,9 @@ speaker synchronization.
 The LG Afterglow application is the design and feature reference. Both offer
 own playback/following, browsing and search, queue controls, four display
 modes, timed and word-by-word lyrics, sign-in and a sync figure. PS5 uses
-projectM with 347 enabled presets; LG uses Butterchurn and its existing preset
-set. PS5 still reads its server addresses from a private configuration file,
-and has two artwork colours rather than LG's palette roles.
+projectM with 393 of the same 395 presets enabled; LG uses Butterchurn. PS5
+still reads its server addresses from a private configuration file, and has two
+artwork colours rather than LG's palette roles.
 
 Treat both as unverified until controller/remote, audio, lyric timing and a
 listening-session check pass on their respective hardware. LG
