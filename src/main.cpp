@@ -542,7 +542,8 @@ int main()
         companion->start(credentials.host.c_str(), credentials.port, credentials.token.c_str());
     auto home = std::make_unique<afterglow::HomeAssistant>();
     start_home(*home, model);
-    auto artwork = std::make_unique<afterglow::Artwork>();
+    auto artwork =
+        std::make_unique<afterglow::Artwork>(afterglow::fetch_image, afterglow::decode_image);
     artwork->start();
     afterglow::OnlineLyrics online_lyrics(afterglow::lrclib_fetch(), afterglow::https_abort);
     online_lyrics.start();
@@ -830,8 +831,10 @@ int main()
             if (model.artwork_texture)
                 glDeleteTextures(1, &model.artwork_texture);
             model.artwork_texture = 0;
-            model.artwork_color = image.accent;
-            model.artwork_secondary = image.secondary;
+            // A cover that did not load keeps the neutral colours, not white.
+            const afterglow::Presentation neutral;
+            model.artwork_color = image.ok ? image.accent : neutral.artwork_color;
+            model.artwork_secondary = image.ok ? image.secondary : neutral.artwork_secondary;
             milkdrop->set_cover(std::move(image.cover));
             if (!image.rgba.empty())
                 model.artwork_texture =
