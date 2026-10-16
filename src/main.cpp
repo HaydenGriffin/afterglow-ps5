@@ -13,6 +13,7 @@
 #include "afterglow/thumbnails.hpp"
 #include "afterglow/preference_store.hpp"
 #include "afterglow/milkdrop.hpp"
+#include "afterglow/preset_change.hpp"
 #include "afterglow/night.hpp"
 #include "afterglow/online_lyrics.hpp"
 #include "afterglow/presentation.hpp"
@@ -772,6 +773,8 @@ int main()
         if (model.preferences.follow)
             model.spectrum = follow_analyzer->update(dt);
         model.beat = model.preferences.follow ? follow_analyzer->beat() : analyzer->beat();
+        if (!model.scanning)
+            milkdrop->listen(pcm.data(), pcm.size() / 2);
         if (model.preferences.auto_level && !pcm.empty())
         {
             float peak = 0;
@@ -792,11 +795,14 @@ int main()
             model.artwork_texture = 0;
             model.artwork_color = image.accent;
             model.artwork_secondary = image.secondary;
+            milkdrop->set_cover(std::move(image.cover));
             if (!image.rgba.empty())
                 model.artwork_texture =
                     renderer.batch().create_texture(image.width, image.height, image.rgba.data());
         }
         milkdrop->set_album_colours(model.artwork_color, model.artwork_secondary);
+        milkdrop->set_song(afterglow::song_key(model.companion.track.queue_item_id, model.title,
+                                               model.artist));
         thumbnails->pump(thumb_upload, thumb_release);
         const auto count = pad.read(samples);
         auto input = tracker.update(std::span<const PadSample>(samples.data(), count),

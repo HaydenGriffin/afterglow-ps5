@@ -287,9 +287,10 @@ TEST_F(AfterglowPanel, AdjustsVisualsWithinBoundsAndRequests120Hz)
     EXPECT_FALSE(p.tint) << "toggles want Cross, not left/right";
     cross();
     EXPECT_TRUE(p.tint);
-    // Colour strength (tint is on now), night register, OLED, duration, order,
-    // lock, favourites, skip slow, minimum fps, level, beat sensitivity, frame rate.
-    down(12);
+    // Colour strength (tint is on now), cover art, night register, OLED, change
+    // preset, order, lock, favourites, skip slow, minimum fps, level, beat
+    // sensitivity, frame rate.
+    down(13);
     input(nav(Direction::right));
     EXPECT_EQ(p.fps, 120);
     EXPECT_EQ(s.requested_refresh_hz, 120);
@@ -1283,10 +1284,22 @@ TEST_F(AfterglowPanel, VisualsColourStrengthBeatAndControllerLight)
     input(nav(Direction::left));
     EXPECT_EQ(p.tint_strength, 25);
     down(1);
+    EXPECT_TRUE(p.cover_art) << "Cover art in the visuals is on by default";
+    cross();
+    EXPECT_FALSE(p.cover_art);
+    down(1);
     cross();
     EXPECT_FALSE(p.night_register);
-    // OLED, duration, order, lock, favourites, skip slow, minimum fps, level, beat.
-    down(9);
+    // OLED, then Change preset: past 10 min to Each song and On big moments.
+    down(2);
+    for (int i = 0; i < 40; ++i)
+        input(nav(Direction::right));
+    EXPECT_EQ(p.preset_change, 2);
+    EXPECT_EQ(p.preset_seconds, 600);
+    input(nav(Direction::left));
+    EXPECT_EQ(p.preset_change, 1);
+    // Order, lock, favourites, skip slow, minimum fps, level, beat.
+    down(7);
     for (int i = 0; i < 25; ++i)
         input(nav(Direction::right));
     EXPECT_EQ(p.beat_sensitivity, 200);

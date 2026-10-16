@@ -5,13 +5,16 @@
 #pragma once
 
 #include "gfx/canvas.hpp"
+#include "afterglow/cover_texture.hpp"
 #include "afterglow/preferences.hpp"
+#include "afterglow/preset_change.hpp"
 #include "afterglow/preset_colour.hpp"
 #include "afterglow/preset_quality.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <random>
 #include <string>
+#include <string_view>
 #include <vector>
 
 struct projectm;
@@ -50,6 +53,13 @@ class Milkdrop
     // reloaded recoloured once they have settled (see render()).
     void set_album_colours(const Rgb &accent, const Rgb &secondary);
     std::vector<std::string> names() const;
+    // The song's cover as cover_pixels() made it (empty: none): the picture
+    // presets sample while "Cover art in the visuals" is on.
+    void set_cover(std::vector<std::uint8_t> pixels);
+    // The song playing (song_key; empty while nothing plays), for Each song.
+    void set_song(std::string_view key);
+    // The audio before Auto level, for On big moments.
+    void listen(const float *stereo, std::size_t frames);
     void set_scanning(bool value)
     {
         scanning_ = value;
@@ -98,6 +108,11 @@ class Milkdrop
     };
     Colouring wanted_colouring() const;
     void recolour_if_settled();
+    void want_cover();
+    void update_cover();
+    std::uint32_t cover_texture();
+    double now_ms() const;
+    void change_if_due();
 
     projectm *handle_ = nullptr;
     gfx::Canvas canvas_;
@@ -120,7 +135,16 @@ class Milkdrop
     // when a recolour last reloaded the preset.
     Colouring applied_;
     std::int64_t colouring_changed_at_ = 0, recoloured_at_ = 0;
-    // Handed to projectM for every texture a preset names that is not shipped.
-    std::vector<std::uint8_t> clouds_;
+    // Every texture a preset names that is not shipped is this one texture,
+    // owned here and handed to projectM by id (projectM does not delete it):
+    // the song's cover, or the generated clouds, faded from one to the other.
+    std::uint32_t cover_texture_ = 0;
+    std::vector<std::uint8_t> clouds_, cover_, fade_from_, fade_to_, texture_pixels_;
+    std::uint64_t cover_id_ = 0, cover_count_ = 0;
+    CoverSchedule cover_schedule_;
+    bool fading_ = false;
+    std::int64_t uploaded_at_ = 0;
+    PresetChanger changer_;
+    std::string song_;
 };
 } // namespace hui::afterglow

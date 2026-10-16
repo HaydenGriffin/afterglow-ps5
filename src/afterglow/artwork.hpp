@@ -21,6 +21,9 @@ struct ArtworkResult
     std::vector<std::uint8_t> rgba;
     int width = 0, height = 0;
     std::array<float, 3> accent{1, 1, 1}, secondary{1, 1, 1};
+    // The cover as MilkDrop presets sample it (cover_pixels), made on the
+    // worker so the frame thread only copies it into the texture.
+    std::vector<std::uint8_t> cover;
 };
 
 // GET of an http:// image (IPv4 literal host) on a non-blocking socket, bounded
