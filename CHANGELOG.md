@@ -4,6 +4,16 @@ Afterglow for PS5. Builds before 1.6.0 were private builds for one console; they
 the version where one was set. "Checked on hardware" means on one PS5 on firmware 7.20; anything else was
 checked on a PC only (unit tests, mock servers and the off-screen preview).
 
+# Unreleased
+
+- Music playing on another speaker can be joined or moved: Queue and Playing on offer **Join <speaker>** (this
+  PS5's own player joins that speaker's group, where Music Assistant allows it) and **Move here** (the music
+  moves to the PS5, as the old Play on this PS5 row did). Nothing happens until you choose one.
+- Playing on says what each speaker plays: the song and artist, Paused, or Idle, instead of Speaker, Group or
+  Grouped.
+- Speakers together: **Volume for each speaker** sets one member's volume (`players/cmd/volume_set`) beside the
+  group's Volume; speakers with a fixed volume are left out.
+
 # 1.6.0 — First public release (unreleased)
 
 Built and tested on a PC; not yet installed on a console.
