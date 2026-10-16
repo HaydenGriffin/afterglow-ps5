@@ -6,7 +6,10 @@ checked on a PC only (unit tests, mock servers and the off-screen preview).
 
 # 1.6.0 — First public release (unreleased)
 
-Built and tested on a PC; not yet installed on a console.
+Checked on hardware on 16 October 2026: launch, playback through the console at 59.9–60 fps, artwork, online
+lyrics over HTTPS, Browse, the controls, the queue, Display settings and the lyric overlays, the Home section, dev
+requests and the title's place under Media. Not yet checked on a console: sign-in and search with the system
+keyboard, the light bar, 120 Hz, token renewal and timing drift over a long session.
 
 - **Lyrics over visuals: Position, Background, Size.** Display adds three rows for the chosen overlay (One line or
   Stage), kept apart and synced: Top / Middle / Bottom, Box / Shade / None and Small / Medium / Large. Overlays stay
@@ -50,6 +53,11 @@ Built and tested on a PC; not yet installed on a console.
   were invisible on the PS5 while they drew on a PC; the poster colours are now compile-time constants.
 - The song's artists read "Justice, Tame Impala, SZA" from Music Assistant's queue instead of Sendspin's
   slash-joined line.
+- Fixed before release: lyrics and saved preset ratings longer than 2 KB were cut short (the cut lyrics also kept
+  the online search from running); **Log out** now says when Music Assistant refused or did not confirm removing
+  the token; a renewed or new token that cannot be saved no longer retires the one the next launch reads;
+  unanswered account, settings and recent-music requests time out instead of blocking later ones; and HTTPS
+  answers are capped on the wire, not only by their body.
 - Dev requests can tap controller buttons (`tools/afterglow-dev.py press options right cross`), so a PC can drive
   the app for console screenshots. Off unless `afterglow.conf` sets `dev_requests`.
 
