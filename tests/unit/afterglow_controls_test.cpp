@@ -116,6 +116,44 @@ TEST(AfterglowControls, GroupsAndSyncLeadersUseTheGroupVolumeCommand)
     EXPECT_FALSE(companion_wire::volume_request({}, 10).error.empty());
 }
 
+TEST(AfterglowControls, OneSpeakersVolumeStepsAddUpPerSpeaker)
+{
+    ControlQueue queue;
+    ASSERT_TRUE(queue.press(Control::member_volume, 5, "kitchen"));
+    ASSERT_TRUE(queue.take(0).has_value());
+    queue.press(Control::member_volume, 5, "kitchen");
+    queue.press(Control::member_volume, 5, "den");
+    queue.press(Control::member_volume, 5, "kitchen");
+    queue.press(Control::volume, -5);
+    ASSERT_EQ(queue.waiting().size(), 3u) << "one waiting job per speaker, apart from the group's";
+    EXPECT_EQ(queue.waiting()[0].player, "kitchen");
+    EXPECT_EQ(queue.waiting()[0].amount, 10);
+    EXPECT_EQ(queue.waiting()[1].player, "den");
+    EXPECT_EQ(queue.waiting()[1].amount, 5);
+    EXPECT_TRUE(queue.waiting()[2].player.empty());
+}
+
+TEST(AfterglowControls, AVolumeCanBeSetUnlessFixedOrAGroupPlayer)
+{
+    using companion_wire::volume_settable;
+    EXPECT_TRUE(volume_settable(
+        R"({"type":"player","volume_control":"native","volume_level":20,"supported_features":["volume_set","set_members"]})"));
+    EXPECT_TRUE(volume_settable(
+        R"({"type":"player","volume_control":"uuid:linked","volume_level":20,"supported_features":["volume_set"]})"))
+        << "a linked control sets it";
+    EXPECT_FALSE(volume_settable(
+        R"({"type":"player","volume_control":"none","volume_level":null,"supported_features":[]})"))
+        << "fixed volume";
+    EXPECT_FALSE(volume_settable(
+        R"({"type":"player","volume_control":"native","volume_level":null,"supported_features":["volume_set"]})"))
+        << "no level to show";
+    EXPECT_FALSE(volume_settable(
+        R"({"type":"group","volume_control":"native","volume_level":20,"supported_features":["volume_set"]})"))
+        << "a group player has the group volume";
+    EXPECT_FALSE(volume_settable(
+        R"({"type":"player","volume_level":20,"supported_features":["play_media"]})"));
+}
+
 TEST(AfterglowControls, RelayReconnectsWhenFramesStopMidStreamAndSkipsASilentSocket)
 {
     using companion_wire::RelayCheck;

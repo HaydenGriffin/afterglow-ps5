@@ -5,6 +5,7 @@
 #include "afterglow/companion.hpp"
 #include "afterglow/controls.hpp"
 #include "afterglow/ma_socket.hpp"
+#include "afterglow/speaker_group.hpp"
 #include "afterglow/speakers.hpp"
 #include "platform/ps5/system.hpp"
 #include <algorithm>
@@ -940,6 +941,7 @@ Request action_request(const CompanionAction &action, const CompanionSnapshot &t
     case CompanionActionKind::group_add:
     case CompanionActionKind::group_remove:
     case CompanionActionKind::transfer:
+    case CompanionActionKind::member_volume:
         // Handled before this switch: they need no playing queue.
         return {{}, {}, "Not a queue command"};
     }
@@ -1069,6 +1071,18 @@ Request volume_request(const VolumeTarget &target, int level)
             "{\"player_id\":" + json_quote(target.player_id) +
                 ",\"volume_level\":" + std::to_string(std::clamp(level, 0, 100)) + "}",
             {}};
+}
+bool volume_settable(std::string_view player)
+{
+    if (text_field(player, "type") == "group" || text_field(player, "volume_control") == "none")
+        return false;
+    const auto level = field(player, "volume_level");
+    if (level.empty() || level == "null")
+        return false;
+    for (auto feature : elements(field(player, "supported_features"), 64))
+        if (string_value(feature) == "volume_set")
+            return true;
+    return false;
 }
 RelayCheck relay_check(std::int64_t now_us, std::int64_t opened_us, std::int64_t last_wave_us,
                        bool streaming)
@@ -1261,6 +1275,7 @@ struct Companion::Impl
         p.hidden = field(raw, "hide_in_ui") == "true";
         p.volume = number(raw, "volume_level", 100);
         p.group_volume = number(raw, "group_volume", -1);
+        p.volume_settable = companion_wire::volume_settable(raw);
         for (auto id : elements(field(raw, "group_members"), 64))
             if (auto text = string_value(id); !text.empty() && text.size() <= 256)
                 p.group_members.push_back(std::move(text));
@@ -1285,6 +1300,8 @@ struct Companion::Impl
         q.next = parse_track(field(raw, "next_item"));
         const auto item = field(raw, "current_item");
         q.has_item = !item.empty() && item != "null";
+        q.title = q.track.title;
+        q.artist = q.track.artist;
         q.item_id = text_field(item, "queue_item_id");
         q.elapsed = decimal(raw, "elapsed_time");
         q.elapsed_at = sys::monotonic_us();
@@ -2027,6 +2044,11 @@ struct Companion::Impl
                               moves_music(players, lookup, target.queue_id, own, true);
         for (auto &player : state.players)
             player.takes_music = moves_music(players, lookup, target.queue_id, player.id, false);
+        describe_speakers(state.players, players, lookup);
+        const auto join = join_plan(state.players, players, lookup, target.queue_id, own);
+        state.can_join = !join.leader.empty();
+        state.join_leader = join.leader;
+        state.join_leader_name = join.leader.empty() ? "" : leader_name(players, join.leader);
         const auto leader = players.find(target.queue_id);
         state.volume = leader == players.end() ? 100
                        : group_player(leader->second) && leader->second.group_volume >= 0
@@ -2203,6 +2225,22 @@ struct Companion::Impl
             const int level =
                 std::clamp(volume_sent.value_or(p->first, volume.level, now) + job.amount, 0, 100);
             volume_sent.sent(p->first, level, now);
+            return companion_wire::volume_request(volume, level);
+        }
+        case Control::member_volume:
+        {
+            // One speaker of the group: steps build on the level last sent to it.
+            // Its own key: the leader's group Volume is assumed under its bare id.
+            const auto p = players.find(job.player);
+            if (job.amount == 0 || p == players.end() || !p->second.volume_settable)
+                return {};
+            companion_wire::VolumeTarget volume;
+            volume.player_id = p->first;
+            volume.level = p->second.volume;
+            const std::string key = "member:" + p->first;
+            const int level =
+                std::clamp(volume_sent.value_or(key, volume.level, now) + job.amount, 0, 100);
+            volume_sent.sent(key, level, now);
             return companion_wire::volume_request(volume, level);
         }
         case Control::seek:
@@ -2605,6 +2643,12 @@ bool Companion::action(const CompanionAction &action)
         }
         return false;
     };
+    // One speaker's volume joins the transport presses rather than waiting
+    // for another action to settle.
+    if (action.kind == CompanionActionKind::member_volume)
+        return !action.text.empty() && action.text.size() <= 256 &&
+               impl_->controls.press(Control::member_volume, std::clamp(action.value, -100, 100),
+                                     action.text);
     if (impl_->state.action_busy)
         return refuse();
     auto request = companion_wire::action_request(action, impl_->state);

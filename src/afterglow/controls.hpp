@@ -50,13 +50,16 @@ enum class Control
     toggle,
     next,
     previous,
-    volume, // amount: percentage points, relative
-    seek    // amount: seconds, relative
+    volume,       // amount: percentage points, relative
+    seek,         // amount: seconds, relative
+    member_volume // amount: percentage points for one player of a group, relative
 };
 struct ControlJob
 {
     Control kind = Control::toggle;
     int amount = 0;
+    // member_volume: the player the steps are for.
+    std::string player;
 };
 
 // Presses made while a command is in flight wait their turn instead of being
@@ -69,8 +72,9 @@ class ControlQueue
     static constexpr std::size_t kMaxWaiting = 8;
     // An unanswered command stops holding the queue after this long.
     static constexpr std::int64_t kReplyUs = 10000000;
-    // False when the press was refused (the queue is full).
-    bool press(Control kind, int amount = 0);
+    // False when the press was refused (the queue is full). Waiting
+    // member_volume presses collapse only with those for the same player.
+    bool press(Control kind, int amount = 0, const std::string &player = {});
     // The next job to send, marked in flight; nothing while one is in flight.
     std::optional<ControlJob> take(std::int64_t now_us);
     // The in-flight job was answered (or could not be sent).

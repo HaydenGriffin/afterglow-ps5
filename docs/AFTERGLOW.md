@@ -37,17 +37,26 @@ playing, the poster shows the target. On a group, or a sync leader with
 members, volume sets the group's volume (`players/cmd/group_volume`).
 
 Queue → **Playing on** lists This PS5, Active speaker, sync groups and
-speakers. Picking a speaker with nothing of its own playing moves the target's
+speakers, each saying what it plays (the song and artist, Paused, or Idle).
+Picking a speaker with nothing of its own playing moves the target's
 music there (`player_queues/transfer`, keeping its place; the row says "moves
 the music here") and follows it; picking a speaker that plays just follows it.
-Settings → Source only chooses and never moves music. When music elsewhere can
-move, **Play on this PS5** (under Playing on in the Queue sheet, and as the
-first row of Playing on) brings it to the PS5's own player, starts it there
-even if it had stopped, and switches Source to This PS5. **Speakers together**
+Settings → Source only chooses and never moves music. When music plays
+elsewhere, two rows are offered under Playing on in the Queue sheet and as the
+first rows of Playing on, each only when it can work: **Join <speaker>** adds
+the PS5's own player to that speaker's group (`players/cmd/set_members`, only
+where Music Assistant lets the two group) and **Move here** brings the music
+to the PS5's own player (`player_queues/transfer`), starting it even if it had
+stopped. Both switch Source to This PS5; neither happens on its own.
+**Speakers together**
 lists every speaker with a tick for those sounding the target's music; Cross
 adds or removes one (`players/cmd/set_members` on the target). The leader,
-fixed members and speakers it cannot group with are listed but refuse; the
-section appears only when the target can lead a group.
+fixed members and speakers it cannot group with are listed but refuse. Under
+**Volume for each speaker**, left and right set one member's volume
+(`players/cmd/volume_set`, 5 % a step; quick steps add up), beside the
+group's Volume in the Queue; speakers with a fixed volume have no row. The
+section appears when the target can lead a group or its group has volumes to
+set.
 
 The picture comes back when Music Assistant stops sending the waveform without
 ending the stream: after 10 s with no frame while the followed queue still
@@ -92,8 +101,8 @@ The current build includes:
   queue" with a drawn tick for 2.5 s. A refused action stays on the item and
   says so on the row pressed. Long lists end in **More**, which loads the
   next page.
-- Queue: **Playing on** (moving the music to a silent speaker, **Play on this
-  PS5** and **Speakers together**), up next in a
+- Queue: **Playing on** (moving the music to a silent speaker, **Join** and
+  **Move here**, **Speakers together** with each member's volume), up next in a
   50-song window with **Earlier songs** / **Later songs** paging, play now,
   play next, move up/down and remove; shuffle, repeat, crossfade, volume,
   sleep timer and **Keep playing when the queue ends**.
@@ -464,6 +473,8 @@ AFTERGLOW_PREVIEW=1 AFTERGLOW_NIGHT=1 tools/host-snapshots.sh build/afterglow-ni
 AFTERGLOW_PREVIEW=1 AFTERGLOW_LYRICS=karaoke tools/host-snapshots.sh build/afterglow-karaoke afterglow
 AFTERGLOW_PREVIEW=1 AFTERGLOW_VISUAL=1 AFTERGLOW_BEAT=1 tools/host-snapshots.sh build/afterglow-halo afterglow
 AFTERGLOW_PREVIEW=1 AFTERGLOW_TINT=100 tools/host-snapshots.sh build/afterglow-tint afterglow
+# Join, Move here, what each speaker plays and Volume for each speaker.
+AFTERGLOW_PREVIEW=1 AFTERGLOW_SPEAKERS=1 HUI_ONLY=queue,players tools/host-snapshots.sh build/afterglow-speakers afterglow
 tools/host-snapshots.sh build/afterglow-offline afterglow
 CXX=clang++-18 bash tests/integration/run-sendspin-smoke.sh
 CXX=clang++-18 bash tests/integration/run-companion-smoke.sh

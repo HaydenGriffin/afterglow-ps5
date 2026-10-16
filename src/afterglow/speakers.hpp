@@ -25,6 +25,8 @@ struct SpeakerInfo
     bool available = false, enabled = true, hidden = false;
     int volume = 100, group_volume = -1;
     std::vector<std::string> group_members;
+    // Music Assistant can set its volume: volume_set, not fixed ("none"), a level to show.
+    bool volume_settable = false;
 };
 // What the rules read from player_queues/all: a queue's state and whether it
 // holds a song (current_item).
@@ -32,6 +34,8 @@ struct QueueInfo
 {
     std::string id, state;
     bool has_item = false;
+    // The song it holds, for what each speaker plays (speaker_group.hpp).
+    std::string title, artist;
 };
 using Speakers = std::map<std::string, SpeakerInfo>;
 // nullptr when Music Assistant has no such queue.
