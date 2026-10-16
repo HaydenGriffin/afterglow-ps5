@@ -14,6 +14,7 @@ in the app folder's `licenses/` directory.
 | `eboot.bin` (linked in) | [projectM](https://github.com/projectM-visualizer/projectm) and its bundled dependencies | LGPL-2.1-or-later; MIT, public domain and others (below) | `projectm/` |
 | `eboot.bin` (linked in) | [ps5-opengl](https://github.com/blackbearreloaded/ps5-opengl) 1.0.2 with Mesa and OpenGNM PSBC | GPL-3.0-or-later; Mesa mostly MIT, per file; OpenGNM MIT | `ps5-opengl/` |
 | `eboot.bin` (linked in) | [jsmn](https://github.com/zserge/jsmn) | MIT | `jsmn/` |
+| `eboot.bin` (linked in) | [BearSSL](https://www.bearssl.org/) (HTTPS for online lyrics) | MIT | `bearssl/` |
 | `eboot.bin` (linked in) | [stb_vorbis](https://github.com/nothings/stb) | MIT or public domain | `stb/` |
 | `eboot.bin` (linked in) | Parts of LLVM libc++, libc++abi, libunwind and compiler-rt builtins, from the PS5 Payload SDK and the compiler | Apache-2.0 WITH LLVM-exception | none needed in binary form |
 | `eboot.bin` (linked in) | Three C-locale objects of the PS5 Payload SDK's `libc.a` (`no-locale.o`, `mbsnrtowcs.o`, `wcsnrtombs.o`), FreeBSD-derived | See below | see below |
@@ -248,6 +249,23 @@ in the pinned source tree.
 The 349 bundled community presets retain author names in `assets/presets/index.tsv`.
 Their origin and the limits of the available licensing information are recorded
 in `third_party/presets/README.md`, alongside the upstream repository's MIT text.
+
+### BearSSL (online lyrics)
+
+[BearSSL](https://www.bearssl.org/) by Thomas Pornin, MIT license
+(`third_party/bearssl/LICENSE.txt`, also shipped as `licenses/bearssl/LICENSE.txt`
+in the app folder). `tools/build-bearssl.sh` fetches it from
+`https://www.bearssl.org/git/BearSSL` at commit
+`7bea48e5e850ab4cafbe68d3765cdaba13a86d6f` (the commit id pins the whole tree),
+builds it under ignored `.deps/bearssl/`, and statically links it into the PS5
+application and the host preview. It carries the HTTPS requests of the online
+lyrics search to lrclib.net. On the console its OS hooks are off: randomness
+comes from the CPU's RDRAND instruction and the time from the app. No source
+is modified and none is stored in this repository.
+
+Certificates are checked against the console's own CA list
+(`/system/common/cert/CA_LIST.cer`) or, on a PC, the system's bundle; none is
+shipped.
 
 ### Archivo
 

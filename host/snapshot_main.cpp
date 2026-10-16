@@ -446,8 +446,17 @@ int main(int argc, char **argv)
         model.companion.track.lyrics = "Illustrative lyric preview\nThe room grows quiet\nLight "
                                        "moves across the ceiling\nA slow current carries us home";
         if (const char *lyrics = std::getenv("AFTERGLOW_LYRICS"))
-            if (std::string_view(lyrics) == "none")
+        {
+            // missing / failed: what the lyrics lookup found (Settings → Lyrics
+            // then offers Retry lyrics).
+            const std::string_view kind(lyrics);
+            if (kind == "none" || kind == "missing" || kind == "failed")
                 model.companion.track.lyrics.clear();
+            if (kind == "missing")
+                model.lyrics.status = hui::afterglow::LyricsStatus::missing;
+            if (kind == "failed")
+                model.lyrics.status = hui::afterglow::LyricsStatus::error;
+        }
         hui::afterglow::CompanionTrack next;
         next.title = "Evening Light";
         next.artist = "Afterglow preview";

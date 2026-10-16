@@ -188,6 +188,9 @@ enum Row : int
     log_out,
     account_sync,
     move_here,
+    lyrics_reset,
+    online_lyrics,
+    retry_lyrics,
 };
 // "Group with" rows carry this plus the speaker's index in players.
 constexpr int kGroupTag = 100000;
@@ -201,10 +204,6 @@ std::string capitalised(std::string value)
     if (!value.empty() && value[0] >= 'a' && value[0] <= 'z')
         value[0] = static_cast<char>(value[0] - 'a' + 'A');
     return value;
-}
-std::string signed_ms(int value)
-{
-    return (value > 0 ? "+" : "") + std::to_string(value) + " ms";
 }
 std::string duration_label(int seconds)
 {
@@ -223,6 +222,22 @@ std::string timing_label(int ms)
     if (ms == 0)
         return "With the music";
     return std::to_string(std::abs(ms)) + " ms " + (ms > 0 ? "after" : "before") + " the music";
+}
+// LG's lyric notes (player-view.js), under the Lyrics title.
+std::string lyrics_note(const LyricsState &lyrics)
+{
+    switch (lyrics.status)
+    {
+    case LyricsStatus::loading:
+        return "Finding lyrics…";
+    case LyricsStatus::error:
+        return lyrics.retry_at_ms != 0 ? "Lyrics unavailable. Retrying shortly…"
+                                       : "Lyrics couldn’t load. Retry below.";
+    case LyricsStatus::missing:
+        return "No lyrics for this song.";
+    default:
+        return "Timing moves the words only, not the music.";
+    }
 }
 std::string delay_label(int ms)
 {
@@ -515,7 +530,7 @@ std::string Panel::title() const
     case Page::presets:
         return "Presets";
     case Page::lyrics_timing:
-        return "Lyrics timing";
+        return "Lyrics";
     case Page::status:
         return "Status";
     case Page::players:
@@ -568,7 +583,7 @@ std::string Panel::note() const
         return std::to_string(s.presets.size()) + " presets · " +
                std::to_string(p.favorites.size()) + " favourites";
     case Page::lyrics_timing:
-        return "Positive values show lines later.";
+        return lyrics_note(s.lyrics);
     case Page::sync:
         // Compensation is this PS5's own Music Assistant player setting; say
         // plainly why it cannot change rather than offering a dead row.
@@ -900,8 +915,9 @@ std::vector<SheetRow> Panel::sheet_rows() const
                                                              : "Following " + speaker_name(s))
             .item.chevron = true;
         rows.row("Visuals & presets", open_visuals).item.chevron = true;
-        rows.row("Lyrics timing", open_lyrics_timing, signed_ms(p.lyrics_offset_ms)).item.chevron =
-            true;
+        rows.row("Lyrics", open_lyrics_timing,
+                 p.lyrics_offset_ms != 0 ? lyrics_timing_label(p.lyrics_offset_ms) : "")
+            .item.chevron = true;
         rows.row("Presets", open_presets,
                  s.presets.empty() ? "None" : std::to_string(s.presets.size()))
             .item.chevron = true;
@@ -959,8 +975,18 @@ std::vector<SheetRow> Panel::sheet_rows() const
             rows.row("No presets found", info).item.disabled = true;
         break;
     case Page::lyrics_timing:
-        rows.row("Lyrics timing", lyrics_offset, signed_ms(p.lyrics_offset_ms)).adjustable = true;
+    {
+        // LG Display → Lyrics: timing, its reset, the online search and a retry.
+        rows.row("Lyrics timing", lyrics_offset, lyrics_timing_label(p.lyrics_offset_ms))
+            .adjustable = true;
+        if (p.lyrics_offset_ms != 0)
+            rows.row("Reset lyrics timing", lyrics_reset);
+        rows.row("Online lyrics", online_lyrics, on_off(p.online_lyrics)).item.subtitle =
+            "When Music Assistant has none, ask lrclib.net";
+        if (s.lyrics.status == LyricsStatus::error || s.lyrics.status == LyricsStatus::missing)
+            rows.row("Retry lyrics", retry_lyrics);
         break;
+    }
     default:
         break;
     }
@@ -1811,6 +1837,18 @@ void Panel::confirm(const SheetRow &row)
     case account_sync:
         p.account_sync = !p.account_sync;
         break;
+    case lyrics_reset:
+        p.lyrics_offset_ms = 0;
+        break;
+    case online_lyrics:
+        p.online_lyrics = !p.online_lyrics;
+        // Back on: a song that had no lyrics is looked up again (LG).
+        if (p.online_lyrics && s.lyrics.status == LyricsStatus::missing)
+            s.lyrics_retry = true;
+        break;
+    case retry_lyrics:
+        s.lyrics_retry = true;
+        break;
     default:
         break;
     }
@@ -1942,8 +1980,12 @@ void Panel::adjust(const SheetRow &row, int direction, ui::Feedback &feedback)
         break;
     }
     case lyrics_offset:
-        changed = step_clamped(p.lyrics_offset_ms, direction * 50, -5000, 5000);
+    {
+        const int before = p.lyrics_offset_ms;
+        p.lyrics_offset_ms = step_lyrics_offset(before, direction);
+        changed = p.lyrics_offset_ms != before;
         break;
+    }
     default:
         changed = false;
         break;
@@ -2185,7 +2227,8 @@ void Panel::draw_sheet(ui::Canvas &canvas) const
         const double at = s.companion.elapsed - s.preferences.lyrics_offset_ms / 1000.0;
         const int index = current_lyric(lyric_lines_, at);
         if (lyric_lines_.empty())
-            ui::text(list, fonts.regular, "This song has no timed lyrics.", kLeft, rule + 100,
+            // The note above says why (finding, failed, none).
+            ui::text(list, fonts.regular, "No timed lyrics to show.", kLeft, rule + 100,
                      style::kTypeLabel, style::kMuted);
         else
         {

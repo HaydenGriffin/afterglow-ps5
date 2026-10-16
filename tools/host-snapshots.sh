@@ -12,6 +12,7 @@
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 bash "$root/tools/build-projectm.sh" host
+bash "$root/tools/build-bearssl.sh" host
 source "$root/tools/ninja-build.sh"
 cxx=$(command -v "${HOST_CXX:-clang++}")
 cc=$(command -v "${HOST_CC:-clang}")
@@ -37,13 +38,14 @@ for source in "${sources[@]}"; do
     else
         ninja_inputs=("$source" "$cxx")
         ninja_edge CXX "$object" "${compiler_cache[@]}" "$cxx" -std=c++20 -O2 -Wall -Wextra \
-            -DGL_GLEXT_PROTOTYPES=1 -I"$root/.deps/projectm/include" -I"$root/src" -I"$root/host" -MD -MF "$object.d" -c "$source" -o "$object"
+            -DGL_GLEXT_PROTOTYPES=1 -I"$root/.deps/projectm/include" -I"$root/.deps/bearssl/src/inc" -I"$root/src" -I"$root/host" -MD -MF "$object.d" -c "$source" -o "$object"
     fi
     objects+=("$object")
 done
 projectm="$root/.deps/projectm/host/libprojectM.a"
-ninja_inputs=("${objects[@]}" "$projectm")
-ninja_edge LINK "$build/hui_snapshots" "$cxx" "${objects[@]}" "$projectm" -lEGL -lGL -lm -o "$build/hui_snapshots"
+bearssl="$root/.deps/bearssl/host/libbearssl.a"
+ninja_inputs=("${objects[@]}" "$projectm" "$bearssl")
+ninja_edge LINK "$build/hui_snapshots" "$cxx" "${objects[@]}" "$projectm" "$bearssl" -lEGL -lGL -lm -o "$build/hui_snapshots"
 if ! ninja_run >"$build/build.log" 2>&1; then
     grep -E 'error|FAILED|warning' -A6 "$build/build.log" | head -80 >&2
     exit 1

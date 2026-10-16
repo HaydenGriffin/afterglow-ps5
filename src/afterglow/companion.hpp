@@ -45,6 +45,13 @@ struct CompanionTrack
     std::string quality, quality_badge;
     // Podcast episode / audiobook chapter line, or artist item count.
     std::string subtitle;
+    // The first credited artist alone (online lyrics search by it, as LG does).
+    std::string first_artist;
+    // Music Assistant's answer to metadata/get_track_lyrics for this track:
+    // 0 not yet, 1 answered (lyrics/lrc_lyrics, possibly empty), 2 failed.
+    // lyrics_request numbers the request that answered (lyrics_lookup.hpp MaLyrics).
+    int lyrics_reply = 0;
+    std::uint64_t lyrics_request = 0;
 };
 enum class BrowseCategory
 {
@@ -342,6 +349,8 @@ class Companion
     // move over before the old token is revoked. A refusal of the replaced
     // token logs in again with this one rather than giving up.
     void set_token(const std::string &token);
+    // Retry lyrics: the playing song's details and lyrics are asked for again.
+    void retry_lyrics();
 
   private:
     struct Impl;

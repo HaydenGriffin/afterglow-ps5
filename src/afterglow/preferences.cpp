@@ -57,6 +57,7 @@ std::string Preferences::encode() const
     number("lightbar", lightbar);
     number("lightbar_beat", lightbar_beat);
     number("account_sync", account_sync);
+    number("online_lyrics", online_lyrics);
     if (quality.find_first_of("\r\n") == std::string::npos)
         out += "quality=" + quality + "\n";
     if (favorite_pending.find_first_of("\r\n") == std::string::npos)
@@ -126,7 +127,7 @@ Preferences Preferences::decode(std::string_view text)
         if (key == "display_mode")
             p.display_mode = std::clamp(n, 0, 3);
         if (key == "lyrics_offset_ms")
-            p.lyrics_offset_ms = std::clamp(n, -5000, 5000);
+            p.lyrics_offset_ms = std::clamp(n, -10000, 10000);
         if (key == "trim_ms")
             p.trim_ms = std::clamp(n, -2000, 2000);
         if (key == "preset_seconds")
@@ -155,18 +156,20 @@ Preferences Preferences::decode(std::string_view text)
             p.lightbar_beat = n == 1;
         if (key == "account_sync")
             p.account_sync = n == 1;
+        if (key == "online_lyrics")
+            p.online_lyrics = n == 1;
     }
     return p;
 }
 namespace
 {
-constexpr std::array<std::string_view, 28> kSyncedKeys = {
+constexpr std::array<std::string_view, 29> kSyncedKeys = {
     "follow",           "hold_idle",      "auto_level",     "oled_drift",       "locked",
     "favorites_only",   "tint",           "brightness",     "text_brightness",  "fps",
     "lyrics_layer",     "poster_visuals", "visual_style",   "reduce_motion",    "display_mode",
     "lyrics_offset_ms", "trim_ms",        "preset_seconds", "track_info",       "sequential",
     "skip_slow",        "minimum_fps",    "tint_strength",  "beat_sensitivity", "night_register",
-    "karaoke",          "lightbar",       "lightbar_beat"};
+    "karaoke",          "lightbar",       "lightbar_beat",  "online_lyrics"};
 bool synced_key(std::string_view key)
 {
     return std::find(kSyncedKeys.begin(), kSyncedKeys.end(), key) != kSyncedKeys.end();

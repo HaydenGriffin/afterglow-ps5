@@ -17,6 +17,10 @@ src/afterglow/sheet_list.cpp
 src/afterglow/home_sheet.cpp
 src/afterglow/home_assistant.cpp
 src/afterglow/lyrics.cpp
+src/afterglow/lyrics_lookup.cpp
+src/afterglow/lrclib.cpp
+src/afterglow/http_response.cpp
+src/afterglow/online_lyrics.cpp
 src/afterglow/ma_socket.cpp
 src/afterglow/night.cpp
 src/afterglow/preset_colour.cpp

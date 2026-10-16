@@ -92,9 +92,22 @@ TEST(AfterglowPreferences, LyricsLayerIsOptionalAndTimingOffsetIsBounded)
     EXPECT_EQ(Preferences::decode("display_mode=99\n").display_mode, 3);
     EXPECT_EQ(Preferences::decode("lyrics_layer=7\n").lyrics_layer, 2);
     EXPECT_EQ(Preferences::decode("visual_style=-3\n").visual_style, 0);
-    EXPECT_EQ(Preferences::decode("lyrics_offset_ms=-99999\n").lyrics_offset_ms, -5000);
-    EXPECT_EQ(Preferences::decode("lyrics_offset_ms=99999\n").lyrics_offset_ms, 5000);
+    // LG's range: up to 10 s earlier or later.
+    EXPECT_EQ(Preferences::decode("lyrics_offset_ms=-9900\n").lyrics_offset_ms, -9900);
+    EXPECT_EQ(Preferences::decode("lyrics_offset_ms=-99999\n").lyrics_offset_ms, -10000);
+    EXPECT_EQ(Preferences::decode("lyrics_offset_ms=99999\n").lyrics_offset_ms, 10000);
     EXPECT_EQ(Preferences::decode("lyrics_offset_ms=nan\n").lyrics_offset_ms, 0);
+}
+
+TEST(AfterglowPreferences, OnlineLyricsIsOnByDefaultSavedAndSynced)
+{
+    Preferences p;
+    EXPECT_TRUE(p.online_lyrics) << "LG: Online lyrics is on by default";
+    p.online_lyrics = false;
+    EXPECT_FALSE(Preferences::decode(p.encode()).online_lyrics);
+    EXPECT_NE(p.encode_synced().find("\"online_lyrics\":0"), std::string::npos);
+    EXPECT_FALSE(Preferences{}.with_synced("{\"online_lyrics\":false}").online_lyrics);
+    EXPECT_TRUE(p.with_synced("{\"online_lyrics\":1}").online_lyrics);
 }
 
 TEST(AfterglowPreferences, FavoriteDuplicatesAndLineEndingsRemainStable)

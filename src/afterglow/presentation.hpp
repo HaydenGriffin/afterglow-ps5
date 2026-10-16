@@ -9,6 +9,7 @@
 #include "afterglow/preferences.hpp"
 #include "afterglow/preset_quality.hpp"
 #include "afterglow/home_model.hpp"
+#include "afterglow/lyrics_lookup.hpp"
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -175,6 +176,10 @@ struct Presentation
     // Seconds to seek by, added up by quick presses; main.cpp hands it to
     // Companion::seek_by and clears it.
     int seek_seconds = 0;
+    // Where the song's lyrics stand (online_lyrics.hpp pump_lyrics); the text
+    // itself is in companion.track. lyrics_retry: the UI asks, the pump retries.
+    LyricsState lyrics;
+    bool lyrics_retry = false;
 };
 
 // Only the UI thread accesses this model. Audio reaches it through Analyzer.

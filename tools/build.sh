@@ -92,6 +92,7 @@ tool="$build/host/ps5-native-tool"
 mkdir -p "$build/host" "$build/obj" "$dist"
 bash "$root/tools/build-host-tools.sh"
 bash "$root/tools/build-projectm.sh" ps5
+bash "$root/tools/build-bearssl.sh" ps5
 source "$root/tools/ninja-build.sh"
 ninja_begin "$build/app.ninja"
 target_compiler=$(command -v "${PS5_CLANG:-clang-18}")
@@ -158,8 +159,8 @@ if (( ${#pacbrew_packages[@]} > 0 || ${#pacbrew_includes[@]} > 0 || ${#pacbrew_a
     printf 'PacBrew dependencies: %s\n' "${pacbrew_packages[*]:-(manual archives)}"
 fi
 
-includes+=(.deps/projectm/include)
-archives=(.deps/projectm/ps5/libprojectM.a "${archives[@]}")
+includes+=(.deps/projectm/include .deps/bearssl/src/inc)
+archives=(.deps/projectm/ps5/libprojectM.a .deps/bearssl/ps5/libbearssl.a "${archives[@]}")
 
 objects=()
 for source in "${sources[@]}"; do
@@ -281,11 +282,12 @@ if [[ -f $root/assets/presets/index.tsv ]]; then
     mkdir -p "$app/assets/presets"
     cp "$root"/assets/presets/index.tsv "$root"/assets/presets/*.milk "$app/assets/presets/"
 fi
-mkdir -p "$app/licenses/projectm" "$app/licenses/presets"
+mkdir -p "$app/licenses/projectm" "$app/licenses/presets" "$app/licenses/bearssl"
 mkdir -p "$app/licenses/fonts"
 cp "$root/third_party/fonts/Archivo-LICENSE.txt" "$root/third_party/fonts/DejaVu-LICENSE.txt" "$app/licenses/fonts/"
 cp "$root/THIRD_PARTY_NOTICES.md" "$root/LICENSE" "$app/licenses/"
 cp "$root"/third_party/projectm/licenses/* "$app/licenses/projectm/"
+cp "$root/third_party/bearssl/LICENSE.txt" "$app/licenses/bearssl/"
 cp "$root"/third_party/presets/* "$app/licenses/presets/"
 # Linked into eboot.bin: jsmn (MIT) and stb_vorbis (MIT or public domain).
 mkdir -p "$app/licenses/jsmn" "$app/licenses/stb"
