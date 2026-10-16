@@ -421,6 +421,48 @@ TEST(AfterglowAccount, LogOutSaysWhenTheAccountDidNotRemoveTheToken)
     EXPECT_NE(outcome.message.find("did not answer"), std::string::npos) << outcome.message;
 }
 
+TEST(AfterglowAccount, RenewalRetiresTheOldTokenOnlyOnceTheNewOneIsSaved)
+{
+    char pattern[] = "/tmp/afterglow-auth-XXXXXX";
+    const int fd = mkstemp(pattern);
+    ASSERT_GE(fd, 0);
+    close(fd);
+    StoredAuth current;
+    current.host = "192.0.2.4";
+    current.username = "alex";
+    current.token = "old-token";
+    current.token_id = "old";
+    current.token_name = kName;
+    account_wire::Outcome renewed;
+    renewed.ok = renewed.token_changed = true;
+    renewed.token = "fresh-token";
+    renewed.token_id = "fresh";
+    renewed.retire = {"old"};
+    renewed.message = "Token renewed";
+
+    // A file in place of the folder: the token file cannot be written.
+    const std::string unwritable = std::string(pattern) + "/afterglow.auth";
+    auto result = account_result(AccountJob::renew, current, renewed, unwritable);
+    EXPECT_TRUE(result.ok);
+    EXPECT_EQ(result.auth.token, "fresh-token") << "the fresh token still serves this session";
+    EXPECT_FALSE(result.save_error.empty());
+    EXPECT_TRUE(result.retire.empty()) << "the old token is what the next launch reads";
+    EXPECT_NE(result.message.find("previous token is kept"), std::string::npos) << result.message;
+
+    // The same for a sign-in that replaces an earlier one.
+    auto signed_in = renewed;
+    signed_in.message = "Signed in as alex";
+    result = account_result(AccountJob::sign_in, current, signed_in, unwritable);
+    EXPECT_TRUE(result.retire.empty());
+    EXPECT_NE(result.message.find("lasts until the app closes"), std::string::npos);
+
+    result = account_result(AccountJob::renew, current, renewed, pattern);
+    EXPECT_TRUE(result.save_error.empty());
+    EXPECT_EQ(result.retire, std::vector<std::string>{"old"});
+    EXPECT_EQ(account_wire::load_auth(pattern).token, "fresh-token");
+    std::remove(pattern);
+}
+
 TEST(AfterglowAccount, RenewalOnlyWithinThirtyDaysAndRetiresTheOldTokenAfterTheHandOver)
 {
     const auto now = account_wire::parse_time_ms("2026-10-15T00:00:00Z");

@@ -727,6 +727,44 @@ Outcome retire(const Call &call, const std::string &token, const std::vector<std
 }
 } // namespace account_wire
 
+AccountResult account_result(AccountJob job, const StoredAuth &auth, account_wire::Outcome outcome,
+                             const std::string &path)
+{
+    AccountResult result;
+    result.job = job;
+    result.auth = auth;
+    result.ok = outcome.ok;
+    result.token_changed = outcome.token_changed;
+    result.message = std::move(outcome.message);
+    result.retire = std::move(outcome.retire);
+    if (job == AccountJob::log_out)
+    {
+        result.auth = {};
+        const auto error = account_wire::remove_auth(path);
+        if (!error.empty())
+            result.message += " " + error + ".";
+        return result;
+    }
+    if (!outcome.ok || !outcome.token_changed)
+        return result;
+    result.auth.token = outcome.token;
+    result.auth.token_id = outcome.token_id;
+    if (!outcome.username.empty())
+        result.auth.username = outcome.username;
+    result.save_error = account_wire::save_auth(path, result.auth);
+    if (result.save_error.empty())
+        return result;
+    // The file still holds the previous token, so it stays valid on the account
+    // for the next launch; the new one works only until the app closes.
+    result.retire.clear();
+    if (job == AccountJob::renew)
+        result.message = "Token renewed for this session only (" + result.save_error +
+                         "); the previous token is kept for the next launch";
+    else
+        result.message += " (" + result.save_error + "; this sign-in lasts until the app closes)";
+    return result;
+}
+
 Account::Account(std::string path) : path_(std::move(path))
 {
 }
@@ -844,9 +882,6 @@ void Account::run()
         replaces = std::exchange(replaces_, {});
         retiring.swap(retire_);
     }
-    AccountResult result;
-    result.job = job;
-    result.auth = auth;
     Session session(stopping_);
     const bool open = session.open(auth.host, auth.port);
     const account_wire::Call call = [&](const std::string &command, const std::string &args)
@@ -873,27 +908,7 @@ void Account::run()
     else if (job == AccountJob::retire)
         outcome = account_wire::retire(call, auth.token, retiring);
     password.assign(password.size(), '\0');
-    result.ok = outcome.ok;
-    result.token_changed = outcome.token_changed;
-    result.message = outcome.message;
-    result.retire = std::move(outcome.retire);
-    if (job == AccountJob::log_out)
-    {
-        result.auth = {};
-        const auto error = account_wire::remove_auth(path_);
-        if (!error.empty())
-            result.message += " " + error + ".";
-    }
-    else if (outcome.ok && outcome.token_changed)
-    {
-        result.auth.token = outcome.token;
-        result.auth.token_id = outcome.token_id;
-        if (!outcome.username.empty())
-            result.auth.username = outcome.username;
-        const auto error = account_wire::save_auth(path_, result.auth);
-        if (!error.empty())
-            result.message += " (" + error + "; this sign-in lasts until the app closes)";
-    }
+    AccountResult result = account_result(job, auth, std::move(outcome), path_);
     sys::log("[Afterglow] account job=%d ok=%d", static_cast<int>(job), result.ok ? 1 : 0);
     {
         std::lock_guard<std::mutex> lock(mutex_);

@@ -621,6 +621,8 @@ int main()
             // Success messages name the user; the log keeps only failures.
             if (!result.ok)
                 sys::log("[Afterglow] account: %s", result.message.c_str());
+            else if (!result.save_error.empty())
+                sys::log("[Afterglow] account: token not saved: %s", result.save_error.c_str());
             if (result.job == afterglow::AccountJob::renew && result.ok && result.token_changed)
             {
                 // Same server: the open connections take the fresh token for their
@@ -638,10 +640,12 @@ int main()
                     config.ma_token));
             }
             retiring = stored_auth.valid() ? std::move(result.retire) : std::vector<std::string>{};
-            const auto status = result.job == afterglow::AccountJob::renew ||
-                                        result.job == afterglow::AccountJob::retire
-                                    ? model.account.status
-                                    : result.message;
+            // Renewal and retiring stay quiet unless the new token could not be
+            // saved: then the next launch falls back to the old one, so say so.
+            const bool quiet = (result.job == afterglow::AccountJob::renew ||
+                                result.job == afterglow::AccountJob::retire) &&
+                               result.save_error.empty();
+            const auto status = quiet ? model.account.status : result.message;
             const auto sync = model.account.sync_status;
             model.account = afterglow::account_wire::account_state(credentials, stored_auth);
             model.account.status = status;
