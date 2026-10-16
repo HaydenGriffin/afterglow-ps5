@@ -46,6 +46,7 @@ extern "C" void stbi_image_free(void *);
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -428,6 +429,16 @@ int main(int argc, char **argv)
         // AFTERGLOW_BEAT=<0..1>: hold the beat pulse for halo/spectrum captures.
         if (const char *beat = std::getenv("AFTERGLOW_BEAT"))
             model.beat = static_cast<float>(std::atof(beat));
+        // AFTERGLOW_LINE_LOOK / AFTERGLOW_STAGE_LOOK=<position>,<background>,<size>
+        // (0..2 each, as the Display rows order them): the lyric overlays' looks.
+        const auto look = [](const char *name, hui::afterglow::OverlayLook &out)
+        {
+            if (const char *text = std::getenv(name))
+                if (std::sscanf(text, "%d,%d,%d", &out.position, &out.background, &out.size) != 3)
+                    std::fprintf(stderr, "%s wants <position>,<background>,<size>\n", name);
+        };
+        look("AFTERGLOW_LINE_LOOK", model.preferences.line_look);
+        look("AFTERGLOW_STAGE_LOOK", model.preferences.stage_look);
         // AFTERGLOW_VISUAL=1|2: halo or spectrum instead of MilkDrop.
         if (const char *visual = std::getenv("AFTERGLOW_VISUAL"))
             model.preferences.visual_style = std::atoi(visual);
@@ -652,8 +663,27 @@ int main(int argc, char **argv)
     std::vector<unsigned char> pixels(static_cast<std::size_t>(width * height * 4));
     stbi_flip_vertically_on_write(1);
     bool ok = true;
+    // HUI_ONLY=<part,part>: only the pictures whose names contain one of these.
+    const char *only_names = std::getenv("HUI_ONLY");
+    const auto wanted = [&](const std::string &name)
+    {
+        if (only_names == nullptr)
+            return true;
+        std::string_view parts(only_names);
+        while (!parts.empty())
+        {
+            const auto comma = parts.find(',');
+            const auto part = parts.substr(0, comma);
+            if (!part.empty() && name.find(part) != std::string::npos)
+                return true;
+            parts = comma == parts.npos ? std::string_view{} : parts.substr(comma + 1);
+        }
+        return false;
+    };
     const auto render = [&](const std::string &name)
     {
+        if (!wanted(name))
+            return;
         shell.compose(renderer);
         glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
         glClearColor(0, 0, 0, 1);
