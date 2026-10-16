@@ -77,6 +77,18 @@ int main(int argc, char **argv)
                  });
     // A sync leader with members takes the group's volume (40 + 5).
     companion.command(Command::volume_up);
+    // Volume for each speaker: the leader's own volume builds on its own 30,
+    // not on the group's 45 just sent; quick kitchen steps add up (30 + 10).
+    const auto member_volume = [&](const char *player)
+    {
+        CompanionAction step;
+        step.kind = CompanionActionKind::member_volume;
+        step.text = player;
+        step.value = 5;
+        return companion.action(step);
+    };
+    const bool volumes =
+        member_volume("living") && member_volume("kitchen") && member_volume("kitchen");
     companion.load_recent();
     const bool recent =
         wait_for(companion,
@@ -129,8 +141,10 @@ int main(int argc, char **argv)
 
     companion.stop();
     companion.join();
-    std::printf("following=%d recent=%d chosen=%d played=%d back=%d moved=%d offered=%d "
-                "brought=%d\n",
-                following, recent, chosen, played, back, moved, offered, brought);
-    return following && recent && chosen && played && back && moved && offered && brought ? 0 : 1;
+    std::printf("following=%d volumes=%d recent=%d chosen=%d played=%d back=%d moved=%d "
+                "offered=%d brought=%d\n",
+                following, volumes, recent, chosen, played, back, moved, offered, brought);
+    return following && volumes && recent && chosen && played && back && moved && offered && brought
+               ? 0
+               : 1;
 }

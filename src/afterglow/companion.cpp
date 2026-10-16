@@ -2154,15 +2154,17 @@ struct Companion::Impl
         case Control::member_volume:
         {
             // One speaker of the group: steps build on the level last sent to it.
+            // Its own key: the leader's group Volume is assumed under its bare id.
             const auto p = players.find(job.player);
             if (job.amount == 0 || p == players.end() || !p->second.volume_settable)
                 return {};
             companion_wire::VolumeTarget volume;
             volume.player_id = p->first;
             volume.level = p->second.volume;
+            const std::string key = "member:" + p->first;
             const int level =
-                std::clamp(volume_sent.value_or(p->first, volume.level, now) + job.amount, 0, 100);
-            volume_sent.sent(p->first, level, now);
+                std::clamp(volume_sent.value_or(key, volume.level, now) + job.amount, 0, 100);
+            volume_sent.sent(key, level, now);
             return companion_wire::volume_request(volume, level);
         }
         case Control::seek:

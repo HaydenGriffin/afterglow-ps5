@@ -123,11 +123,14 @@ def exercise(binary):
         assert process.wait(timeout=3) == 0
         assert seen["volumes"][0] == ("players/cmd/group_volume", "living", 45), seen
         assert ("players/cmd/volume_set", "bedroom", 25) in seen["volumes"], seen
+        assert ("players/cmd/volume_set", "living", 35) in seen["volumes"], seen
+        kitchen = [level for command, player, level in seen["volumes"] if player == "kitchen"]
+        assert kitchen and kitchen[-1] == 40 and all(level <= 40 for level in kitchen), seen
         assert seen["recent"] == 1, seen
         assert ("player_queues/play", "bedroom") in seen["commands"], seen
         assert seen["media"] == [("bedroom", "library://album/3", "replace")], seen
         assert seen["transfers"] == [("living", "bedroom", None), ("bedroom", "ps5", True)], seen
-        print("PASS: group volume on the followed leader, recent music, Play and Play now on a "
+        print("PASS: group volume on the followed leader, each speaker's own volume, recent music, Play and Play now on a "
               "chosen silent speaker, transfer to a silent speaker, Play on this PS5 with auto_play")
     finally:
         if connection:
