@@ -217,6 +217,11 @@ void Client::command(Command value)
     std::lock_guard<std::mutex> lock(mutex_);
     if (!state_.connected)
         return;
+    // A skip already waiting stands for this press too (LG 1.5.1).
+    if (value == Command::next || value == Command::previous)
+        for (auto i = command_read_; i != command_write_; i = (i + 1) % commands_.size())
+            if (commands_[i] == value)
+                return;
     const auto next = (command_write_ + 1) % commands_.size();
     if (next == command_read_)
         return;
@@ -800,10 +805,16 @@ void Client::run()
                         "{\"type\":\"client/command\",\"payload\":{\"controller\":{\"command\":" +
                         json_quote(cmd);
                     if (cmd == "volume")
-                        outgoing +=
-                            ",\"volume\":" +
-                            std::to_string(std::clamp(
-                                volume_.load() + (value == Command::volume_up ? 5 : -5), 0, 100));
+                    {
+                        // Held presses build on the level sent last, not on a
+                        // report that has not caught up yet.
+                        const int level =
+                            std::clamp(volume_sent_.value_or("", volume_.load(), now) +
+                                           (value == Command::volume_up ? 5 : -5),
+                                       0, 100);
+                        volume_sent_.sent("", level, now);
+                        outgoing += ",\"volume\":" + std::to_string(level);
+                    }
                     outgoing += "}}}";
                 }
             }

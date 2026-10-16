@@ -95,3 +95,18 @@ TEST(AfterglowCompanionAccount, AccountMirrorDefaultsBeforeAnyRead)
     EXPECT_EQ(companion.snapshot().own_player_id, "upd19db919");
     EXPECT_EQ(companion.snapshot().static_delay_ms, -1);
 }
+
+TEST(AfterglowCompanionAccount, StaticDelayActionGoesToThePlayerItWasSetFor)
+{
+    CompanionSnapshot target;
+    target.static_delay_player = "new-player";
+    target.static_delay_key = "sendspin_static_delay";
+    CompanionAction action;
+    action.kind = CompanionActionKind::static_delay;
+    action.value = 120;
+    action.text = "old-player";
+    action.option = "old||protocol||sendspin_static_delay";
+    const auto wire = companion_wire::action_request(action, target);
+    EXPECT_EQ(wire.args, "{\"player_id\":\"old-player\",\"values\":"
+                         "{\"old||protocol||sendspin_static_delay\":120}}");
+}

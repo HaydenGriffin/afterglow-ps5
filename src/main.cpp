@@ -122,7 +122,8 @@ void handle_account_command(hui::afterglow::Presentation &model, hui::afterglow:
             model.sign_in_username, model.sign_in_password, config.client_id, target);
         if (!error.empty())
             model.account.status = error;
-        else if (account.sign_in(target, model.sign_in_password))
+        else if (account.sign_in(target, model.sign_in_password,
+                                 account_wire::replaces_for(stored, target)))
         {
             model.account.busy = true;
             model.account.status = "Signing in…";
@@ -505,6 +506,8 @@ int main()
     afterglow::PreferenceMirror mirror(restore_preferences);
     // LG checks the token's expiry 8 s after launch, off the start-up path.
     std::int64_t renew_at = sys::monotonic_us() + 8000000;
+    // Tokens a sign-in or renewal superseded, retired once the new one is in use.
+    std::vector<std::string> retiring;
     // Sign-in, log-out and renewal swap the token without restarting the app:
     // a fresh Companion is simpler to reason about than resetting a live one.
     const auto restart_companion = [&](const afterglow::Credentials &next)
@@ -568,20 +571,34 @@ int main()
         {
             model.account.busy = false;
             sys::log("[Afterglow] account: %s", result.message.c_str());
-            if (result.job == afterglow::AccountJob::log_out || (result.ok && result.token_changed))
+            if (result.job == afterglow::AccountJob::renew && result.ok && result.token_changed)
+            {
+                // Same server: the open connections take the fresh token for their
+                // next login, and only then is the old one retired (LG 1.4.3).
+                stored_auth = result.auth;
+                credentials.token = stored_auth.token;
+                companion->set_token(stored_auth.token);
+            }
+            else if (result.job == afterglow::AccountJob::log_out ||
+                     (result.ok && result.token_changed))
             {
                 stored_auth = result.auth;
                 restart_companion(afterglow::account_wire::effective_credentials(
                     stored_auth, config.host, static_cast<std::uint16_t>(config.ma_port),
                     config.ma_token));
             }
-            const auto status =
-                result.job == afterglow::AccountJob::renew ? model.account.status : result.message;
+            retiring = stored_auth.valid() ? std::move(result.retire) : std::vector<std::string>{};
+            const auto status = result.job == afterglow::AccountJob::renew ||
+                                        result.job == afterglow::AccountJob::retire
+                                    ? model.account.status
+                                    : result.message;
             const auto sync = model.account.sync_status;
             model.account = afterglow::account_wire::account_state(credentials, stored_auth);
             model.account.status = status;
             model.account.sync_status = sync;
         }
+        if (!retiring.empty() && account.retire(stored_auth, retiring))
+            retiring.clear();
         if (renew_at && now >= renew_at && !account.busy())
         {
             renew_at = 0;
@@ -757,6 +774,11 @@ int main()
         {
             companion->action(model.companion_action);
             model.companion_action_pending = false;
+        }
+        if (model.seek_seconds != 0)
+        {
+            companion->seek_by(model.seek_seconds);
+            model.seek_seconds = 0;
         }
         pump_account(now);
         const auto command = [&](afterglow::Command value)

@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iterator>
+#include <utility>
 
 namespace hui::afterglow
 {
@@ -104,6 +105,8 @@ constexpr float kHeadingSize = 48;
 constexpr float kCollectionTop = 305;
 constexpr float kCollectionRow = 104;
 constexpr float kActionRow = 86;
+// How long an item's row reads "Plays next" / "Added to the queue" (LG CONFIRM_MS).
+constexpr float kConfirmSeconds = 2.5f;
 
 // What a row does. Negative so they never collide with the indexes that
 // list rows carry (queued songs, browse results, presets, speakers).
@@ -359,11 +362,7 @@ struct Rows
     void item(const CompanionTrack &item, int tag)
     {
         auto &r = row(item.title.empty() ? "Untitled" : item.title, tag);
-        // Companion fills subtitle per type (artist, authors, episode date and
-        // length, publisher and episode count); older items only have artist.
-        r.item.subtitle = !item.subtitle.empty() ? item.subtitle
-                          : !item.artist.empty() ? item.artist
-                                                 : media_label(item.media_type);
+        r.item.subtitle = browse_detail(item);
         r.thumbnail = true;
         r.artwork = item.artwork;
     }
@@ -429,6 +428,33 @@ int later_songs(const CompanionSnapshot &c)
     const int first = up_next_first(c);
     const int remaining = std::max(c.queue_total - up_next_start(c), first + shown);
     return remaining - (first + shown);
+}
+
+std::string browse_detail(const CompanionTrack &item)
+{
+    const auto &type = item.media_type;
+    std::string out = media_label(type);
+    const auto add = [&out](const std::string &part)
+    {
+        if (!part.empty())
+            out += (out.empty() ? "" : " · ") + part;
+    };
+    if (type == "album" || type == "track")
+    {
+        add(item.artist);
+        if (type == "album")
+            add(item.year);
+        else if (item.duration > 0)
+            add(std::to_string(item.duration / 60) + ":" + (item.duration % 60 < 10 ? "0" : "") +
+                std::to_string(item.duration % 60));
+    }
+    // Companion's per-type line: authors, episode date and length, publisher
+    // and episode count, an artist's item count.
+    else if (!item.subtitle.empty())
+        add(item.subtitle);
+    else
+        add(item.artist);
+    return out;
 }
 
 float sync_picture_at(int trim_ms)
@@ -1004,6 +1030,15 @@ std::vector<SheetRow> Panel::list_rows() const
     else
         for (std::size_t i = 0; i < items.size(); ++i)
             rows.item(items[i], static_cast<int>(i));
+    // The item a Play next / Add answered for reads what happened, with a tick.
+    for (auto &row : rows.list)
+        if (confirmed_left_ > 0 && row.item.tag >= 0 &&
+            static_cast<std::size_t>(row.item.tag) < items.size() &&
+            items[static_cast<std::size_t>(row.item.tag)].uri == confirmed_uri_)
+        {
+            row.chosen = true;
+            row.item.subtitle = confirmed_text_;
+        }
     if (items.empty())
         rows.row(search                  ? "Nothing found for “" + query_ + "”"
                  : page_ == Page::browse ? "Nothing here yet"
@@ -1047,6 +1082,9 @@ std::vector<SheetRow> Panel::action_rows() const
     }
     if (type == "podcast")
         rows.row("Show episodes", show_episodes).item.chevron = true;
+    for (auto &row : rows.list)
+        if (failed_tag_ != 0 && row.item.tag == failed_tag_)
+            row.item.subtitle = "Couldn’t do that. Cross tries again";
     return std::move(rows.list);
 }
 
@@ -1122,7 +1160,11 @@ void Panel::open(Page page)
     search_root_ = false;
     appending_ = false;
     pending_focus_ = -1;
-    navigate(page);
+    play_id_ = 0;
+    failed_tag_ = 0;
+    confirmed_left_ = 0;
+    leave_ = false;
+    navigate(page, page == Page::settings ? settings_focus_ : 0);
     if (page == Page::home)
         home_.open();
     categories_.set_focus(category_ + 1);
@@ -1216,6 +1258,7 @@ void Panel::open_actions(const CompanionTrack &item)
 {
     trail_.push_back({page_, request_, subject_, sheet_.focus()});
     subject_ = item;
+    failed_tag_ = 0;
     browse_right_ = true;
     navigate(Page::item_actions);
 }
@@ -1364,6 +1407,60 @@ bool Panel::send(CompanionAction action, const char *toast)
     if (toast != nullptr)
         s.show_toast(toast);
     return true;
+}
+
+void Panel::play(int tag)
+{
+    // One at a time: a second press while the first is out would only race it.
+    if (play_id_ != 0)
+        return;
+    CompanionAction action;
+    action.text = subject_.uri;
+    action.kind = tag == start_radio ? CompanionActionKind::radio : CompanionActionKind::play_media;
+    action.option = tag == play_next ? "next" : tag == add_to_queue ? "add" : "replace";
+    action.id = ++play_ids_;
+    if (!send(action, nullptr))
+        return;
+    play_id_ = action.id;
+    play_tag_ = tag;
+    play_item_ = subject_;
+    failed_tag_ = 0;
+}
+
+// LG browse-view.js run(): Play now and radio go back to Now playing with a
+// notice; Play next and Add return to the list, where the item's own row says
+// what happened. A refusal stays on the actions, named on the row pressed.
+void Panel::settle_play()
+{
+    auto &s = presentation();
+    if (play_id_ == 0 || s.companion.action_done != play_id_)
+        return;
+    play_id_ = 0;
+    // Browse moved on meanwhile: the answer belongs to a page no longer shown.
+    if (page_ != Page::item_actions || subject_.uri != play_item_.uri)
+        return;
+    if (!s.companion.action_done_ok)
+    {
+        failed_tag_ = play_tag_;
+        refresh_ = 0;
+        return;
+    }
+    const std::string name = play_item_.title.empty() ? "this" : play_item_.title;
+    if (play_tag_ == play_now || play_tag_ == start_radio)
+    {
+        s.show_toast("Playing " + name + (play_tag_ == start_radio ? " radio" : ""));
+        leave_ = true;
+        return;
+    }
+    confirmed_uri_ = play_item_.uri;
+    confirmed_text_ = play_tag_ == play_next ? "Plays next" : "Added to the queue";
+    confirmed_left_ = kConfirmSeconds;
+    pop_browse();
+}
+
+bool Panel::take_leave()
+{
+    return std::exchange(leave_, false);
 }
 
 bool Panel::confirm_list(const SheetRow &row)
@@ -1581,14 +1678,7 @@ void Panel::confirm(const SheetRow &row)
     case play_next:
     case add_to_queue:
     case start_radio:
-        action.text = subject_.uri;
-        action.kind =
-            tag == start_radio ? CompanionActionKind::radio : CompanionActionKind::play_media;
-        action.option = tag == play_next ? "next" : tag == add_to_queue ? "add" : "replace";
-        send(action, tag == play_now       ? "Playing now"
-                     : tag == play_next    ? "Plays next"
-                     : tag == add_to_queue ? "Added to the queue"
-                                           : "Starting radio");
+        play(tag);
         break;
     case show_songs:
         open_list(Page::collection, BrowseCategory::tracks);
@@ -1728,8 +1818,11 @@ void Panel::confirm(const SheetRow &row)
 
 int Panel::shown_delay() const
 {
-    const int reported = presentation().companion.static_delay_ms;
-    if (delay_ms_ >= 0 && (delay_wait_ > 0 || (delay_hold_ > 0 && reported != delay_ms_)))
+    const auto &c = presentation().companion;
+    const int reported = c.static_delay_ms;
+    // A value set for another player (this PS5's changed since) is not this one's.
+    if (delay_ms_ >= 0 && delay_player_ == c.static_delay_player &&
+        (delay_wait_ > 0 || (delay_hold_ > 0 && reported != delay_ms_)))
         return delay_ms_;
     return reported;
 }
@@ -1744,6 +1837,9 @@ void Panel::adjust_delay(int direction)
     const int next = std::clamp((from + direction * step) / kDelayStep * kDelayStep, 0, kDelayMax);
     if (next == from)
         return;
+    const auto &c = presentation().companion;
+    delay_player_ = c.static_delay_player;
+    delay_key_ = c.static_delay_key;
     delay_ms_ = next;
     delay_wait_ = kDelaySaveSeconds;
 }
@@ -1767,7 +1863,9 @@ void Panel::update_delay(float dt)
     CompanionAction action;
     action.kind = CompanionActionKind::static_delay;
     action.value = delay_ms_;
-    action.text = s.companion.own_player_id;
+    // Saved on the player it was set for, even if this PS5's player changed meanwhile.
+    action.text = delay_player_;
+    action.option = delay_key_;
     if (send(action, nullptr))
         delay_hold_ = kDelayHoldSeconds;
     else
@@ -1915,11 +2013,13 @@ void Panel::preset_input(const InputFrame &input)
 void Panel::tick(float dt)
 {
     update_delay(dt);
+    confirmed_left_ = std::max(0.0f, confirmed_left_ - dt);
 }
 
 void Panel::update(const InputFrame &input, float dt, ui::Feedback &feedback, bool reduced_motion)
 {
     take_keyboard();
+    settle_play();
     if (page_ == Page::home)
     {
         home_.set_area(home_area());
@@ -1958,6 +2058,8 @@ void Panel::update(const InputFrame &input, float dt, ui::Feedback &feedback, bo
     // Show what the press changed on the next frame, not half a second later.
     if (acted)
         refresh_ = 0;
+    if (page_ == Page::settings && root_ == Page::settings)
+        settings_focus_ = sheet_.focus();
     sheet_.update(dt);
     categories_.update(dt);
 }

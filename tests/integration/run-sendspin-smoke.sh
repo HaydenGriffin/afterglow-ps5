@@ -12,7 +12,8 @@ if [[ ${AFTERGLOW_TEST_DENY_FCNTL:-0} == 1 ]]; then
 fi
 "${CXX:-c++}" "${compile_flags[@]}" \
     -fno-exceptions -fno-rtti -pthread -I"$root/src" \
-    "$root/src/afterglow/client.cpp" "$root/src/afterglow/protocol.cpp" \
+    "$root/src/afterglow/client.cpp" "$root/src/afterglow/controls.cpp" \
+    "$root/src/afterglow/protocol.cpp" \
     "$root/tests/integration/sendspin_client_smoke.cpp" \
     -o "$root/build/tests/sendspin_client_smoke"
 python3 "$root/tests/integration/sendspin_mock_server.py" \

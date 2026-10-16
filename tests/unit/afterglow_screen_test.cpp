@@ -65,7 +65,7 @@ TEST_F(AfterglowMain, TransportClosesItselfAfterNineIdleSeconds)
     for (int i = 0; i < 500; ++i)
         step(idle());
     step(nav(Direction::right));
-    EXPECT_TRUE(presentation().companion_action_pending)
+    EXPECT_EQ(presentation().seek_seconds, 10)
         << "with the controls gone, right seeks instead of moving a tile";
 }
 
@@ -74,10 +74,28 @@ TEST_F(AfterglowMain, DpadSeeksTenSecondsAndNamesIt)
     playing_song();
     step(nav(Direction::right));
     auto &s = presentation();
-    ASSERT_TRUE(s.companion_action_pending);
-    EXPECT_EQ(s.companion_action.kind, CompanionActionKind::seek);
-    EXPECT_EQ(s.companion_action.value, 70);
-    EXPECT_NE(s.toast.find("Ahead 10 s"), std::string::npos);
+    EXPECT_EQ(s.seek_seconds, 10);
+    EXPECT_FALSE(s.companion_action_pending) << "seeks go through Companion::seek_by";
+    EXPECT_EQ(s.toast, "Ahead 10 s · 1:10");
+}
+
+TEST_F(AfterglowMain, QuickSeeksAddUpAndTheToastFollowsThem)
+{
+    playing_song();
+    auto &s = presentation();
+    s.playing = s.companion.playing = false;
+    step(nav(Direction::right));
+    step(nav(Direction::right));
+    step(nav(Direction::right));
+    EXPECT_EQ(s.seek_seconds, 30) << "none dropped while the first is in flight";
+    EXPECT_EQ(s.toast, "Ahead 10 s · 1:30") << "counted from the last press, not the stale report";
+    step(nav(Direction::left));
+    EXPECT_EQ(s.seek_seconds, 20);
+    EXPECT_EQ(s.toast, "Back 10 s · 1:20");
+    s.seek_seconds = 0; // main.cpp handed it on
+    step(idle(), 5.0f);
+    step(nav(Direction::left));
+    EXPECT_EQ(s.toast, "Back 10 s · 0:50") << "once the report is due, it is the base again";
 }
 
 TEST_F(AfterglowMain, SeekingALiveStreamExplainsInsteadOfActing)
@@ -85,7 +103,7 @@ TEST_F(AfterglowMain, SeekingALiveStreamExplainsInsteadOfActing)
     playing_song();
     presentation().companion.track.duration = 0;
     step(nav(Direction::left));
-    EXPECT_FALSE(presentation().companion_action_pending);
+    EXPECT_EQ(presentation().seek_seconds, 0);
     EXPECT_EQ(presentation().toast, "This stream can't seek");
 }
 
@@ -255,11 +273,30 @@ TEST_F(AfterglowMain, AlbumPosterListsTheNextTwoSongs)
     s.companion.next_up.push_back(next);
     s.companion.next_up.push_back(next);
     EXPECT_EQ(drawn() - one, 10 + 7) << "the second title and artist, never a third";
+    const int plain = drawn();
     s.companion.track.quality_badge = "Lossless";
     s.companion.track.format = "flac / 44100 Hz / 16 bit";
-    const int badge = drawn();
-    s.companion.track.quality_badge.clear();
-    EXPECT_GT(drawn(), badge) << "the badge replaces the longer format line";
+    EXPECT_EQ(drawn(), plain) << "format and quality live in Details, not on the poster (LG 1.5.0)";
+}
+
+TEST_F(AfterglowMain, PosterHasNoSongChangeSlide)
+{
+    playing_song();
+    auto &s = presentation();
+    s.preferences.display_mode = 2;
+    const auto frame_after = [&](float seconds)
+    {
+        step(idle(), seconds);
+        auto frame = std::make_unique<hui::app::Frame>();
+        screen_->draw(*frame);
+        return frame;
+    };
+    frame_after(1.0f);
+    s.title = s.companion.track.title = "A New Song";
+    const auto fresh = frame_after(0.02f);
+    const auto settled = frame_after(1.0f);
+    EXPECT_EQ(fresh->scene.instances().size(), settled->scene.instances().size())
+        << "no cover slides off the fields when the song changes (LG 1.5.0)";
 }
 
 // Music Assistant answering with a paused song and recent music.

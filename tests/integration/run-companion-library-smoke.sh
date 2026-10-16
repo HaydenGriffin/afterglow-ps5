@@ -8,7 +8,8 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 mkdir -p "$root/build/tests"
 "${CXX:-c++}" -std=c++20 -Wall -Wextra -Wpedantic -Werror \
     -fno-exceptions -fno-rtti -pthread -I"$root/src" \
-    "$root/src/afterglow/companion.cpp" "$root/src/afterglow/speakers.cpp" "$root/src/afterglow/ma_socket.cpp" \
+    "$root/src/afterglow/companion.cpp" "$root/src/afterglow/speakers.cpp" "$root/src/afterglow/controls.cpp" \
+    "$root/src/afterglow/ma_socket.cpp" \
     "$root/src/afterglow/protocol.cpp" \
     "$root/tests/integration/companion_library_smoke.cpp" \
     -o "$root/build/tests/companion_library_smoke"

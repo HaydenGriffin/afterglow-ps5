@@ -70,10 +70,14 @@ def stamp(days):
 class Server:
     def __init__(self):
         self.tokens = {"other": {"token": "other-secret", "name": "viz-man on Living Room C1",
-                                 "long": True, "created": stamp(-5), "expires": stamp(360)}}
+                                 "long": True, "created": stamp(-5), "expires": stamp(360)},
+                       # Another console showing the same name: never this one's to revoke.
+                       "twin": {"token": "twin-secret", "name": NAME, "long": True,
+                                "created": stamp(-5), "expires": stamp(5)}}
         self.created = 0
         self.log = []
         self.revoked = []
+        self.revoked_with = []
 
     def handle(self, session, command, args):
         self.log.append(command)
@@ -88,6 +92,7 @@ class Server:
         if command == "auth":
             known = any(t["token"] == args.get("token") for t in self.tokens.values())
             session["authed"] = known
+            session["token"] = args.get("token")
             return {"authenticated": known}
         assert session.get("authed"), command + " before auth"
         if command == "auth/token/create":
@@ -107,6 +112,7 @@ class Server:
             assert args["token_id"] in self.tokens
             del self.tokens[args["token_id"]]
             self.revoked.append(args["token_id"])
+            self.revoked_with.append((args["token_id"], session["token"]))
             return None
         raise AssertionError("Unexpected command: " + command)
 
@@ -142,14 +148,18 @@ def exercise(binary):
                 send(item, {"message_id": request["message_id"], "result": result})
         assert process.wait(timeout=5) == 0, "smoke exited with %s" % process.returncode
         ours = sorted(k for k, t in server.tokens.items() if t["name"] == NAME)
-        assert ours == [], "log out must revoke every token in this name: %s" % ours
+        assert ours == ["twin"], "log out revokes this console's own token only: %s" % ours
         assert "other" in server.tokens, "another device's token must survive"
-        # Second sign-in: its session and the superseded long-1, never the new long-2.
+        # Each sign-in revokes its session token; the replaced long-1 and the renewed
+        # long-2 are retired afterwards, signed in with their successors.
         assert server.revoked == ["session", "session", "long-1", "long-2", "long-3"], server.revoked
+        retired = dict(server.revoked_with)
+        assert retired["long-1"] == "long-2" and retired["long-2"] == "long-3", server.revoked_with
         assert not os.path.exists(path), "log out removes the token file"
-        print("PASS: wrong password refused, sign-in with session revoke, re-sign-in revokes the "
-              "superseded token only, renewal within 30 days "
-              "revokes the older token, log out revokes every token in this name and removes the file")
+        print("PASS: wrong password refused, sign-in revokes only its session token, re-sign-in "
+              "and renewal within 30 days retire the replaced token by id after the hand-over, "
+              "log out revokes this console's own token by id (a namesake survives) and removes "
+              "the file")
     finally:
         for connection, _ in connections:
             connection.close()

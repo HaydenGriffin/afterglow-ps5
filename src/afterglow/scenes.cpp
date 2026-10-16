@@ -45,21 +45,6 @@ Color dimmed(Color c, const Presentation &state)
         return c;
     return {c.r * kNightDim, c.g * kNightDim, c.b * kNightDim, c.a};
 }
-// CSS cubic-bezier(x1, y1, x2, y2) at time t, solved for x by bisection.
-float bezier(float t, float x1, float y1, float x2, float y2)
-{
-    t = std::clamp(t, 0.0f, 1.0f);
-    const auto curve = [](float u, float a, float b)
-    { return 3 * (1 - u) * (1 - u) * u * a + 3 * (1 - u) * u * u * b + u * u * u; };
-    float low = 0, high = 1, u = t;
-    for (int i = 0; i < 24; ++i)
-    {
-        u = (low + high) * 0.5f;
-        (curve(u, x1, x2) < t ? low : high) = u;
-    }
-    return curve(u, y1, y2);
-}
-
 Color from(const std::array<float, 3> &rgb)
 {
     return Color{rgb[0], rgb[1], rgb[2], 1};
@@ -78,18 +63,6 @@ std::string joined(std::initializer_list<std::string> parts)
         if (!part.empty())
             out += (out.empty() ? "" : " · ") + part;
     return out;
-}
-// LG reveals each field by sliding a ground-coloured cover off it toward the
-// right (player.css field-reveal: 0.52 s, cubic-bezier(.16, 1, .3, 1)).
-// Reduced motion skips it: the new song's fields are simply there.
-void reveal(gfx::DrawList &list, const gfx::Rect &field, float age, float delay, Color ground,
-            bool reduced)
-{
-    const float t = (age - delay) / kRevealSeconds;
-    if (t >= 1 || reduced)
-        return;
-    const float shown = field.w * bezier(t, 0.16f, 1, 0.3f, 1);
-    list.rounded_rect({field.x + shown, field.y, field.w - shown, field.h}, 0, ground);
 }
 // Rows as ui::paragraph draws them, with the sung bytes in lit and the rest
 // in unlit. sung == npos draws every row lit (no word timings).
@@ -182,7 +155,7 @@ float fade_in(const SceneClock &clock, float seconds = 0.28f)
 {
     return std::clamp(clock.lyric_age / seconds, 0.0f, 1.0f);
 }
-// Field B: LG's "Next" list, the next two songs. One song keeps room for a
+// Field B: LG's "Up next" list, the next two songs. One song keeps room for a
 // two-line title; two share the field one line each.
 void draw_next_field(const Scene &scene, const gfx::Rect &b, Color tb)
 {
@@ -192,7 +165,7 @@ void draw_next_field(const Scene &scene, const gfx::Rect &b, Color tb)
     const auto &upcoming = scene.state.companion.next_up;
     const float x = b.x + kFieldInset;
     const float width = b.w - kFieldInset * 2;
-    ui::text(list, fonts.semibold, "Next", x, 725, kTypeBody, tb);
+    ui::text(list, fonts.semibold, "Up next", x, 725, kTypeBody, tb);
     list.line(x, 744, b.x + b.w - kFieldInset, 744, 2, tb);
     if (upcoming.size() < 2)
     {
@@ -318,8 +291,8 @@ void draw_poster(const Scene &scene, bool lyrics, float ground)
     const Color soft = muted(state);
     draw_slab(scene, ground);
 
-    // Where the music plays, and what state it is in. LG puts the quality
-    // badge here; without one the provider's format line stands in.
+    // Where the music plays, and what state it is in. The stream's format and
+    // quality live in Details, not on the poster (LG 1.5.0).
     const std::string where = state.preview          ? "Listening room · Preview"
                               : !state.group.empty() ? state.group
                                                      : "This PS5";
@@ -328,7 +301,6 @@ void draw_poster(const Scene &scene, bool lyrics, float ground)
                 : state.configured ? "Connecting…"
                                    : "Not set up")
              : joined({state.playing ? "Playing" : "Paused",
-                       track.quality_badge.empty() ? track.format : track.quality_badge,
                        lyrics && scene.lyrics.empty()
                            ? (scene.lyrics.loading ? "Finding lyrics…" : "No lyrics for this song")
                            : ""});
@@ -439,9 +411,6 @@ void draw_poster(const Scene &scene, bool lyrics, float ground)
                  end - 56 + 43, kTypeBody, ta);
     }
     draw_next_field(scene, b, tb);
-    const Color ground_colour = kInk;
-    reveal(list, a, scene.clock.track_age, 0, ground_colour, scene.clock.reduced_motion);
-    reveal(list, b, scene.clock.track_age, 0.07f, ground_colour, scene.clock.reduced_motion);
 
     const double duration = track.duration;
     if (!idle && duration > 0)
@@ -500,8 +469,6 @@ void draw_track_card(const Scene &scene)
         ui::text(list, fonts.regular, fonts.regular.font->fit(meta, kTypeMin, width - 56),
                  field.x + kFieldInset, y, kTypeMin, text.with_alpha(0.85f));
     }
-    if (!idle)
-        reveal(list, field, scene.clock.track_age, 0, kInk, scene.clock.reduced_motion);
     list.pop_opacity();
 }
 

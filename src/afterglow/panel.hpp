@@ -21,6 +21,10 @@ int up_next_first(const CompanionSnapshot &c);
 // Songs after the shown window ("Later songs"); 0 when the window reaches the end.
 int later_songs(const CompanionSnapshot &c);
 
+// A Browse row's second line, as LG's browse-view.js detailOf writes it: what
+// kind of item it is, who made it, then an album's year or a song's length.
+std::string browse_detail(const CompanionTrack &item);
+
 // The sheets the controls overlay opens, drawn the way the LG app draws them:
 // a 65-pixel title, hairline-ruled rows, drawn ticks for the current choice.
 // Browse covers the screen; every other sheet sits right of the artwork slab
@@ -75,6 +79,14 @@ class Panel
     const char *page_name() const;
     // Browse pages cover the whole screen; the others leave the artwork slab.
     bool covers_screen() const;
+    // The rows of the right column as last built (a sheet's rows, or Browse's list or actions).
+    const std::vector<SheetRow> &rows() const
+    {
+        return sheet_.rows();
+    }
+    // True once when Play now or Start radio has started the music: the
+    // screen closes the controls and returns to Now playing, as on LG.
+    bool take_leave();
 
   private:
     // A browse page the focus left by going deeper, restored by back().
@@ -127,6 +139,9 @@ class Panel
     void take_keyboard();
     void answer_keyboard(const KeyboardResult &result);
     void update_delay(float dt);
+    // Browse's Play now / next / add / radio, answered once Music Assistant settles it.
+    void play(int tag);
+    void settle_play();
     int shown_delay() const;
     bool delay_available() const;
     bool send(CompanionAction action, const char *toast);
@@ -173,9 +188,22 @@ class Panel
     // step (LG speaker.js), then shown until Music Assistant reports it.
     int delay_ms_ = -1;
     float delay_wait_ = 0, delay_hold_ = 0;
+    // The player and value key delay_ms_ was set for.
+    std::string delay_player_, delay_key_;
     int held_steps_ = 0;
     // Lyrics timing previews the lines live; parsed once per song, not per frame.
     std::string lyric_source_;
     std::vector<LyricLine> lyric_lines_;
+    // A Browse play waiting for Music Assistant (its action id and row), the
+    // item row confirming Play next / Add to the queue for a moment, and the
+    // action row that failed.
+    std::uint64_t play_id_ = 0, play_ids_ = 0;
+    int play_tag_ = 0, failed_tag_ = 0;
+    CompanionTrack play_item_;
+    std::string confirmed_uri_, confirmed_text_;
+    float confirmed_left_ = 0;
+    bool leave_ = false;
+    // Settings opens on the row it was left at (LG 1.4.3).
+    int settings_focus_ = 0;
 };
 } // namespace hui::afterglow

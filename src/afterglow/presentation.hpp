@@ -172,6 +172,9 @@ struct Presentation
     bool recent_pending = false;
     bool idle_showing = false;
     std::string idle_artwork;
+    // Seconds to seek by, added up by quick presses; main.cpp hands it to
+    // Companion::seek_by and clears it.
+    int seek_seconds = 0;
 };
 
 // Only the UI thread accesses this model. Audio reaches it through Analyzer.

@@ -63,7 +63,11 @@ int main(int argc, char **argv)
         metadata |= state.title == "Protocol test 🎵" && state.artist == "Afterglow";
         if (metadata && !sent)
         {
-            client.command(hui::afterglow::Command::next);
+            // A burst of skips is one skip; held volume steps build on each other.
+            for (int i = 0; i < 3; ++i)
+                client.command(hui::afterglow::Command::next);
+            for (int i = 0; i < 3; ++i)
+                client.command(hui::afterglow::Command::volume_up);
             sent = true;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));

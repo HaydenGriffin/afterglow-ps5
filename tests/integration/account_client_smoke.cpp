@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <thread>
+#include <vector>
 
 namespace hui::sys
 {
@@ -65,25 +66,33 @@ int main(int argc, char **argv)
     if (!account.sign_in(target, "secret") || !wait(account, result) || !result.ok)
         return 5;
     const auto stored = account_wire::load_auth(path);
-    std::printf("signed_in=1 user=%s token=%s\n", stored.username.c_str(), stored.token.c_str());
-    if (stored.token != "long-1" || stored.username != "Fixture User" ||
-        stored.token_name != "Afterglow on PS5 (afterglow-ps5-test)")
+    std::printf("signed_in=1 user=%s token=%s id=%s\n", stored.username.c_str(),
+                stored.token.c_str(), stored.token_id.c_str());
+    if (stored.token != "long-1" || stored.token_id != "long-1" ||
+        stored.username != "Fixture User" ||
+        stored.token_name != "Afterglow on PS5 (afterglow-ps5-test)" || !result.retire.empty())
         return 6;
 
-    // Signing in again supersedes long-1; the fresh long-2 must survive.
-    if (!account.sign_in(target, "secret") || !wait(account, result) || !result.ok)
+    // Signing in again replaces long-1, retired once main.cpp runs on long-2.
+    if (!account.sign_in(target, "secret", account_wire::replaces_for(stored, target)) ||
+        !wait(account, result) || !result.ok || result.retire != std::vector<std::string>{"long-1"})
         return 11;
     const auto again = account_wire::load_auth(path);
     std::printf("signed_in_again=1 token=%s\n", again.token.c_str());
-    if (again.token != "long-2")
+    if (again.token != "long-2" || again.token_id != "long-2")
         return 12;
+    if (!account.retire(again, result.retire) || !wait(account, result) || !result.ok)
+        return 13;
 
-    if (!account.renew(again) || !wait(account, result) || !result.ok || !result.token_changed)
+    if (!account.renew(again) || !wait(account, result) || !result.ok || !result.token_changed ||
+        result.retire != std::vector<std::string>{"long-2"})
         return 7;
     const auto renewed = account_wire::load_auth(path);
     std::printf("renewed=1 token=%s\n", renewed.token.c_str());
-    if (renewed.token != "long-3")
+    if (renewed.token != "long-3" || renewed.token_id != "long-3")
         return 8;
+    if (!account.retire(renewed, result.retire) || !wait(account, result) || !result.ok)
+        return 14;
 
     if (!account.log_out(renewed) || !wait(account, result) || !result.ok)
         return 9;

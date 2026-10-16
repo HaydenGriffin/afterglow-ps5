@@ -22,6 +22,10 @@ struct StoredAuth
     std::string host;
     std::uint16_t port = 8095;
     std::string username, token, token_name;
+    // The token's id on the account: renewal and log out touch this token
+    // alone, even when another device shows the same name. Empty for a
+    // sign-in saved before ids were kept; those fall back to the name.
+    std::string token_id;
     bool valid() const
     {
         return !host.empty() && !token.empty() && !token_name.empty();
@@ -76,12 +80,23 @@ std::vector<std::string> session_tokens(const std::vector<Token> &tokens, std::s
 // Long-lived tokens in this name. Listed before a sign-in creates its token,
 // these are the ones it supersedes; the new token can never be among them.
 std::vector<std::string> long_lived_tokens(const std::vector<Token> &tokens, std::string_view name);
-// Every token in this name (log out).
+// Every token in this name.
 std::vector<std::string> named_tokens(const std::vector<Token> &tokens, std::string_view name);
-// Long-lived tokens in this name except the newest (after renewal).
-std::vector<std::string> superseded_tokens(const std::vector<Token> &tokens, std::string_view name);
-// True when this name's soonest-expiring long-lived token ends within 30 days.
-bool needs_renewal(const std::vector<Token> &tokens, std::string_view name, std::int64_t now_ms);
+// The id of the newest long-lived token in this name: the list carries no
+// token text, so a token just made is told by being the newest (LG ma.js).
+std::string newest_token(const std::vector<Token> &tokens, std::string_view name);
+// What log out revokes: this console's own token by id, or every token in its
+// name for a sign-in saved before ids were kept.
+std::vector<std::string> own_tokens(const std::vector<Token> &tokens, std::string_view name,
+                                    std::string_view id);
+// What a renewal retires: the old token by id when known, else the long-lived
+// tokens in this name made before the fresh one. Never the fresh one.
+std::vector<std::string> superseded_tokens(const std::vector<Token> &tokens, std::string_view name,
+                                           std::string_view old_id, std::string_view fresh_id);
+// True when our token (by id when known, else this name's soonest-expiring
+// long-lived one) ends within 30 days. A namesake's expiry is not ours.
+bool needs_renewal(const std::vector<Token> &tokens, std::string_view name, std::string_view id,
+                   std::int64_t now_ms);
 
 struct Reply
 {
@@ -93,13 +108,30 @@ using Call = std::function<Reply(const std::string &command, const std::string &
 struct Outcome
 {
     bool ok = false, token_changed = false;
-    std::string token, username, message;
+    std::string token, token_id, username, message;
+    // Tokens to revoke once everything runs on the new token (retire()).
+    std::vector<std::string> retire;
 };
+// The sign-in a new one replaces on the same server: its token id, or
+// by_name for one saved before ids were kept (its name's long-lived tokens).
+struct Replaces
+{
+    std::string token_id;
+    bool by_name = false;
+};
+// What a sign-in to target replaces: the stored sign-in, when it is on the same server.
+Replaces replaces_for(const StoredAuth &stored, const StoredAuth &target);
 Outcome sign_in(const Call &call, const std::string &username, const std::string &password,
-                const std::string &token_name);
-Outcome log_out(const Call &call, const std::string &token, const std::string &token_name);
+                const std::string &token_name, const Replaces &replaces = {});
+Outcome log_out(const Call &call, const std::string &token, const std::string &token_name,
+                const std::string &token_id);
+// Makes a fresh token when ours ends within 30 days. Nothing is revoked here:
+// the old token goes in Outcome::retire, revoked by retire() once every open
+// connection has been handed the fresh one (LG 1.4.3).
 Outcome renew(const Call &call, const std::string &token, const std::string &token_name,
-              std::int64_t now_ms);
+              const std::string &token_id, std::int64_t now_ms);
+// Revokes ids, signed in with token (the fresh one).
+Outcome retire(const Call &call, const std::string &token, const std::vector<std::string> &ids);
 } // namespace account_wire
 
 enum class AccountJob
@@ -107,7 +139,8 @@ enum class AccountJob
     none,
     sign_in,
     log_out,
-    renew
+    renew,
+    retire
 };
 struct AccountResult
 {
@@ -116,6 +149,8 @@ struct AccountResult
     // The stored token after the job (invalid after log out).
     StoredAuth auth;
     std::string message;
+    // Superseded tokens: hand auth.token to every connection, then retire() these.
+    std::vector<std::string> retire;
 };
 
 // Short-lived API sessions on a worker thread; the UI thread only starts jobs
@@ -128,9 +163,12 @@ class Account
     Account(const Account &) = delete;
     Account &operator=(const Account &) = delete;
     // target carries host, port, username and token_name. False while busy.
-    bool sign_in(const StoredAuth &target, std::string password);
+    bool sign_in(const StoredAuth &target, std::string password,
+                 account_wire::Replaces replaces = {});
     bool log_out(const StoredAuth &current);
     bool renew(const StoredAuth &current);
+    // Revokes superseded tokens, signed in with current's (fresh) token.
+    bool retire(const StoredAuth &current, std::vector<std::string> ids);
     bool busy() const;
     // Collects a finished job once (and joins its thread).
     bool take_result(AccountResult &out);
@@ -139,6 +177,8 @@ class Account
 
   private:
     bool begin(AccountJob job, const StoredAuth &auth, std::string password);
+    account_wire::Replaces replaces_;
+    std::vector<std::string> retire_;
     void run();
     std::string path_;
     std::atomic<bool> stopping_{false}, running_{false}, finished_{false};

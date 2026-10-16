@@ -306,10 +306,160 @@ TEST_F(AfterglowPanel, BrowseRequestsCategoryAndPlaysItemNow)
     EXPECT_EQ(s.companion_action.kind, CompanionActionKind::play_media);
     EXPECT_EQ(s.companion_action.text, "library://track/1");
     EXPECT_EQ(s.companion_action.option, "replace");
-    EXPECT_EQ(s.toast, "Playing now");
+    EXPECT_NE(s.companion_action.id, 0u);
+    EXPECT_TRUE(s.toast.empty()) << "nothing is claimed before Music Assistant answers";
     EXPECT_TRUE(panel_.back());
     EXPECT_EQ(panel_.page(), Page::browse);
     EXPECT_FALSE(panel_.back());
+}
+
+// Browse with one item open on its actions, as Music Assistant lists it.
+void open_item_actions(hui::afterglow::Panel &panel, const CompanionTrack &value)
+{
+    auto &s = presentation();
+    s.companion_configured = true;
+    s.companion.connected = true;
+    panel.open(Page::browse);
+    s.browse_pending = false;
+    s.companion.browse_items = {value};
+    ++s.companion.browse_revision;
+}
+
+TEST_F(AfterglowPanel, PlayNowReturnsToNowPlayingOnceMusicAssistantAnswers)
+{
+    auto &s = presentation();
+    open_item_actions(panel_, item("Blue Hour", "8", "album"));
+    input(nav(Direction::right));
+    cross();
+    ASSERT_EQ(panel_.page(), Page::item_actions);
+    cross(); // Play now
+    ASSERT_TRUE(s.companion_action_pending);
+    const auto id = s.companion_action.id;
+    s.companion_action_pending = false; // main.cpp handed it on
+    s.companion.action_busy = true;
+    cross();
+    EXPECT_FALSE(s.companion_action_pending) << "one play at a time";
+    input(idle());
+    EXPECT_FALSE(panel_.take_leave()) << "still waiting for the answer";
+    s.companion.action_busy = false;
+    s.companion.action_done = id;
+    s.companion.action_done_ok = true;
+    input(idle());
+    EXPECT_EQ(s.toast, "Playing Blue Hour");
+    EXPECT_TRUE(panel_.take_leave());
+    EXPECT_FALSE(panel_.take_leave()) << "said once";
+}
+
+TEST_F(AfterglowPanel, StartRadioNamesTheRadioAndAlsoLeaves)
+{
+    auto &s = presentation();
+    open_item_actions(panel_, item("Blue Hour", "8", "album"));
+    input(nav(Direction::right));
+    cross();
+    down(3); // Play next, Add to the queue, Start radio from this
+    cross();
+    ASSERT_TRUE(s.companion_action_pending);
+    EXPECT_EQ(s.companion_action.kind, CompanionActionKind::radio);
+    s.companion_action_pending = false;
+    s.companion.action_done = s.companion_action.id;
+    s.companion.action_done_ok = true;
+    input(idle());
+    EXPECT_EQ(s.toast, "Playing Blue Hour radio");
+    EXPECT_TRUE(panel_.take_leave());
+}
+
+TEST_F(AfterglowPanel, PlayNextConfirmsOnTheItemsOwnRowWithATick)
+{
+    auto &s = presentation();
+    open_item_actions(panel_, item("Blue Hour", "8", "album"));
+    input(nav(Direction::right));
+    cross();
+    down(1); // Play next
+    cross();
+    ASSERT_EQ(s.companion_action.option, "next");
+    s.companion_action_pending = false;
+    s.companion.action_done = s.companion_action.id;
+    s.companion.action_done_ok = true;
+    input(idle());
+    EXPECT_FALSE(panel_.take_leave()) << "Play next stays in Browse";
+    ASSERT_EQ(panel_.page(), Page::browse) << "back on the list";
+    const auto row = [&]
+    {
+        for (const auto &r : panel_.rows())
+            if (r.item.tag == 0)
+                return r;
+        return hui::afterglow::SheetRow{};
+    };
+    EXPECT_TRUE(row().chosen) << "the drawn tick";
+    EXPECT_EQ(row().item.subtitle, "Plays next");
+    EXPECT_EQ(panel_.rows().size(), 1u) << "the confirmation is the row itself";
+    wait(3);
+    EXPECT_FALSE(row().chosen);
+    EXPECT_EQ(row().item.subtitle, "Album") << "the detail line returns";
+    // Add to the queue says so in the same place.
+    cross();
+    down(2);
+    cross();
+    ASSERT_EQ(s.companion_action.option, "add");
+    s.companion.action_done = s.companion_action.id;
+    input(idle());
+    EXPECT_EQ(row().item.subtitle, "Added to the queue");
+}
+
+TEST_F(AfterglowPanel, RefusedPlayIsNamedOnThePressedRowAndAnswersForAnotherPageAreIgnored)
+{
+    auto &s = presentation();
+    open_item_actions(panel_, item("Blue Hour", "8", "album"));
+    input(nav(Direction::right));
+    cross();
+    cross(); // Play now
+    s.companion_action_pending = false;
+    s.companion.action_done = s.companion_action.id;
+    s.companion.action_done_ok = false;
+    input(idle());
+    EXPECT_FALSE(panel_.take_leave());
+    ASSERT_EQ(panel_.page(), Page::item_actions);
+    EXPECT_EQ(panel_.rows()[0].item.subtitle, "Couldn’t do that. Cross tries again");
+    cross(); // tries again
+    ASSERT_TRUE(s.companion_action_pending);
+    s.companion_action_pending = false;
+    input(idle());
+    EXPECT_TRUE(panel_.rows()[0].item.subtitle.empty());
+    EXPECT_TRUE(panel_.back()); // moved on before the answer
+    s.companion.action_done = s.companion_action.id;
+    s.companion.action_done_ok = true;
+    input(idle());
+    EXPECT_FALSE(panel_.take_leave()) << "the answer belongs to a page no longer shown";
+}
+
+TEST_F(AfterglowPanel, BrowseRowsNameTheKindMakerAndYearOrLength)
+{
+    CompanionTrack album = item("Blue Hour", "8", "album");
+    album.artist = "Night Choir";
+    album.year = "2019";
+    EXPECT_EQ(hui::afterglow::browse_detail(album), "Album · Night Choir · 2019");
+    CompanionTrack song = item("Low Tide", "9", "track");
+    song.artist = "Night Choir";
+    song.duration = 225;
+    EXPECT_EQ(hui::afterglow::browse_detail(song), "Song · Night Choir · 3:45");
+    song.duration = 0;
+    EXPECT_EQ(hui::afterglow::browse_detail(song), "Song · Night Choir");
+    EXPECT_EQ(hui::afterglow::browse_detail(item("Mix", "1", "playlist")), "Playlist");
+    EXPECT_EQ(hui::afterglow::browse_detail(item("Someone", "2", "artist")), "Artist");
+    EXPECT_EQ(hui::afterglow::browse_detail(item("FM", "3", "radio")), "Radio");
+    CompanionTrack episode = item("Part 1", "4", "podcast_episode");
+    episode.subtitle = "3 Oct · 42 min";
+    EXPECT_EQ(hui::afterglow::browse_detail(episode), "Episode · 3 Oct · 42 min");
+}
+
+TEST_F(AfterglowPanel, SettingsReopensOnTheRowItWasLeftAt)
+{
+    panel_.open(Page::settings);
+    down(3);
+    panel_.open(Page::queue);
+    panel_.open(Page::settings);
+    cross();
+    EXPECT_EQ(panel_.page(), Page::presets) << "the fourth row, Presets, kept the focus";
 }
 
 TEST_F(AfterglowPanel, BrowseWithoutMusicAssistantRequestsNothing)
@@ -859,6 +1009,8 @@ TEST_F(AfterglowPanel, CompensationSavesOnceAfterTheLastStep)
     live();
     s.companion.static_delay_ms = 100;
     s.companion.own_player_id = "ps5";
+    s.companion.static_delay_player = "ps5";
+    s.companion.static_delay_key = "sendspin_static_delay";
     panel_.open(Page::settings);
     down(4);
     cross();
@@ -875,9 +1027,40 @@ TEST_F(AfterglowPanel, CompensationSavesOnceAfterTheLastStep)
     EXPECT_EQ(s.companion_action.kind, CompanionActionKind::static_delay);
     EXPECT_EQ(s.companion_action.value, 120);
     EXPECT_EQ(s.companion_action.text, "ps5");
+    EXPECT_EQ(s.companion_action.option, "sendspin_static_delay");
     s.companion_action_pending = false;
     wait(1.0f);
     EXPECT_FALSE(s.companion_action_pending) << "one action per change";
+}
+
+TEST_F(AfterglowPanel, CompensationNeverCarriesOnePlayersDelayOntoAnother)
+{
+    auto &s = presentation();
+    live();
+    s.companion.static_delay_ms = 100;
+    s.companion.static_delay_player = "old-player";
+    s.companion.static_delay_key = "sendspin_static_delay";
+    panel_.open(Page::sync);
+    input(nav(Direction::right)); // 110, waiting to be saved
+    input(idle());
+    ASSERT_EQ(panel_.rows()[0].item.value, "Sound sent 110 ms early");
+    // This PS5's player changes before the save; the new one's delay is read.
+    s.companion.static_delay_player = "new-player";
+    s.companion.static_delay_key = "up1||protocol||sendspin_static_delay";
+    s.companion.static_delay_ms = 300;
+    wait(0.5f); // the sheet re-reads its rows; the save is still 0.6 s after the step
+    ASSERT_FALSE(s.companion_action_pending);
+    EXPECT_EQ(panel_.rows()[0].item.value, "Sound sent 300 ms early")
+        << "the new player shows its own delay";
+    wait(0.7f);
+    ASSERT_TRUE(s.companion_action_pending);
+    EXPECT_EQ(s.companion_action.value, 110);
+    EXPECT_EQ(s.companion_action.text, "old-player") << "the change goes to its own player";
+    EXPECT_EQ(s.companion_action.option, "sendspin_static_delay");
+    const auto wire =
+        hui::afterglow::companion_wire::action_request(s.companion_action, s.companion);
+    EXPECT_EQ(wire.args,
+              "{\"player_id\":\"old-player\",\"values\":{\"sendspin_static_delay\":110}}");
 }
 
 TEST_F(AfterglowPanel, CompensationSpeedsUpWhenHeldAndStaysInRange)

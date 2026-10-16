@@ -85,7 +85,8 @@ def exercise(binary):
         assert hello["payload"]["player@v1_support"]["supported_formats"] == [
             {"codec": "pcm", "channels": 2, "sample_rate": 48000, "bit_depth": 16}]
         message("server/hello", {"name": "Mock"})
-        started = cleared = got_next = pong = False
+        started = cleared = pong = False
+        nexts, volumes = 0, []
         begin = time.monotonic()
         while time.monotonic() - begin < 1.8:
             opcode = 0
@@ -99,8 +100,12 @@ def exercise(binary):
                         "client_transmitted": event["payload"]["client_transmitted"],
                         "server_received": now, "server_transmitted": now})
                 if event["type"] == "client/command":
-                    assert event["payload"]["controller"]["command"] == "next"
-                    got_next = True
+                    controller = event["payload"]["controller"]
+                    if controller["command"] == "volume":
+                        volumes.append(controller["volume"])
+                    else:
+                        assert controller["command"] == "next", controller
+                        nexts += 1
             elif opcode == 10:
                 assert data == b"test"
                 pong = True
@@ -128,9 +133,11 @@ def exercise(binary):
         connection.close()
         connection = None
         assert process.wait(timeout=4) == 0, "Native client assertions failed"
-        assert got_next and pong
+        assert 1 <= nexts <= 2 and pong, nexts
+        # The mock never reports a volume: each step builds on the one sent.
+        assert volumes == [85, 90, 95], volumes
         print("PASS: handshake, masked frames, PCM, timestamp sync, seek/clear, "
-              "metadata, fragmented frames, ping/pong, controller command and bounded stop")
+              "metadata, fragmented frames, ping/pong, collapsed skips, held volume steps and bounded stop")
     finally:
         if connection is not None:
             connection.close()
