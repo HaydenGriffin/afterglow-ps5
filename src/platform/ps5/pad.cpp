@@ -66,6 +66,7 @@ extern "C"
     int scePadSetVibrationMode(int handle, int mode);
     int scePadSetVibration(int handle, const PadVibration *vibration);
     int scePadSetLightBar(int handle, const PadColor *color);
+    int scePadResetLightBar(int handle);
 }
 
 namespace hui::ps5
@@ -120,6 +121,16 @@ void Pad::set_light_bar(std::uint8_t r, std::uint8_t g, std::uint8_t b)
     const int result = scePadSetLightBar(handle_, &color);
     if (result != 0)
         sys::log("[HUI] pad scePadSetLightBar=0x%08x", static_cast<unsigned>(result));
+}
+
+void Pad::reset_light_bar()
+{
+    if (handle_ < 0)
+        return;
+    light_bar_ = 0xffffffffu;
+    const int result = scePadResetLightBar(handle_);
+    if (result != 0)
+        sys::log("[HUI] pad scePadResetLightBar=0x%08x", static_cast<unsigned>(result));
 }
 
 void Pad::rumble(float strength, float seconds)

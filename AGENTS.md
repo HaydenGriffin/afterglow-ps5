@@ -282,12 +282,15 @@ Read [docs/CONSOLE_VALIDATION.md](docs/CONSOLE_VALIDATION.md) first. In short:
 - Use `tools/console-tour.py`. It verifies what it uploads by hash, waits for
   the title's registration, launches once, copies the evidence and waits for
   the app to close itself. It never kills and never retries.
-- Opening and closing on demand: the launch helper opens the title; a line
-  `quit - <token>` in `/data/homebrew/<TITLE_ID>/dev/request.txt` makes the
-  running app close itself through the system (the app polls for it once a
-  second; this path is implemented but has not been exercised on a console
-  yet, so confirm it with the owner present the first time). Do not kill a
-  title that is rendering.
+- Opening and closing on demand: the launch helper opens the title. Afterglow
+  has a dev request path, off unless `afterglow.conf` has
+  `dev_requests=<token>`: `tools/afterglow-dev.py status|screenshot <name>|quit`
+  writes one line to `/data/homebrew/<TITLE_ID>/dev/request.txt` and fetches
+  the answer from the title's storage. `quit` closes the app the same way as
+  holding Circle (preferences flushed). See "Dev requests" in
+  [docs/CONSOLE_VALIDATION.md](docs/CONSOLE_VALIDATION.md); it has not been
+  exercised on a console yet, so confirm it with the owner present the first
+  time. Do not kill a title that is rendering.
 - If the console stops answering, stop. Report what you saw. Do not retry.
 - Never touch console settings. Take the console's lock if it is shared.
 
@@ -299,7 +302,7 @@ Facts about a title's sandbox that the tooling depends on:
   FTP can read it, not write it.
 - The install folder `/data/homebrew/<TITLE_ID>` is writable from a PC and is
   `/app0` inside the app. Requests go in that way and are honoured once per
-  token.
+  request id.
 - The console registers a new title about ten seconds after its folder stops
   changing; the home-screen assets are copied once at that moment
   (`/user/app/<TITLE_ID>/sce_sys`, `/user/appmeta/<TITLE_ID>`), so replacing

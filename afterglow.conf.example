@@ -1,0 +1,35 @@
+# Copy to afterglow.conf inside the installed title folder.
+# Numeric IPv4 address of Music Assistant, not the Home Assistant ingress URL.
+host=192.0.2.10
+port=8927
+client_id=afterglow-ps5
+name=Afterglow PS5
+
+# Optional Music Assistant API features: artwork, lyrics, up-next and favourites.
+# API and Sendspin use the same host above; this is not an HA ingress port.
+ma_port=8095
+# Provision a separate long-lived token named Afterglow PS5. Keep it private.
+# Leave empty to use basic Sendspin playback without the companion API.
+ma_token=
+# Music Assistant player_id for this PS5, from players/all (not client_id).
+# Empty falls back to an available player matching the name above.
+ma_player_id=
+# Follow-speaker visuals additionally require MA's MilkDrop Visualizer plugin.
+
+# Optional Home Assistant glance (Options > Home): a few rooms' sensors and switches.
+# Numeric IPv4 address of Home Assistant; hostnames such as homeassistant.local are not resolved.
+ha_host=
+ha_port=8123
+# A long-lived access token (Home Assistant profile > Security). Keep it private;
+# a non-admin user is enough. Left empty, the Home section explains how to set it up.
+ha_token=
+# Up to 8 groups, each a heading, a colon and up to 12 comma-separated entity ids,
+# each optionally =Label. Lights, switches, fans and input_booleans toggle with Cross;
+# scenes and scripts run. Everything else is shown, never changed.
+# ha_group=Living room:sensor.living_room_temperature=Temperature,light.living_room=Lights
+# ha_group=Outside:weather.home=Weather
+
+# Development only: lets tools/afterglow-dev.py ask the running app for its
+# status, a screenshot or a clean quit (docs/CONSOLE_VALIDATION.md). Off unless
+# set; use a private random value of 16 to 128 letters, digits, '-', '_' or '.'.
+# dev_requests=

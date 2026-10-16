@@ -58,6 +58,9 @@ void Shell::compose(gfx::Renderer &renderer)
         renderer.backdrop(now.post);
     }
 
+    // Afterglow is a standalone app surface; gallery controls are preview scaffolding.
+    if (std::string_view(concepts_[current_]->info().id) == "afterglow")
+        return;
     chrome_.clear();
     draw_chrome();
     if (info_show_.value > 0.01f)

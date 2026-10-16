@@ -123,14 +123,15 @@ void Shell::update(const InputFrame &input, float dt)
     }
 
     const int count = static_cast<int>(concepts_.size());
-    if (input.is_pressed(Action::page_next) || input.is_pressed(Action::page_prev))
+    const bool standalone = std::string_view(concepts_[current_]->info().id) == "afterglow";
+    if (!standalone && (input.is_pressed(Action::page_next) || input.is_pressed(Action::page_prev)))
     {
         direction_ = input.is_pressed(Action::page_next) ? 1 : -1;
         show(static_cast<std::size_t>((static_cast<int>(current_) + direction_ + count) % count),
              true);
         feedback_.play(audio::Cue::tab, 1.0f, direction_ > 0 ? 0.3f : -0.3f);
     }
-    if (input.is_pressed(Action::touch))
+    if (!standalone && input.is_pressed(Action::touch))
     {
         info_open_ = !info_open_;
         feedback_.play(info_open_ ? audio::Cue::modal_open : audio::Cue::modal_close);
@@ -144,9 +145,10 @@ void Shell::update(const InputFrame &input, float dt)
     // The active design sees everything the shell does not use; nothing at
     // all while the info panel covers it.
     InputFrame forwarded = input;
-    forwarded.pressed &= ~kShellActions;
-    forwarded.released &= ~kShellActions;
-    forwarded.held &= ~kShellActions;
+    const auto owned_actions = standalone ? 0U : kShellActions;
+    forwarded.pressed &= ~owned_actions;
+    forwarded.released &= ~owned_actions;
+    forwarded.held &= ~owned_actions;
     if (info_open_)
     {
         forwarded = InputFrame{};

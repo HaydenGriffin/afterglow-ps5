@@ -20,3 +20,6 @@ tooling/prospero-clang18 text eol=lf
 *.at9 binary
 *.prx binary
 *.bin binary
+*.milk -text
+*.huifont binary
+*.ttf binary

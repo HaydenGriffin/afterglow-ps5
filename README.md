@@ -1,3 +1,9 @@
+# Afterglow PS5 prototype
+
+This working fork builds **Afterglow**, an unofficial Music Assistant TV companion.
+See [Afterglow setup, controls and limitations](docs/AFTERGLOW.md).
+The original reference project's documentation follows below.
+
 <div align="center">
 
 # ps5-homebrew-ui

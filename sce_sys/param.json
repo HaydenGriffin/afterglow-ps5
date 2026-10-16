@@ -11,11 +11,11 @@
   "applicationDrmType": "free",
   "attribute": 1644167168,
   "attribute2": 0,
-  "attribute3": 1048576,
-  "conceptId": "99050",
+  "attribute3": 1572928,
+  "conceptId": "99481",
   "contentBadgeType": 1,
-  "contentId": "UP9000-PPSA99050_00-PS5HOMEBREWUI001",
-  "contentVersion": "01.000.010",
+  "contentId": "UP9000-PPSA99481_00-AFTERGLOWPS50001",
+  "contentVersion": "01.005.000",
   "downloadDataSize": 256,
   "gameIntent": {
     "permittedIntents": [
@@ -31,7 +31,7 @@
   "localizedParameters": {
     "defaultLanguage": "en-US",
     "en-US": {
-      "titleName": "Homebrew UI Lab"
+      "titleName": "Afterglow"
     }
   },
   "masterVersion": "01.00",
@@ -42,6 +42,6 @@
   },
   "requiredSystemSoftwareVersion": "0x0000000000000000",
   "sdkVersion": "0x0000000000000000",
-  "titleId": "PPSA99050",
+  "titleId": "PPSA99481",
   "versionFileUri": ""
 }

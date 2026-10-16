@@ -80,6 +80,47 @@ What to look at afterwards, in `results/run-1/`:
 | `klog.txt` | The title's start and its clean exit; no crash report |
 | `shadowmount.txt` | The title's lines from the console's lifecycle log: registered, started, released |
 
+## Dev requests (Afterglow)
+
+Afterglow does not run the tour. Instead, a running Afterglow answers three
+requests from a PC, so a console session can be checked without a
+controller. The path is off unless the installed `afterglow.conf` has a line
+`dev_requests=<token>` (16 to 128 letters, digits, `-`, `_` or `.`; keep it
+private and never put it in a tracked file). It is never on by default.
+
+The request travels the same way as the tour's: one line in
+`/data/homebrew/<TITLE_ID>/dev/request.txt` (the app's
+`/app0/dev/request.txt`, read about once a second):
+
+```
+<verb> <argument or -> <token> <id>
+```
+
+| Verb | Argument | What the app does |
+| --- | --- | --- |
+| `status` | `-` | Writes `dev/status.json`: version, fps, connected, playing, display size, refresh rate and mode, open page |
+| `screenshot` | a name (1 to 48 letters, digits, `-`, `_`) | Draws the frame once more off-screen at the display size and saves `dev/<name>.bmp` (24-bit, about 6 MB at 1080p) |
+| `quit` | `-` | Closes the app the way holding Circle does: preferences are flushed, then the system is asked to close the title |
+
+Each id is honoured once (the last one is kept in `dev/handled.txt`, so a
+request left behind does not repeat on the next launch). Every answer is a
+line `<id> ok <detail>` or `<id> error <detail>` in `dev/result.txt`. `dev/`
+is `/download0/hui/dev`, read from a PC as
+`/mnt/sandbox/<TITLE_ID>_000/download0/hui/dev` while the title runs.
+Screenshots stay there (the PC cannot delete them), so take a few, not a series.
+
+`tools/afterglow-dev.py` does one request and fetches its answer:
+
+```bash
+export PS5_HOST=<console address> AFTERGLOW_DEV_TOKEN=<token>
+tools/afterglow-dev.py status                     # prints status.json
+tools/afterglow-dev.py screenshot queue results/  # saves results/queue.bmp
+tools/afterglow-dev.py quit                       # the app closes itself
+```
+
+It refuses if the title is not running, never launches, uploads or kills
+anything, and deletes only its own request file.
+
 ## Rules for console runs
 
 These come from hard experience with shared development consoles:

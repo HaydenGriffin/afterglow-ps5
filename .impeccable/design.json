@@ -1,0 +1,358 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-14T21:04:16.707519+00:00",
+  "title": "Design System: Afterglow PS5",
+  "extensions": {
+    "colorMeta": {
+      "ink": {
+        "role": "neutral",
+        "displayName": "Tonhalle Ink",
+        "canonical": "#121417"
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Programme Paper",
+        "canonical": "#efebe3"
+      },
+      "amber": {
+        "role": "visualizer-only",
+        "displayName": "Amber",
+        "canonical": "#eeb875",
+        "tonalRamp": [
+          "oklch(15.00% 0.10499 71.47)",
+          "oklch(26.43% 0.10499 71.47)",
+          "oklch(37.86% 0.10499 71.47)",
+          "oklch(49.29% 0.10499 71.47)",
+          "oklch(60.71% 0.10499 71.47)",
+          "oklch(72.14% 0.10499 71.47)",
+          "oklch(83.57% 0.10499 71.47)",
+          "oklch(95.00% 0.10499 71.47)"
+        ]
+      },
+      "mint": {
+        "role": "visualizer-only",
+        "displayName": "Mint",
+        "canonical": "#87cabb",
+        "tonalRamp": [
+          "oklch(15.00% 0.07143 178.72)",
+          "oklch(26.43% 0.07143 178.72)",
+          "oklch(37.86% 0.07143 178.72)",
+          "oklch(49.29% 0.07143 178.72)",
+          "oklch(60.71% 0.07143 178.72)",
+          "oklch(72.14% 0.07143 178.72)",
+          "oklch(83.57% 0.07143 178.72)",
+          "oklch(95.00% 0.07143 178.72)"
+        ]
+      },
+      "diagnostic-surface": {
+        "role": "legacy diagnostic specimen only",
+        "displayName": "Diagnostic Surface",
+        "canonical": "#182229",
+        "tonalRamp": [
+          "oklch(15.00% 0.01953 239.11)",
+          "oklch(26.43% 0.01953 239.11)",
+          "oklch(37.86% 0.01953 239.11)",
+          "oklch(49.29% 0.01953 239.11)",
+          "oklch(60.71% 0.01953 239.11)",
+          "oklch(72.14% 0.01953 239.11)",
+          "oklch(83.57% 0.01953 239.11)",
+          "oklch(95.00% 0.01953 239.11)"
+        ]
+      }
+    },
+    "normalizationNotes": [
+      "DESIGN.md frontmatter owns primitives. Native C++ source is implementation authority.",
+      "Tonal ramps are synthesized OKLCH display aids, not implemented palette variants.",
+      "HTML/SVG snippets are static panel specimens of native geometry, not application code. Fonts depend on the viewer; the app bundles its fonts.",
+      "Diagnostic em dashes are specimen placeholders, never health data. Zero-input visuals demonstrate geometry only.",
+      "Current tokens and narrative describe the LG-referenced native adaptation. Legacy component specimens are retained and explicitly archived, not silently migrated.",
+      "No LG runtime font axes, automatic night register, exact palette extraction or field reveal are implied."
+    ],
+    "sources": [
+      "src/concepts/afterglow.cpp",
+      "src/afterglow/panel.cpp",
+      "src/afterglow/preferences.hpp",
+      "src/main.cpp",
+      "docs/AFTERGLOW.md",
+      "PRODUCT.md",
+      ".impeccable/surfaces/src-concepts-afterglow-cpp.md"
+    ],
+    "scope": {
+      "surface": "Shared Afterglow TV experience",
+      "platform": "Native PS5 C++20",
+      "canvas": [
+        1920,
+        1080
+      ],
+      "reference": "Current LG webOS Afterglow DESIGN.md (Tonhalle Poster)",
+      "referenceAdaptationExemption": true,
+      "formalComp": false,
+      "seed": false,
+      "conceptCards": false,
+      "cssDetector": "not applicable: native draw-list renderer",
+      "excluded": "21 retained upstream gallery designs"
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Archivo poster title",
+        "purpose": "Baked Archivo display atlas; fixed native length ladder."
+      },
+      "title": {
+        "displayName": "Legacy track title",
+        "purpose": "Archived pre-adaptation metadata; current roles are in DESIGN.md."
+      },
+      "diagnostic-value": {
+        "displayName": "Diagnostic values",
+        "purpose": "Stable-width numeric rows."
+      }
+    },
+    "shadows": [],
+    "breakpoints": [],
+    "motion": [
+      {
+        "name": "chrome-opacity",
+        "value": "alpha += (target - alpha) * (1 - exp(-dt * 12))",
+        "purpose": "Fade information chrome when switching pure view; skip drawing below 0.01."
+      },
+      {
+        "name": "orbit-phase",
+        "value": "time += dt only when !reduced_motion; sample phase = time * 0.09",
+        "purpose": "Slow contour sampling drift; audio deformation remains active."
+      }
+    ],
+    "legacyComponentScope": {
+      "status": "Archived pre-adaptation specimens; not the current poster or panel specification.",
+      "names": [
+        "Orbit",
+        "Spectrum",
+        "Audio status",
+        "Controller hint"
+      ],
+      "note": "Preserved without unrelated schema repair. Current native primitives are the Poster title, Focused row, Four-section navigation and Track caption specimens appended below."
+    },
+    "legacyNativeMetadata": {
+      "visualOrigin": {
+        "information": [
+          960,
+          440
+        ],
+        "pure": [
+          960,
+          540
+        ]
+      },
+      "previewLabel": {
+        "baseline": [
+          960,
+          103
+        ],
+        "align": "center",
+        "opacity": 0.7,
+        "visible": "preview && chrome >= 0.01"
+      },
+      "orbit": {
+        "layers": 3,
+        "segments": 192,
+        "baseRadius": 212,
+        "layerRadiusStep": 22,
+        "bandRadiusGain": 105,
+        "meanEnergyRadiusGain": 24,
+        "axisScale": [
+          1.4,
+          0.78
+        ],
+        "widths": [
+          3.5,
+          1.5,
+          1.5
+        ],
+        "opacities": [
+          0.95,
+          0.26,
+          0.26
+        ]
+      },
+      "spectrum": {
+        "bands": 32,
+        "firstX": 320,
+        "pitch": 40,
+        "height": "4 + band * 390"
+      },
+      "diagnostics": {
+        "bounds": [
+          104,
+          164,
+          650,
+          440
+        ],
+        "valueBaselines": [
+          284,
+          330,
+          376,
+          422,
+          468,
+          514
+        ]
+      },
+      "textOpacity": {
+        "metadata": 0.75,
+        "preview": 0.7,
+        "help": 0.65,
+        "divider": 0.18,
+        "diagnosticValues": 0.88,
+        "glyphRim": 0.7,
+        "hintLabel": 0.85
+      }
+    },
+    "native": {
+      "canvas": [
+        1920,
+        1080
+      ],
+      "milkdropRender": [
+        1280,
+        720
+      ],
+      "artworkBounds": [
+        0,
+        0,
+        656,
+        1080
+      ],
+      "listBounds": [
+        680,
+        230,
+        1144,
+        706
+      ],
+      "rowHeight": 76,
+      "titleSizes": [
+        184,
+        144,
+        104,
+        80
+      ],
+      "titleLengthThresholds": [
+        12,
+        26,
+        50
+      ],
+      "titleMaxLines": 3,
+      "titleLineHeight": 0.94,
+      "displayModes": [
+        "Visuals only",
+        "Visuals + track",
+        "Album",
+        "Lyrics"
+      ],
+      "navigation": [
+        "Browse",
+        "Now playing",
+        "Queue",
+        "Settings"
+      ],
+      "fieldColour": "readable_field(artwork_color); secondary = readable_field(primary * 0.55)",
+      "requested120Hz": "Next launch; 60 Hz fallback; accepted refresh readout; hardware validation pending",
+      "sheetBounds": [
+        656,
+        0,
+        1264,
+        1080
+      ]
+    }
+  },
+  "components": [
+    {
+      "name": "Orbit",
+      "kind": "custom",
+      "refersTo": "canvas",
+      "description": "Illustrative zero-input elliptical geometry; native outlines use 192 line segments and react to audio.",
+      "html": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1920 880\" role=\"img\" aria-label=\"Zero-input native visual geometry\"><rect width=\"1920\" height=\"880\" fill=\"#090e12\"/><defs><linearGradient id=\"orbit-colour\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop stop-color=\"#eeb875\"/><stop offset=\"1\" stop-color=\"#87cabb\"/></linearGradient></defs><ellipse cx=\"960\" cy=\"440\" rx=\"296.80\" ry=\"165.36\" fill=\"none\" stroke=\"url(#orbit-colour)\" stroke-width=\"3.5\" opacity=\"0.95\"/><ellipse cx=\"960\" cy=\"440\" rx=\"327.60\" ry=\"182.52\" fill=\"none\" stroke=\"url(#orbit-colour)\" stroke-width=\"1.5\" opacity=\"0.26\"/><ellipse cx=\"960\" cy=\"440\" rx=\"358.40\" ry=\"199.68\" fill=\"none\" stroke=\"url(#orbit-colour)\" stroke-width=\"1.5\" opacity=\"0.26\"/></svg>",
+      "css": "svg{display:block;width:100%;height:auto} "
+    },
+    {
+      "name": "Spectrum",
+      "kind": "custom",
+      "refersTo": "spectrum-bar",
+      "description": "32 bars at zero input; actual height follows analyzed output samples.",
+      "html": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1920 880\" role=\"img\" aria-label=\"Zero-input native visual geometry\"><rect width=\"1920\" height=\"880\" fill=\"#090e12\"/><rect x=\"320\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(238,184,117)\"/><rect x=\"360\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(235,185,119)\"/><rect x=\"400\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(231,185,122)\"/><rect x=\"440\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(228,186,124)\"/><rect x=\"480\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(225,186,126)\"/><rect x=\"520\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(221,187,128)\"/><rect x=\"560\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(218,187,131)\"/><rect x=\"600\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(215,188,133)\"/><rect x=\"640\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(211,189,135)\"/><rect x=\"680\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(208,189,137)\"/><rect x=\"720\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(205,190,140)\"/><rect x=\"760\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(201,190,142)\"/><rect x=\"800\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(198,191,144)\"/><rect x=\"840\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(195,192,146)\"/><rect x=\"880\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(191,192,149)\"/><rect x=\"920\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(188,193,151)\"/><rect x=\"960\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(185,193,153)\"/><rect x=\"1000\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(182,194,155)\"/><rect x=\"1040\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(178,194,158)\"/><rect x=\"1080\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(175,195,160)\"/><rect x=\"1120\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(172,196,162)\"/><rect x=\"1160\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(168,196,164)\"/><rect x=\"1200\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(165,197,167)\"/><rect x=\"1240\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(162,197,169)\"/><rect x=\"1280\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(158,198,171)\"/><rect x=\"1320\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(155,199,173)\"/><rect x=\"1360\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(152,199,176)\"/><rect x=\"1400\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(148,200,178)\"/><rect x=\"1440\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(145,200,180)\"/><rect x=\"1480\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(142,201,182)\"/><rect x=\"1520\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(138,201,185)\"/><rect x=\"1560\" y=\"438\" width=\"16\" height=\"4\" rx=\"8\" fill=\"rgb(135,202,187)\"/></svg>",
+      "css": "svg{display:block;width:100%;height:auto} "
+    },
+    {
+      "name": "Audio status",
+      "kind": "card",
+      "refersTo": "diagnostic-panel",
+      "description": "Native diagnostic overlay with placeholder specimen values.",
+      "html": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 650 440\" role=\"img\" aria-label=\"Audio status panel typography specimen\"><rect width=\"650\" height=\"440\" rx=\"16\" fill=\"#182229\"/><text x=\"40\" y=\"62\" fill=\"#f3eee4\" font-family=\"Inter\" font-size=\"32\" font-weight=\"600\">Audio status</text><text x=\"40\" y=\"120\" fill=\"#f3eee4\" opacity=\".88\" font-family=\"DejaVu Sans Mono\" font-size=\"24\">Buffered  —</text><text x=\"40\" y=\"166\" fill=\"#f3eee4\" opacity=\".88\" font-family=\"DejaVu Sans Mono\" font-size=\"24\">Underruns  —</text><text x=\"40\" y=\"212\" fill=\"#f3eee4\" opacity=\".88\" font-family=\"DejaVu Sans Mono\" font-size=\"24\">Late frames  —</text><text x=\"40\" y=\"258\" fill=\"#f3eee4\" opacity=\".88\" font-family=\"DejaVu Sans Mono\" font-size=\"24\">Reconnects  —</text><text x=\"40\" y=\"304\" fill=\"#f3eee4\" opacity=\".88\" font-family=\"DejaVu Sans Mono\" font-size=\"24\">Output errors  —</text><text x=\"40\" y=\"350\" fill=\"#f3eee4\" opacity=\".88\" font-family=\"DejaVu Sans Mono\" font-size=\"24\">Frame rate  —</text><text x=\"40\" y=\"404\" fill=\"#87cabb\" font-family=\"Inter\" font-size=\"23\">48 kHz · stereo PCM · direct Sendspin</text></svg>",
+      "css": "svg{display:block;width:100%;height:auto} "
+    },
+    {
+      "name": "Controller hint",
+      "kind": "custom",
+      "refersTo": "controller-hint",
+      "description": "Physical Cross button instruction, shown in Play state; not a pointer button.",
+      "html": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 160 52\" role=\"img\" aria-label=\"Cross: Play\"><rect width=\"160\" height=\"52\" fill=\"#090e12\"/><circle cx=\"17\" cy=\"26\" r=\"17\" fill=\"#090e12\" stroke=\"#f3eee4\" stroke-opacity=\".7\" stroke-width=\"1.5\"/><path d=\"M8.16 17.16L25.84 34.84M8.16 34.84L25.84 17.16\" stroke=\"#f3eee4\" stroke-width=\"3.74\"/><text x=\"46\" y=\"34.4\" font-family=\"Inter\" font-size=\"24\" fill=\"#f3eee4\" opacity=\".85\">Play</text></svg>",
+      "css": "svg{display:block;width:100%;height:auto} "
+    },
+    {
+      "name": "Poster title",
+      "kind": "custom",
+      "refersTo": "poster-title",
+      "description": "Current native adaptation specimen; browser rendering is illustrative.",
+      "html": "<div class=\"ds-poster-title\">Slow Current</div>",
+      "css": ".ds-poster-title{background:#121417;color:#efebe3;font-family:Archivo,sans-serif;font-size:80px;font-weight:820;line-height:.94;padding:28px;}"
+    },
+    {
+      "name": "Focused row",
+      "kind": "button",
+      "refersTo": "row-focus",
+      "description": "Current native adaptation specimen; browser rendering is illustrative.",
+      "html": "<button class=\"ds-focus-row\">Display <span>Visuals + track</span></button>",
+      "css": ".ds-focus-row{background:#121417;color:#efebe3;border:0;border-radius:0;min-height:76px;width:100%;padding:12px 24px;text-align:left;font:28px Archivo,sans-serif}.ds-focus-row span{float:right}.ds-focus-row:hover,.ds-focus-row:focus-visible,.ds-focus-row:active{background:#efebe3;color:#121417;outline:none}"
+    },
+    {
+      "name": "Section navigation",
+      "kind": "nav",
+      "refersTo": "sheet",
+      "description": "Current native adaptation specimen; browser rendering is illustrative.",
+      "html": "<nav class=\"ds-nav\"><span>Browse</span><span aria-current=\"page\">Now playing</span><span>Queue</span><span>Settings</span><span>Home</span></nav>",
+      "css": ".ds-nav{display:flex;justify-content:space-between;background:#121417;color:#efebe3;padding:24px;font:30px Archivo,sans-serif}.ds-nav span{padding-bottom:20px;opacity:.65}.ds-nav [aria-current]{border-bottom:3px solid #efebe3;opacity:1}"
+    },
+    {
+      "name": "Track caption",
+      "kind": "custom",
+      "refersTo": "track-caption",
+      "description": "Current native adaptation specimen; browser font rendering is illustrative. Caption uses the neutral initial field; runtime artwork sets its colour.",
+      "html": "<div class=\"ds-caption\">Track title<small>Artist / Album</small></div>",
+      "css": ".ds-caption{background:#efebe3;color:#121417;font:58px Archivo,sans-serif;padding:28px;border-radius:0}.ds-caption small{display:block;margin-top:24px;font-size:28px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Tonhalle Poster",
+    "overview": "Afterglow PS5 adapts the user-selected current LG webOS Afterglow: a heavy Archivo title, full-height cropped artwork, warm paper on ink and flat track-colour fields. The music owns the screen; controls stay readable from the sofa and MilkDrop retains its own visual language.\n\nThis records the implemented native adaptation, not exact LG CSS parity. The authority is the LG DESIGN.md and the native source; the retained upstream gallery is outside this surface. The previous Inter/Montserrat chrome and six-section information panel are superseded.",
+    "keyCharacteristics": [
+      "Archivo poster typography and a full-height left artwork slab.",
+      "Flat square fields, warm paper focus inversion and no fixed chrome accent.",
+      "Four display modes and Browse, Now playing, Queue, Settings navigation.",
+      "A single caption field over the visualizer, optionally carrying a timed lyric."
+    ],
+    "rules": [
+      {
+        "name": "The No House Accent Rule",
+        "body": "Chrome emphasis uses Paper; track fields take their colour from artwork.",
+        "section": "colors"
+      }
+    ],
+    "dos": [
+      "Do retain Archivo, warm paper, ink and square poster fields.",
+      "Do derive track fields from artwork and check readable text contrast.",
+      "Do preserve native controller focus and honest missing-data states.",
+      "Do distinguish illustrative captures from hardware performance evidence."
+    ],
+    "donts": [
+      "Don't reinstate mint focus, six top-level sections or the old small-artwork composition.",
+      "Don't claim exact LG palette, night-register, animation or layout parity.",
+      "Don't add blur, shadows or decorative chrome over MilkDrop."
+    ]
+  }
+}

@@ -11,6 +11,7 @@
 
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+bash "$root/tools/build-projectm.sh" host
 source "$root/tools/ninja-build.sh"
 cxx=$(command -v "${HOST_CXX:-clang++}")
 cc=$(command -v "${HOST_CC:-clang}")
@@ -18,7 +19,8 @@ build="$root/build/host-snapshots"
 ninja_begin "$build/build.ninja"
 
 # Everything under src/ except the console platform layer and entry point.
-sources=("$root/host/snapshot_main.cpp" "$root/host/manifest.cpp" "$root/host/platform_host.cpp")
+sources=("$root/host/snapshot_main.cpp" "$root/host/manifest.cpp" "$root/host/platform_host.cpp"
+    "$root/host/milkdrop_capture.cpp")
 while IFS= read -r -d '' source; do
     sources+=("$source")
 done < <(find "$root/src" -type f \( -name '*.cpp' -o -name '*.c' \) \
@@ -35,12 +37,13 @@ for source in "${sources[@]}"; do
     else
         ninja_inputs=("$source" "$cxx")
         ninja_edge CXX "$object" "${compiler_cache[@]}" "$cxx" -std=c++20 -O2 -Wall -Wextra \
-            -DGL_GLEXT_PROTOTYPES=1 -I"$root/src" -I"$root/host" -MD -MF "$object.d" -c "$source" -o "$object"
+            -DGL_GLEXT_PROTOTYPES=1 -I"$root/.deps/projectm/include" -I"$root/src" -I"$root/host" -MD -MF "$object.d" -c "$source" -o "$object"
     fi
     objects+=("$object")
 done
-ninja_inputs=("${objects[@]}")
-ninja_edge LINK "$build/hui_snapshots" "$cxx" "${objects[@]}" -lEGL -lGL -lm -o "$build/hui_snapshots"
+projectm="$root/.deps/projectm/host/libprojectM.a"
+ninja_inputs=("${objects[@]}" "$projectm")
+ninja_edge LINK "$build/hui_snapshots" "$cxx" "${objects[@]}" "$projectm" -lEGL -lGL -lm -o "$build/hui_snapshots"
 if ! ninja_run >"$build/build.log" 2>&1; then
     grep -E 'error|FAILED|warning' -A6 "$build/build.log" | head -80 >&2
     exit 1

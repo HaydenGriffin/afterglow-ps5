@@ -1,0 +1,65 @@
+diff --git a/src/libprojectM/MilkdropPreset/PresetState.cpp b/src/libprojectM/MilkdropPreset/PresetState.cpp
+index 72c0f61..c8519a1 100644
+--- a/src/libprojectM/MilkdropPreset/PresetState.cpp
++++ b/src/libprojectM/MilkdropPreset/PresetState.cpp
+@@ -18,7 +18,7 @@ const glm::mat4 PresetState::orthogonalProjectionFlipped = glm::ortho(-1.0f, 1.0
+ PresetState::PresetState()
+     : globalMemory(projectm_eval_memory_buffer_create())
+ {
+-    std::random_device randomDevice;
++    AfterglowVisualSeed randomDevice;
+     std::mt19937 randomGenerator(randomDevice());
+     std::uniform_int_distribution<> distrib(0, std::numeric_limits<int>::max());
+ 
+diff --git a/src/libprojectM/Renderer/PresetTransition.hpp b/src/libprojectM/Renderer/PresetTransition.hpp
+index 1822811..b2fce65 100644
+--- a/src/libprojectM/Renderer/PresetTransition.hpp
++++ b/src/libprojectM/Renderer/PresetTransition.hpp
+@@ -80,7 +80,7 @@ private:
+ 
+     glm::ivec4 m_staticRandomValues{}; //!< Four random integers, remaining static during the whole transition.
+ 
+-    std::random_device m_randomDevice; //!< Seed for the random number generator
++    AfterglowVisualSeed m_randomDevice; //!< Seed for the random number generator
+ };
+ 
+ } // namespace Renderer
+diff --git a/src/libprojectM/Renderer/TextureManager.cpp b/src/libprojectM/Renderer/TextureManager.cpp
+index ed6a138..0971869 100644
+--- a/src/libprojectM/Renderer/TextureManager.cpp
++++ b/src/libprojectM/Renderer/TextureManager.cpp
+@@ -284,7 +284,7 @@ auto TextureManager::GetRandomTexture(const std::string& randomName) -> TextureS
+ {
+     std::string selectedFilename;
+ 
+-    std::random_device rndDevice;
++    AfterglowVisualSeed rndDevice;
+     std::default_random_engine rndEngine(rndDevice());
+ 
+     ScanTextures();
+diff --git a/src/libprojectM/Renderer/TransitionShaderManager.hpp b/src/libprojectM/Renderer/TransitionShaderManager.hpp
+index cc5c3b0..d772b6a 100644
+--- a/src/libprojectM/Renderer/TransitionShaderManager.hpp
++++ b/src/libprojectM/Renderer/TransitionShaderManager.hpp
+@@ -30,7 +30,7 @@ private:
+ 
+     std::vector<std::shared_ptr<Shader>> m_transitionShaders; //!< Currently loaded and compiled transition shaders.
+ 
+-    std::random_device m_randomDevice; //!< Seed for the random number generator
++    AfterglowVisualSeed m_randomDevice; //!< Seed for the random number generator
+     std::mt19937 m_mersenneTwister; //!< Random engine to select shader
+ };
+ 
+diff --git a/src/libprojectM/TimeKeeper.hpp b/src/libprojectM/TimeKeeper.hpp
+index 949bcf5..b0a5c62 100644
+--- a/src/libprojectM/TimeKeeper.hpp
++++ b/src/libprojectM/TimeKeeper.hpp
+@@ -109,7 +109,7 @@ private:
+     /* The first ticks value of the application */
+     std::chrono::high_resolution_clock::time_point m_startTime{std::chrono::high_resolution_clock::now()};
+ 
+-    std::random_device m_randomDevice{};
++    AfterglowVisualSeed m_randomDevice{};
+     std::mt19937 m_randomGenerator{m_randomDevice()};
+ 
+     double m_userSpecifiedTime{-1.0}; //!< User-specifed run time. If set to a value >= 0.0, this time is used instead of the system clock.

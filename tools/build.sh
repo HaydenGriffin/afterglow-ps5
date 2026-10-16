@@ -91,6 +91,7 @@ native="$root/tooling/native"
 tool="$build/host/ps5-native-tool"
 mkdir -p "$build/host" "$build/obj" "$dist"
 bash "$root/tools/build-host-tools.sh"
+bash "$root/tools/build-projectm.sh" ps5
 source "$root/tools/ninja-build.sh"
 ninja_begin "$build/app.ninja"
 target_compiler=$(command -v "${PS5_CLANG:-clang-18}")
@@ -101,6 +102,13 @@ mapfile -d '' -t source_paths < <(
 )
 sources=()
 for source in "${source_paths[@]}"; do
+    # Keep the reference gallery in the repository, not in the music player's binary.
+    case "${source#"$root/"}" in
+        src/ui/components/list.cpp|src/ui/components/component.cpp) ;;
+        src/app/*|src/ui/components/*) continue ;;
+        src/concepts/afterglow.cpp) ;;
+        src/concepts/*) continue ;;
+    esac
     sources+=("${source#"$root/"}")
 done
 (( ${#sources[@]} > 0 )) || { echo "src/ has no C or C++ sources" >&2; exit 2; }
@@ -149,6 +157,9 @@ if (( ${#pacbrew_packages[@]} > 0 || ${#pacbrew_includes[@]} > 0 || ${#pacbrew_a
     done
     printf 'PacBrew dependencies: %s\n' "${pacbrew_packages[*]:-(manual archives)}"
 fi
+
+includes+=(.deps/projectm/include)
+archives=(.deps/projectm/ps5/libprojectM.a "${archives[@]}")
 
 objects=()
 for source in "${sources[@]}"; do
@@ -256,10 +267,22 @@ mkdir -p "$app/sce_sys" "$app/sce_module"
 cp "$param" "$app/sce_sys/param.json"
 # Says which build this is, for an app that reads it; a release has none.
 [[ -z ${BUILD_LABEL:-} ]] || printf '%s\n' "$BUILD_LABEL" > "$app/build-label.txt"
-for asset in icon0.png pic0.dds pic1.dds snd0.at9; do
-    [[ -f $root/sce_sys/$asset ]] && cp "$root/sce_sys/$asset" "$app/sce_sys/$asset"
+python3 "$root/tools/afterglow-icon.py" "$app/sce_sys/icon0.png"
+mkdir -p "$app/assets/fonts"
+for face in archivo-regular archivo-semibold archivo-display dejavu-sans-mono; do
+    cp "$root/assets/fonts/$face.huifont" "$app/assets/fonts/"
 done
-[[ ! -d $root/assets ]] || cp -a "$root/assets" "$app/assets"
+# MilkDrop presets (tools/prepare-presets.py) carry their own index.tsv.
+if [[ -f $root/assets/presets/index.tsv ]]; then
+    mkdir -p "$app/assets/presets"
+    cp "$root"/assets/presets/index.tsv "$root"/assets/presets/*.milk "$app/assets/presets/"
+fi
+mkdir -p "$app/licenses/projectm" "$app/licenses/presets"
+mkdir -p "$app/licenses/fonts"
+cp "$root/third_party/fonts/Archivo-LICENSE.txt" "$root/third_party/fonts/DejaVu-LICENSE.txt" "$app/licenses/fonts/"
+cp "$root/THIRD_PARTY_NOTICES.md" "$root/LICENSE" "$app/licenses/"
+cp "$root"/third_party/projectm/licenses/* "$app/licenses/projectm/"
+cp "$root"/third_party/presets/* "$app/licenses/presets/"
 # Directory listing returns nothing under /app0 on the console, so each
 # audio folder carries an index of its files (read by save::list_files).
 for dir in "$app/assets/audio/music" "$app"/assets/audio/sfx/*/; do

@@ -10,6 +10,7 @@
 
 namespace hui::concepts
 {
+std::unique_ptr<app::Concept> make_afterglow(app::Context &context);
 
 // One function per design, each defined in its own file in this directory.
 // To add a design: write the file, declare its factory here and list it in

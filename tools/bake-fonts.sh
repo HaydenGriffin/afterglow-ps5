@@ -16,10 +16,10 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cxx=$(command -v "${HOST_CXX:-clang++}")
 mkdir -p "$root/build/host" "$root/assets/fonts"
 "$cxx" -std=c++20 -O2 -w "$root/tools/font-baker/bake_font.cpp" -o "$root/build/host/bake_font"
-while read -r source output size range; do
+while read -r source output size range atlas glyphs; do
     [[ -n $source ]] || continue
     "$root/build/host/bake_font" "$root/third_party/fonts/$source" \
-        "$root/assets/fonts/$output.huifont" "$size" "$range" 1024
+        "$root/assets/fonts/$output.huifont" "$size" "$range" "${atlas:-1024}" "${glyphs:-basic}"
 done <<'FONTS'
 Inter-Regular.ttf inter-regular 56 8
 Inter-SemiBold.ttf inter-semibold 56 8
@@ -27,5 +27,8 @@ Montserrat-Medium.ttf montserrat-medium 56 8
 DejaVuSansMono.ttf dejavu-sans-mono 52 8
 PressStart2P-Regular.ttf press-start-2p 32 4
 PatrickHand-Regular.ttf patrick-hand 56 8
+Archivo-Regular.ttf archivo-regular 56 8 2048 european
+Archivo-SemiBold.ttf archivo-semibold 56 8 2048 european
+Archivo-Display.ttf archivo-display 64 8 2048 european
 FONTS
 cp "$root"/third_party/fonts/*-LICENSE.txt "$root/assets/fonts/"

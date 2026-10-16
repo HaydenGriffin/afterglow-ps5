@@ -33,8 +33,19 @@ AudioOut::~AudioOut()
     stop();
 }
 
+bool AudioOut::start(afterglow::Client &client, afterglow::Analyzer &analyzer)
+{
+    if (running_ || handle_ >= 0)
+        return false;
+    client_ = &client;
+    analyzer_ = &analyzer;
+    return start(silent_mixer_);
+}
+
 bool AudioOut::start(audio::Mixer &mixer)
 {
+    if (running_ || handle_ >= 0)
+        return false;
     const int init = sceAudioOutInit();
     if (init != 0 && init != kAlreadyInitialized)
     {
@@ -52,7 +63,23 @@ bool AudioOut::start(audio::Mixer &mixer)
     mixer_ = &mixer;
     stop_.store(false);
     // Never name threads: pthread_setname_np hangs on this platform.
-    if (pthread_create(&thread_, nullptr, &AudioOut::thread_main, this) != 0)
+    pthread_attr_t attributes;
+    if (pthread_attr_init(&attributes) != 0)
+    {
+        sceAudioOutClose(handle_);
+        handle_ = -1;
+        return false;
+    }
+    if (pthread_attr_setstacksize(&attributes, 1024 * 1024) != 0)
+    {
+        pthread_attr_destroy(&attributes);
+        sceAudioOutClose(handle_);
+        handle_ = -1;
+        return false;
+    }
+    const int created = pthread_create(&thread_, &attributes, &AudioOut::thread_main, this);
+    pthread_attr_destroy(&attributes);
+    if (created != 0)
     {
         sys::log("[HUI] audio thread creation failed");
         sceAudioOutClose(handle_);
@@ -76,7 +103,10 @@ void AudioOut::run()
     alignas(64) std::int16_t grain[kGrainFrames * 2];
     while (!stop_.load(std::memory_order_relaxed))
     {
-        mixer_->render(grain, kGrainFrames);
+        if (client_ != nullptr)
+            client_->render(grain, kGrainFrames);
+        else
+            mixer_->render(grain, kGrainFrames);
         if (sceAudioOutOutput(handle_, grain) < 0)
         {
             errors_.fetch_add(1, std::memory_order_relaxed);
@@ -84,6 +114,8 @@ void AudioOut::run()
             continue;
         }
         grains_.fetch_add(1, std::memory_order_relaxed);
+        if (analyzer_ != nullptr)
+            analyzer_->push(grain, kGrainFrames);
     }
     sceAudioOutOutput(handle_, nullptr); // drain the queued grain
 }

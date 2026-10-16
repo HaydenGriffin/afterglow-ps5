@@ -81,8 +81,11 @@ bool Display::supports_display_modes()
 #endif
 }
 
-bool Display::open(int width, int height)
+bool Display::open(int width, int height, int refresh_hz)
 {
+    requested_refresh_hz_ = refresh_hz == 120 ? 120 : 60;
+    refresh_hz_ = 60;
+    refresh_queried_ = refresh_confirmed_ = false;
     EGLint major = 0;
     EGLint minor = 0;
     EGLint count = 0;
@@ -101,6 +104,16 @@ bool Display::open(int width, int height)
         fail("eglSetDisplayModePS5");
         if (!eglSetDisplayModePS5(display_, PS5_OPENGL_NATIVE_WIDTH, PS5_OPENGL_NATIVE_HEIGHT))
             fail("eglSetDisplayModePS5 default");
+    }
+    if (!eglSetDisplayRefreshPS5(display_, requested_refresh_hz_))
+    {
+        fail("eglSetDisplayRefreshPS5");
+        if (!eglSetDisplayRefreshPS5(display_, 60))
+        {
+            fail("eglSetDisplayRefreshPS5 fallback");
+            close();
+            return false;
+        }
     }
 #else
     (void)width;
@@ -194,6 +207,28 @@ bool Display::swap()
         fail("eglSwapBuffers");
         return false;
     }
+    if (!refresh_queried_)
+    {
+        refresh_queried_ = true;
+#ifdef PS5_OPENGL_DYNAMIC_DISPLAY
+        EGLint accepted = 60;
+        if (eglGetDisplayModePS5(display_, nullptr, nullptr, &accepted) &&
+            (accepted == 60 || accepted == 120))
+        {
+            refresh_hz_ = accepted;
+            refresh_confirmed_ = true;
+            sys::log("[HUI] display refresh requested=%d accepted=%d", requested_refresh_hz_,
+                     refresh_hz_);
+        }
+        else
+        {
+            fail("eglGetDisplayModePS5 refresh");
+            sys::log("[HUI] display refresh unconfirmed; using 60 fps pacing");
+        }
+#else
+        sys::log("[HUI] fixed display profile; accepted refresh unavailable");
+#endif
+    }
     return true;
 }
 
@@ -215,6 +250,8 @@ void Display::close()
     context_ = EGL_NO_CONTEXT;
     width_ = 0;
     height_ = 0;
+    refresh_hz_ = 60;
+    refresh_queried_ = refresh_confirmed_ = false;
 }
 
 const char *egl_error_name(EGLint error)

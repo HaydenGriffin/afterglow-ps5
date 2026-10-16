@@ -1,0 +1,21 @@
+# Afterglow PS5
+
+An unofficial native Music Assistant companion for a jailbroken PS5, used from the sofa with a DualSense and a TV or HDMI sound system. The user's firmware is 7.61. This is version 1.5.0. The LG webOS Afterglow is the user-authorized visual and functional reference: both releases share a concert-poster identity and roughly equivalent core music controls, while remaining separate installations.
+
+## Platform and scope
+
+Native C++20, ps5-homebrew-ui and ps5-opengl, with direct LAN Sendspin PCM playback and projectM visualization. Audio runs independently of rendering; FFT and network work stay off the audio callback. The interface renders at 1920 × 1080 and MilkDrop at 1280 × 720. Background music while gaming is out of scope by owner decision; Afterglow is a foreground app.
+
+Options opens the transport band: a section strip (Browse, Now playing, Queue, Settings, and Home once Home Assistant is configured) and eight tiles (previous, play/pause, next, back/ahead 10 s, favourite, Details, Display). Browse offers search with the system keyboard, recent music, favourite playlists/albums/songs/artists, radio, playlists, albums, podcasts and audiobooks, artist pages and play-now/next/add/radio actions; long lists page with More. Queue holds Playing on (speakers and group editing), a 50-song up-next window with earlier/later paging, per-song play/move/remove, shuffle, repeat, crossfade, volume, sleep timer and autoplay. A quality badge appears when Music Assistant supplies one.
+
+Four saved display modes are Visuals only, Visuals + track (default), Album and Lyrics. MilkDrop, halo and spectrum remain selectable; MilkDrop keeps running behind the posters unless turned off. A lyrics layer (one line or stage) shows real timed lines over the visuals, word by word when the LRC carries word timings; plain lyrics are explicitly untimed and manually paged. Song changes slide a cover off the poster fields, the Next field shows the next two songs and the night register dims the poster from 22:00 to 06:00. Artwork, lyrics and metadata depend on Music Assistant and providers; illustrative host metadata and locally cached cover art in review captures are not packaged playback content.
+
+Settings contains Source, Visuals & presets, Lyrics timing, Presets, Sound & sync, Account and Status. Play here or follow an active/named speaker without duplicating its audio. Preset controls include shared favourites, locking, duration, order, beat sensitivity, per-slot album recolouring with strength, resumable performance scanning, slow-preset filtering and keep overrides. Sound & sync sets TV output compensation (this PS5's Music Assistant static delay) and picture timing on a sync figure. Account signs in on the console, renews the token and logs out; settings mirror to the Music Assistant account. The DualSense light bar follows the artwork, optionally pulsing on the beat. The 120 fps option requests 120 Hz on next launch; the SDK falls back to 60 Hz and reports the accepted display refresh.
+
+## Constraints and release evidence
+
+Setup uses a private configuration file with numeric LAN IPv4 addresses (`host`, optional `ha_host`); metadata, browsing and following need a Music Assistant token, from console sign-in or `ma_token`. Following also needs the MilkDrop Visualizer relay. Starting the app does not transfer playback. Controls operate on the selected source. No invented live playback, health data, calibrated HDMI timing or PS5 system-screensaver support.
+
+An earlier build passed PS5 audio/title/artwork checks at 59.9–60 fps without audio errors. Everything new in 1.5.0 is unverified on the console: the transport band and controller bindings, search and paging, group editing, output compensation, keyboard and sign-in, settings sync, light bar, beat detection, album recolouring, night register, karaoke lyrics, the Home Assistant glance, the dev request path and 120 Hz. Host captures and tests demonstrate local behavior, not console sound, timing or sustained performance.
+
+PS5 uses projectM (347 enabled presets), while LG uses Butterchurn. PS5 has two artwork colours rather than LG's palette roles. LG's documented graphics memory growth remains unresolved; local checks do not establish long-session stability. See docs/AFTERGLOW.md for operational details and limitations.

@@ -3,6 +3,28 @@
 # Nothing here may need OpenGL: the designs only record draw lists, and the
 # shell's composition lives in src/app/shell_render.cpp, which is left out.
 host/platform_host.cpp
+host/keyboard_host.cpp
+src/afterglow/account.cpp
+src/afterglow/client.cpp
+src/afterglow/companion.cpp
+src/afterglow/dev_requests.cpp
+src/afterglow/icons.cpp
+src/afterglow/lightbar.cpp
+src/afterglow/panel.cpp
+src/afterglow/sheet_list.cpp
+src/afterglow/home_sheet.cpp
+src/afterglow/home_assistant.cpp
+src/afterglow/lyrics.cpp
+src/afterglow/ma_socket.cpp
+src/afterglow/night.cpp
+src/afterglow/preset_colour.cpp
+src/afterglow/preferences.cpp
+src/afterglow/preset_quality.cpp
+src/afterglow/preference_store.cpp
+src/afterglow/presentation.cpp
+src/afterglow/protocol.cpp
+src/afterglow/thumbnails.cpp
+src/afterglow/scenes.cpp
 src/app/shell.cpp
 src/app/tour.cpp
 src/audio/cues.cpp
@@ -20,6 +42,7 @@ src/demo/catalog.cpp
 src/gfx/draw_list.cpp
 src/gfx/font.cpp
 src/gfx/triangulate.cpp
+src/platform/ps5/keyboard.cpp
 src/third_party/stb/vorbis.c
 src/ui/components/*.cpp
 src/ui/confetti.cpp

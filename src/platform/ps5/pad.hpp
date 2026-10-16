@@ -32,10 +32,17 @@ class Pad
     {
         return handle_ >= 0;
     }
+    // The initial user the pad was opened for (system dialogs need it); -1 before open().
+    int user() const
+    {
+        return user_;
+    }
 
     // Colours the controller's light bar (for example with the active
     // design's accent). Repeated calls with the same colour do nothing.
     void set_light_bar(std::uint8_t r, std::uint8_t g, std::uint8_t b);
+    // Hands the light bar back to the system's own colour (the user's).
+    void reset_light_bar();
     // Starts a short rumble: strength 0..1, for seconds. tick() stops it.
     void rumble(float strength, float seconds);
     // Call once per frame: ends a rumble whose time is up.

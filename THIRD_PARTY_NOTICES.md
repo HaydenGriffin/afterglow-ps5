@@ -149,3 +149,36 @@ cover art inside the app is rendered at start-up from invented titles; no real
 product's name, artwork or trademark is used.
 
 No proprietary runtime module, encryption key, or game file is included.
+
+## Afterglow additions
+
+`third_party/jsmn/jsmn.h`: jsmn JSON tokenizer by Serge Zaitsev, MIT license.
+Source: https://github.com/zserge/jsmn at commit
+`25647e692c7906b96ffd2b05ca54c097948e879c`. License text is retained in the header.
+
+## projectM / MilkDrop
+
+[projectM](https://github.com/projectM-visualizer/projectm) is pinned to
+`349b7cc2db312d47cef6be24c6856ced6643a385` (4.2 development API).
+Copyright 2003–2026 projectM contributors, LGPL-2.1-or-later; see
+`third_party/projectm/licenses/projectM-LGPL-2.1.txt`.
+`tools/build-projectm.sh` fetches the pinned source and projectm-eval submodule.
+It builds static archives with exception support, a linked-EGL resolver, PS5
+locale/filesystem compatibility, and a PS5-only visual random seed adapter.
+The source patch and adapters are retained in `third_party/projectm`.
+The app's source and build scripts provide the relinking path.
+
+Bundled upstream dependencies include projectm-eval (MIT, projectM Team),
+hlslparser (MIT, Unknown Worlds Entertainment), GLM (MIT), stb_image
+(MIT or public domain), glad ((WTFPL or CC0-1.0) and Apache-2.0), and
+Jonathan Dummer's public-domain DXT routines. License texts and upstream
+notices are in `third_party/projectm/licenses`; source-level notices remain
+in the pinned source tree.
+
+The 349 bundled community presets retain author names in `assets/presets/index.tsv`.
+Their origin and the limits of the available licensing information are recorded
+in `third_party/presets/README.md`, alongside the upstream repository's MIT text.
+
+## Archivo
+
+Archivo by Omnibus-Type, SIL Open Font License 1.1. Static instances (600/100, 750/88 and 820/80 weight/width) were made from the existing LG Afterglow bundled variable font. Source and licence: `third_party/fonts/Archivo-*.ttf` and `Archivo-LICENSE.txt`. Baked atlases ship in `assets/fonts`.

@@ -1,0 +1,31 @@
+diff --git a/src/libprojectM/MilkdropPreset/BlurTexture.cpp b/src/libprojectM/MilkdropPreset/BlurTexture.cpp
+index 219c22e..7351027 100644
+--- a/src/libprojectM/MilkdropPreset/BlurTexture.cpp
++++ b/src/libprojectM/MilkdropPreset/BlurTexture.cpp
+@@ -116,6 +116,13 @@ void BlurTexture::Update(const Renderer::Texture& sourceTexture, const PerFrameC
+         return;
+     }
+ 
++    // Allocation can unbind the framebuffer, so save the caller target first.
++    // Remember previously bound framebuffer
++    GLint origReadFramebuffer;
++    GLint origDrawFramebuffer;
++    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &origReadFramebuffer);
++    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &origDrawFramebuffer);
++
+     AllocateTextures(sourceTexture);
+ 
+     unsigned int const passes = static_cast<int>(m_blurLevel) * 2;
+@@ -143,12 +150,6 @@ void BlurTexture::Update(const Renderer::Texture& sourceTexture, const PerFrameC
+     scale[2] = 1.0f / (tempMax - tempMin);
+     bias[2] = -tempMin * scale[2];
+ 
+-    // Remember previously bound framebuffer
+-    GLint origReadFramebuffer;
+-    GLint origDrawFramebuffer;
+-    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &origReadFramebuffer);
+-    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &origDrawFramebuffer);
+-
+     m_blurFramebuffer.Bind(0);
+ 
+     Renderer::BlendMode::Set(true, Renderer::BlendMode::Function::One, Renderer::BlendMode::Function::Zero);

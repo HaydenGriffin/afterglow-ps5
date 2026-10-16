@@ -17,20 +17,31 @@
 //   HUI_REEL=<dir> HUI_REEL_SWITCH=1   one clip of L1/R1 cycling through all designs
 
 #include "app/shell.hpp"
+#include "afterglow/presentation.hpp"
+#include "afterglow/home_assistant.hpp"
+#include "afterglow/milkdrop.hpp"
 #include "app/tour.hpp"
 #include "core/save_file.hpp"
 #include "demo/catalog.hpp"
 #include "gfx/gl_program.hpp"
 #include "gfx/renderer.hpp"
 #include "manifest.hpp"
+#include "milkdrop_capture.hpp"
 #include "ui/fonts.hpp"
+extern "C" unsigned char *stbi_load_from_memory(const unsigned char *, int, int *, int *, int *,
+                                                int);
+extern "C" void stbi_image_free(void *);
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <GL/glcorearb.h>
 
+// Upstream zero-initializes its C structs; keep vendor diagnostics local.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmissing-field-initializers"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "../third_party/stb/stb_image_write.h"
+#pragma clang diagnostic pop
 
 #include <cstdio>
 #include <cstdlib>
@@ -138,10 +149,179 @@ class Recorder
     int frames_ = 0;
 };
 
+// Illustrative Music Assistant answers for the Afterglow tour: what main.cpp
+// and the companion would do with a request, so search and drill-down pages
+// can be photographed. Invented titles; no live server is contacted.
+hui::afterglow::CompanionTrack preview_item(const char *title, const char *subtitle,
+                                            const char *type, int id)
+{
+    hui::afterglow::CompanionTrack item;
+    item.title = title;
+    item.subtitle = subtitle;
+    item.media_type = type;
+    item.item_id = std::to_string(id);
+    item.provider = "library";
+    item.uri = std::string("library://") + type + "/" + item.item_id;
+    return item;
+}
+void answer_afterglow_preview()
+{
+    using hui::afterglow::BrowseCategory;
+    using hui::afterglow::KeyboardPurpose;
+    auto &model = hui::afterglow::presentation();
+    model.companion_action_pending = false;
+    model.queue_offset_request = -1;
+    if (model.keyboard_pending && model.keyboard.purpose == KeyboardPurpose::search)
+    {
+        model.keyboard_pending = false;
+        model.keyboard_result.purpose = KeyboardPurpose::search;
+        model.keyboard_result.accepted = true;
+        model.keyboard_result.text = "light";
+        model.keyboard_result_ready = true;
+    }
+    if (!model.browse_pending)
+        return;
+    model.browse_pending = false;
+    auto &items = model.companion.browse_items;
+    items.clear();
+    switch (model.browse_request.category)
+    {
+    case BrowseCategory::search:
+        items = {preview_item("Lightkeeper", "34 albums", "artist", 1),
+                 preview_item("Low Light Choir", "6 albums", "artist", 2),
+                 preview_item("Light Across the Ceiling", "Lightkeeper", "album", 3),
+                 preview_item("Morning Light", "Low Light Choir", "album", 4),
+                 preview_item("First Light", "Lightkeeper", "track", 5),
+                 preview_item("Lighthouse", "Harbour Lamps", "track", 6),
+                 preview_item("Night Light Radio", "Radio station", "radio", 7),
+                 preview_item("Light Reading", "Paper Lantern · 120 episodes", "podcast", 8)};
+        break;
+    case BrowseCategory::artist_albums:
+        items = {preview_item("Light Across the Ceiling", "Lightkeeper · 2024", "album", 9),
+                 preview_item("Slow Current", "Lightkeeper · 2021", "album", 10),
+                 preview_item("Harbour Songs", "Lightkeeper · 2018", "album", 11)};
+        break;
+    default:
+        items = {preview_item("Evening Light", "Afterglow preview", "album", 12),
+                 preview_item("Still Water", "Afterglow preview", "playlist", 13),
+                 preview_item("The Long Way Home", "Afterglow preview", "track", 14)};
+        model.companion.browse_has_more = true;
+        return;
+    }
+    model.companion.browse_has_more = false;
+}
+
+// An illustrative Home glance for previews; AFTERGLOW_HOME=connecting, offline,
+// auth or unset shows that state instead.
+void preview_home(hui::afterglow::HomeSnapshot &home)
+{
+    namespace wire = hui::afterglow::home_wire;
+    const char *mode = std::getenv("AFTERGLOW_HOME");
+    const std::string state = mode != nullptr ? mode : "connected";
+    if (state == "unset")
+        return;
+    const auto config = wire::parse_config(
+        "ha_group=Living room:sensor.room_temperature=Temperature,sensor.room_humidity=Humidity,"
+        "light.ceiling=Ceiling light,light.lamp=Reading lamp,switch.fairy_lights=Fairy lights,"
+        "media_player.speakers=Music,scene.film_night=Film night\n"
+        "ha_group=Outside:weather.home=Weather,sensor.outdoor_air=Air quality\n"
+        "ha_group=Heating:climate.radiator=Radiator,sensor.hot_water=Hot water\n"
+        "ha_group=People:person.alex=Alex,person.sam=Sam\n");
+    wire::StateTable table;
+    if (state != "connecting" && state != "auth")
+        table.apply(R"({"a":{
+"sensor.room_temperature":{"s":"21.34","a":{"unit_of_measurement":"\u00b0C"}},
+"sensor.room_humidity":{"s":"48.6","a":{"unit_of_measurement":"%"}},
+"light.ceiling":{"s":"on","a":{}},"light.lamp":{"s":"off","a":{}},
+"switch.fairy_lights":{"s":"unavailable","a":{}},
+"media_player.speakers":{"s":"playing","a":{"media_title":"Slow Current","media_artist":"Afterglow preview"}},
+"scene.film_night":{"s":"2026-10-01T20:00:00+00:00","a":{}},
+"weather.home":{"s":"partlycloudy","a":{"temperature":14.2,"temperature_unit":"\u00b0C"}},
+"sensor.outdoor_air":{"s":"good","a":{}},
+"climate.radiator":{"s":"heat","a":{"hvac_action":"heating","current_temperature":20.5}},
+"sensor.hot_water":{"s":"idle","a":{}},
+"person.alex":{"s":"home","a":{}},"person.sam":{"s":"not_home","a":{}}}})");
+    home.configured = true;
+    home.groups = wire::build_groups(config, table);
+    home.link = state == "offline"      ? hui::afterglow::HomeLink::offline
+                : state == "auth"       ? hui::afterglow::HomeLink::auth_failed
+                : state == "connecting" ? hui::afterglow::HomeLink::connecting
+                                        : hui::afterglow::HomeLink::connected;
+    home.connected = home.link == hui::afterglow::HomeLink::connected;
+    home.status = state == "offline" ? "Home Assistant is offline · retrying in 8 s" : "Preview";
+    home.revision = 1;
+}
 } // namespace
 
 int main(int argc, char **argv)
 {
+    if (std::getenv("AFTERGLOW_PREVIEW") != nullptr)
+    {
+        auto &model = hui::afterglow::presentation();
+        model.configured = true;
+        model.connected = true;
+        model.playing = true;
+        model.preview = true;
+        model.title = "Slow Current";
+        model.artist = "Afterglow preview";
+        model.album = "Illustrative track";
+        model.status = "Preview";
+        model.group = "Afterglow PS5";
+        model.volume = 60;
+        model.companion_configured = true;
+        model.companion.status = "Preview";
+        model.companion.connected = true;
+        model.companion.elapsed = 39;
+        model.companion.track.duration = 240;
+        model.companion.track.lrc_lyrics = "[00:00]A little room to breathe\n[00:30]The light "
+                                           "across the ceiling\n[01:00]The music underneath";
+        model.artwork_color = {0.16f, 0.25f, 0.72f};
+        model.artwork_secondary = {0.07f, 0.11f, 0.32f};
+        model.companion.track.quality_badge = "Lossless · FLAC 44.1 kHz / 16-bit";
+        if (const char *lyrics = std::getenv("AFTERGLOW_LYRICS"))
+        {
+            // karaoke: enhanced LRC word timings on the current line.
+            if (std::string_view(lyrics) == "karaoke")
+                model.companion.track.lrc_lyrics =
+                    "[00:00]A little room to breathe\n[00:30]<00:30.00>The <00:32.00>light "
+                    "<00:36.00>across <00:41.00>the <00:43.00>ceiling\n[01:00]The music underneath";
+            else if (std::string_view(lyrics) != "timed")
+                model.companion.track.lrc_lyrics.clear();
+        }
+        // AFTERGLOW_NIGHT=1: photograph the night register whatever the hour.
+        model.night_hours = std::getenv("AFTERGLOW_NIGHT") != nullptr;
+        // AFTERGLOW_BEAT=<0..1>: hold the beat pulse for halo/spectrum captures.
+        if (const char *beat = std::getenv("AFTERGLOW_BEAT"))
+            model.beat = static_cast<float>(std::atof(beat));
+        // AFTERGLOW_VISUAL=1|2: halo or spectrum instead of MilkDrop.
+        if (const char *visual = std::getenv("AFTERGLOW_VISUAL"))
+            model.preferences.visual_style = std::atoi(visual);
+        model.companion.players = {{"preview-room", "Listening room"},
+                                   {"preview-kitchen", "Kitchen"}};
+        model.companion.track.title = model.title;
+        model.companion.track.artist = model.artist;
+        model.companion.track.album = model.album;
+        model.companion.track.lyrics = "Illustrative lyric preview\nThe room grows quiet\nLight "
+                                       "moves across the ceiling\nA slow current carries us home";
+        if (const char *lyrics = std::getenv("AFTERGLOW_LYRICS"))
+            if (std::string_view(lyrics) == "none")
+                model.companion.track.lyrics.clear();
+        hui::afterglow::CompanionTrack next;
+        next.title = "Evening Light";
+        next.artist = "Afterglow preview";
+        model.companion.upcoming.push_back(next);
+        next.title = "Still Water";
+        model.companion.upcoming.push_back(next);
+        next.title = "The Long Way Home";
+        model.companion.upcoming.push_back(next);
+        preview_home(model.home);
+        for (std::size_t i = 0; i < model.spectrum.size(); ++i)
+            model.spectrum[i] = 0.25f + 0.65f * static_cast<float>((i * 7 + 11) % 17) / 17;
+        model.companion.static_delay_ms = 120;
+        model.account.source = hui::afterglow::AccountState::Source::config;
+        model.account.host = "music.local";
+        model.home.configured = true;
+    }
     if (argc < 3)
     {
         std::fprintf(stderr, "usage: %s <assets dir> <output dir> [design id|all] [width height]\n",
@@ -171,12 +351,21 @@ int main(int argc, char **argv)
     hui::gfx::Font pixel;
     hui::gfx::Font hand;
     hui::ui::Fonts fonts;
+    // The console loads Archivo for Afterglow whatever its state, so captures must too.
+    const bool afterglow_fonts = std::getenv("AFTERGLOW_PREVIEW") != nullptr || only == "afterglow";
     if (!renderer.init() ||
-        !load_font(renderer, assets + "/fonts/inter-regular.huifont", &regular, &fonts.regular) ||
-        !load_font(renderer, assets + "/fonts/inter-semibold.huifont", &semibold,
-                   &fonts.semibold) ||
-        !load_font(renderer, assets + "/fonts/montserrat-medium.huifont", &display,
-                   &fonts.display) ||
+        !load_font(renderer,
+                   assets + (afterglow_fonts ? "/fonts/archivo-regular.huifont"
+                                             : "/fonts/inter-regular.huifont"),
+                   &regular, &fonts.regular) ||
+        !load_font(renderer,
+                   assets + (afterglow_fonts ? "/fonts/archivo-semibold.huifont"
+                                             : "/fonts/inter-semibold.huifont"),
+                   &semibold, &fonts.semibold) ||
+        !load_font(renderer,
+                   assets + (afterglow_fonts ? "/fonts/archivo-display.huifont"
+                                             : "/fonts/montserrat-medium.huifont"),
+                   &display, &fonts.display) ||
         !load_font(renderer, assets + "/fonts/dejavu-sans-mono.huifont", &mono, &fonts.mono) ||
         !load_font(renderer, assets + "/fonts/press-start-2p.huifont", &pixel, &fonts.pixel) ||
         !load_font(renderer, assets + "/fonts/patrick-hand.huifont", &hand, &fonts.hand))
@@ -186,6 +375,50 @@ int main(int argc, char **argv)
     {
         std::fprintf(stderr, "cover art failed\n");
         return 1;
+    }
+
+    // AFTERGLOW_MILKDROP=<count>: one picture per MilkDrop preset, then stop.
+    if (const char *count = std::getenv("AFTERGLOW_MILKDROP"))
+        return hui::host::capture_milkdrop(assets + "/presets", output, std::atoi(count));
+
+    // Compose the actual off-screen visualiser texture through the normal kit.
+    hui::afterglow::Milkdrop milkdrop_preview;
+    if (std::getenv("AFTERGLOW_PREVIEW") != nullptr && only == "afterglow")
+    {
+        // AFTERGLOW_TINT=<25..100>: album colour recolouring of the preset's slots.
+        if (const char *tint = std::getenv("AFTERGLOW_TINT"))
+        {
+            auto &model = hui::afterglow::presentation();
+            model.preferences.tint = true;
+            model.preferences.tint_strength = std::atoi(tint);
+            milkdrop_preview.configure(model.preferences);
+            milkdrop_preview.set_album_colours(model.artwork_color, model.artwork_secondary);
+        }
+        if (!milkdrop_preview.init(1280, 720, assets + "/presets") || !milkdrop_preview.select(0))
+            return 1;
+        std::size_t sample = 0;
+        hui::host::advance_milkdrop(milkdrop_preview, sample, 90);
+        auto &model = hui::afterglow::presentation();
+        model.milkdrop_texture = milkdrop_preview.texture();
+        model.preset = milkdrop_preview.preset_name();
+        model.preset_count = milkdrop_preview.preset_count();
+        model.presets = milkdrop_preview.names();
+        model.artwork_texture =
+            milkdrop_preview.texture(); // Illustrative cover for layout validation.
+        if (const char *cover = std::getenv("AFTERGLOW_COVER"))
+        {
+            int w = 0, h = 0, channels = 0;
+            std::string bytes;
+            hui::save::read_file(cover, &bytes, 8u << 20);
+            auto *pixels =
+                stbi_load_from_memory(reinterpret_cast<const unsigned char *>(bytes.data()),
+                                      static_cast<int>(bytes.size()), &w, &h, &channels, 4);
+            if (pixels)
+            {
+                model.artwork_texture = renderer.batch().create_texture(w, h, pixels);
+                stbi_image_free(pixels);
+            }
+        }
     }
 
     // HUI_ICON=<file.png>: draw the 512x512 launcher icon with the kit and stop.
@@ -391,6 +624,8 @@ int main(int argc, char **argv)
         telemetry.draw_calls = renderer.last_draw_calls();
         telemetry.instances = renderer.last_instances();
         shell.update(input, kDt);
+        if (std::getenv("AFTERGLOW_PREVIEW") != nullptr)
+            answer_afterglow_preview();
         ++frames;
         if (!tour.capture().empty())
         {

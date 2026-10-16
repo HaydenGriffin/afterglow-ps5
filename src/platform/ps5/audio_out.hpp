@@ -5,6 +5,8 @@
 #pragma once
 
 #include "audio/mixer.hpp"
+#include "afterglow/client.hpp"
+#include "afterglow/presentation.hpp"
 
 #include <atomic>
 #include <cstdint>
@@ -27,6 +29,7 @@ class AudioOut
     ~AudioOut();
 
     bool start(audio::Mixer &mixer);
+    bool start(afterglow::Client &client, afterglow::Analyzer &analyzer);
     void stop();
 
     std::uint64_t grains() const
@@ -43,6 +46,9 @@ class AudioOut
     void run();
 
     audio::Mixer *mixer_ = nullptr;
+    afterglow::Client *client_ = nullptr;
+    afterglow::Analyzer *analyzer_ = nullptr;
+    audio::Mixer silent_mixer_;
     int handle_ = -1;
     pthread_t thread_{};
     bool running_ = false;

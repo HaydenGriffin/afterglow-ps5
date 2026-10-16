@@ -1,0 +1,29 @@
+diff --git a/src/libprojectM/Renderer/Mesh.cpp b/src/libprojectM/Renderer/Mesh.cpp
+index 49d0000..80bffbb 100644
+--- a/src/libprojectM/Renderer/Mesh.cpp
++++ b/src/libprojectM/Renderer/Mesh.cpp
+@@ -129,8 +129,24 @@ void Mesh::Draw()
+             primitiveType = GL_LINES;
+             break;
+         case PrimitiveType::LineLoop:
++        {
++            // A strip that repeats its first index draws the same closed
++            // outline. The PS5 driver lowers GL_LINE_LOOP on the CPU and
++            // prints every lowered draw to the title's log.
++            const auto count = m_indices.Size();
++            if (count >= 2)
++            {
++                m_indices.Resize(count + 1);
++                m_indices[count] = m_indices[0];
++                m_indices.Update();
++                glDrawElements(GL_LINE_STRIP, count + 1, GL_UNSIGNED_INT, nullptr);
++                m_indices.Resize(count);
++                VertexArray::Unbind();
++                return;
++            }
+             primitiveType = GL_LINE_LOOP;
+             break;
++        }
+         case PrimitiveType::LineStrip:
+             primitiveType = GL_LINE_STRIP;
+             break;

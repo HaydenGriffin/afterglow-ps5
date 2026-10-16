@@ -1,419 +1,1035 @@
-// ps5-homebrew-ui - Application entry point.
-// Copyright (C) 2026 BlackBearReloaded
+// Afterglow - Native PS5 Music Assistant player and visualizer.
+// Copyright (C) 2026 Afterglow contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
-//
-// Opens the display, controller and audio, then runs the shell every frame:
-// read input, update, play the sounds it asked for, draw, present. Lifecycle
-// markers and frame pacing are logged for hardware runs.
 
-#include "app/shell.hpp"
-#include "app/tour.hpp"
-#include "audio/cues.hpp"
-#include "audio/mixer.hpp"
-#include "audio/music.hpp"
-#include "core/frame_stats.hpp"
-#include "core/input.hpp"
+#include "afterglow/account.hpp"
+#include "afterglow/client.hpp"
+#include "afterglow/companion.hpp"
+#include "afterglow/dev_requests.hpp"
+#include "afterglow/lightbar.hpp"
+#include "afterglow/version.hpp"
+#include "afterglow/home_assistant.hpp"
+#include "afterglow/artwork.hpp"
+#include "afterglow/thumbnails.hpp"
+#include "afterglow/preference_store.hpp"
+#include "afterglow/milkdrop.hpp"
+#include "afterglow/night.hpp"
+#include "afterglow/presentation.hpp"
+#include "concepts/concepts.hpp"
 #include "core/save_file.hpp"
-#include "core/settings.hpp"
-#include "core/version.hpp"
-#include "demo/catalog.hpp"
 #include "gfx/canvas.hpp"
 #include "gfx/renderer.hpp"
 #include "platform/ps5/audio_out.hpp"
 #include "platform/ps5/display_egl.hpp"
+#include "platform/ps5/keyboard.hpp"
 #include "platform/ps5/pad.hpp"
 #include "platform/ps5/system.hpp"
-#include "ui/fonts.hpp"
-
-#include <cstring>
-#include <GL/glcorearb.h>
-
-#include <cstddef>
-#include <cstdint>
+#include <algorithm>
 #include <cstdio>
-#include <memory>
-#include <span>
+#include <cmath>
+#include <optional>
 #include <string>
-#include <vector>
 
 extern "C" void hui_heap_stats(std::size_t *live_bytes, std::size_t *peak_bytes,
                                std::size_t *blocks, std::size_t *failures);
 
 namespace
 {
-
-constexpr const char *kAssets = "/app0/assets";
-// Settings live in the title's own save area.
-constexpr const char *kDataRoot = "/download0/hui";
-// Development output (the tour's pictures and report, the log). A title's
-// sandbox has no /data, so it lives in the title's own storage. While the
-// title runs, a PC can *read* the folder over FTP as
-// /mnt/sandbox/<TITLE_ID>_000/download0/hui/dev, but cannot write there.
-constexpr const char *kDevRoot = "/download0/hui/dev";
-// Requests therefore come in through the install folder, which a PC can
-// write: /data/homebrew/<TITLE_ID>/dev/request.txt is /app0/dev/request.txt
-// here. One line: "tour <design id|all> <token>" or "quit - <token>". A
-// request is honoured once per token (the last one is remembered in kDevRoot).
-constexpr const char *kRequestPath = "/app0/dev/request.txt";
-// How long a finished tour stays up so the PC can copy its evidence (the
-// storage is unmounted when the title closes) before the app closes itself.
-constexpr double kCollectSeconds = 240.0;
-// Quarter of a quarter: the title's storage is small and a tour takes
-// hundreds of pictures. Enough to compare layout and colour with the PC's.
-constexpr int kCaptureWidth = 480;
-constexpr int kCaptureHeight = 270;
-
-void log_heap(std::uint64_t frames)
-{
-    std::size_t live = 0;
-    std::size_t peak = 0;
-    std::size_t blocks = 0;
-    std::size_t failures = 0;
-    hui_heap_stats(&live, &peak, &blocks, &failures);
-    hui::sys::log("[HUI] heap frames=%llu live=%zu peak=%zu blocks=%zu failures=%zu",
-                  static_cast<unsigned long long>(frames), live, peak, blocks, failures);
-}
-
-// Opens at *resolution (an index into Settings::kResolutions), falling back
-// to 1080p; *resolution reports the mode that opened.
-bool open_display(hui::ps5::Display &display, int *resolution)
-{
-    using hui::Settings;
-    const Settings::Resolution &mode = Settings::kResolutions[*resolution];
-    if (display.open(mode.width, mode.height))
-    {
-        hui::sys::log("[HUI] display mode %s %dx%d", mode.label, display.width(), display.height());
-        return true;
-    }
-    if (*resolution == 0)
-        return false;
-    hui::sys::log("[HUI] display mode %s failed, using 1080p", mode.label);
-    *resolution = 0;
-    return display.open(Settings::kResolutions[0].width, Settings::kResolutions[0].height);
-}
-
-bool load_font(hui::gfx::Renderer &renderer, const char *name, hui::gfx::Font *font,
-               hui::ui::FontRef *ref)
+bool font(hui::gfx::Renderer &renderer, const char *name, hui::gfx::Font &face,
+          hui::ui::FontRef &ref)
 {
     std::string data;
-    const std::string path = std::string(kAssets) + "/fonts/" + name;
-    if (!hui::save::read_file(path, &data) || !font->load(data))
-    {
-        hui::sys::log("[HUI] font %s failed: %s", name, font->error().c_str());
+    if (!hui::save::read_file(std::string("/app0/assets/fonts/") + name, &data) || !face.load(data))
         return false;
-    }
-    ref->font = font;
-    ref->texture = renderer.batch().create_font_texture(*font);
+    ref.font = &face;
+    ref.texture = renderer.batch().create_font_texture(face);
     return true;
 }
-
-// The frame as drawn, bottom row first, as a 24-bit BMP (tour pictures).
-bool save_picture(const std::string &path, int width, int height)
+struct Config
 {
-    std::vector<unsigned char> pixels(static_cast<std::size_t>(width) * height * 4);
-    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-    const std::uint32_t row = (static_cast<std::uint32_t>(width) * 3 + 3) & ~3u;
-    const std::uint32_t size = 54 + row * static_cast<std::uint32_t>(height);
-    unsigned char header[54] = {'B', 'M'};
-    const auto put = [&](int at, std::uint32_t value)
+    std::string host;
+    unsigned int port = 8927, ma_port = 8095;
+    std::string ma_token, ma_player_id;
+    std::string client_id = "afterglow-ps5";
+    std::string name = "Afterglow PS5";
+    // Dev request path (dev_requests.hpp); empty keeps it off.
+    std::string dev_token;
+};
+Config read_config()
+{
+    Config config;
+    std::string text;
+    if (!hui::save::read_file("/app0/afterglow.conf", &text, 16384))
+        return config;
+    std::size_t start = 0;
+    while (start < text.size())
     {
-        for (int i = 0; i < 4; ++i)
-            header[at + i] = static_cast<unsigned char>(value >> (8 * i));
-    };
-    put(2, size);
-    put(10, 54);
-    put(14, 40);
-    put(18, static_cast<std::uint32_t>(width));
-    put(22, static_cast<std::uint32_t>(height));
-    header[26] = 1;
-    header[28] = 24;
-    put(34, size - 54);
-    std::FILE *file = std::fopen(path.c_str(), "wb");
-    if (file == nullptr)
-        return false;
-    bool ok = std::fwrite(header, 1, sizeof(header), file) == sizeof(header);
-    std::vector<unsigned char> line(row);
-    for (int y = 0; ok && y < height; ++y)
-    {
-        const unsigned char *in = pixels.data() + static_cast<std::size_t>(y) * width * 4;
-        for (int x = 0; x < width; ++x)
+        const auto end = text.find('\n', start);
+        std::string line = text.substr(start, end == std::string::npos ? end : end - start);
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+        const auto eq = line.find('=');
+        if (eq != std::string::npos)
         {
-            line[static_cast<std::size_t>(x) * 3 + 0] = in[x * 4 + 2];
-            line[static_cast<std::size_t>(x) * 3 + 1] = in[x * 4 + 1];
-            line[static_cast<std::size_t>(x) * 3 + 2] = in[x * 4 + 0];
+            const auto key = line.substr(0, eq);
+            const auto value = line.substr(eq + 1);
+            if (key == "host")
+                config.host = value;
+            if (key == "name" && value.size() <= 80)
+                config.name = value;
+            if (key == "client_id" && value.size() <= 80)
+                config.client_id = value;
+            if (key == "ma_token" && value.size() <= 2048)
+                config.ma_token = value;
+            if (key == "ma_player_id" && value.size() <= 256)
+                config.ma_player_id = value;
+            if (key == "dev_requests" && hui::afterglow::valid_dev_token(value))
+                config.dev_token = value;
+            if (key == "port" || key == "ma_port")
+            {
+                unsigned int port = 0;
+                char extra = 0;
+                if (std::sscanf(value.c_str(), "%u%c", &port, &extra) == 1 && port > 0 &&
+                    port <= 65535)
+                {
+                    if (key == "port")
+                        config.port = port;
+                    else
+                        config.ma_port = port;
+                }
+            }
         }
-        ok = std::fwrite(line.data(), 1, line.size(), file) == line.size();
+        if (end == std::string::npos)
+            break;
+        start = end + 1;
     }
-    return std::fclose(file) == 0 && ok;
+    return config;
+}
+// The Account page's sign-in and log-out buttons; the work runs on a thread.
+void handle_account_command(hui::afterglow::Presentation &model, hui::afterglow::Account &account,
+                            const hui::afterglow::Credentials &credentials,
+                            const hui::afterglow::StoredAuth &stored, const Config &config)
+{
+    using namespace hui::afterglow;
+    const auto command = model.account_command;
+    model.account_command = AccountCommand::none;
+    if (command == AccountCommand::sign_in)
+    {
+        StoredAuth target;
+        const auto error = account_wire::sign_in_target(
+            model.sign_in_host, credentials.host, static_cast<std::uint16_t>(config.ma_port),
+            model.sign_in_username, model.sign_in_password, config.client_id, target);
+        if (!error.empty())
+            model.account.status = error;
+        else if (account.sign_in(target, model.sign_in_password))
+        {
+            model.account.busy = true;
+            model.account.status = "Signing in…";
+        }
+        else
+            model.account.status = "Still talking to Music Assistant; try again in a moment";
+        model.sign_in_password.assign(model.sign_in_password.size(), '\0');
+        model.sign_in_password.clear();
+    }
+    else if (command == AccountCommand::log_out)
+    {
+        if (credentials.source == AccountState::Source::config)
+            model.account.status = "This PS5 uses the token in afterglow.conf, so there is nothing "
+                                   "to log out of. Sign in to use your account instead.";
+        else if (credentials.source == AccountState::Source::none)
+            model.account.status = "Not signed in";
+        else if (account.log_out(stored))
+        {
+            model.account.busy = true;
+            model.account.status = "Signing out…";
+        }
+        else
+            model.account.status = "Still talking to Music Assistant; try again in a moment";
+    }
+}
+// Settings mirroring and this PS5's own player (for its static delay), every 100 ms.
+void mirror_account(hui::afterglow::Presentation &model, hui::afterglow::Companion &companion,
+                    hui::afterglow::PreferenceMirror &mirror, const Config &config)
+{
+    std::string own_player = config.ma_player_id;
+    for (const auto &player : model.companion.players)
+        if (own_player.empty() && player.name == config.name)
+            own_player = player.id;
+    companion.set_own_player(config.client_id, own_player);
+    if (!model.companion_configured)
+    {
+        model.account.sync_status = "Sign in to keep settings on your account";
+        return;
+    }
+    const auto step = mirror.update(model.preferences, model.companion.connected,
+                                    companion.account_revision(), companion.account_preferences());
+    if (step.restored)
+    {
+        model.preferences = step.preferences;
+        model.show_toast("Settings restored");
+    }
+    if (!step.save.empty())
+        companion.save_account_preferences(step.save);
+    model.account.sync_status = mirror.status();
+    if (model.companion.account_too_large)
+        model.account.sync_status = "Not saved: the account's settings are too large to sync";
 }
 
+// The system keyboard: field-specific limits and layouts for each asker.
+hui::ps5::KeyboardOptions keyboard_options(const hui::afterglow::KeyboardRequest &request)
+{
+    using Purpose = hui::afterglow::KeyboardPurpose;
+    hui::ps5::KeyboardOptions options;
+    options.title = request.title;
+    options.initial = request.initial;
+    options.secret = request.secret || request.purpose == Purpose::sign_in_password;
+    options.max_length = request.purpose == Purpose::sign_in_host ? 253 : 128;
+    if (request.purpose == Purpose::sign_in_host)
+        options.kind = hui::ps5::KeyboardKind::url;
+    if (request.purpose == Purpose::sign_in_password)
+        options.max_length = 256;
+    return options;
+}
+
+// Opens the dialog the UI asked for and hands back its answer once.
+void pump_keyboard(hui::ps5::Keyboard &keyboard, hui::afterglow::Presentation &model,
+                   hui::afterglow::KeyboardPurpose &asked)
+{
+    if (model.keyboard_pending && !keyboard.active())
+    {
+        model.keyboard_pending = false;
+        asked = model.keyboard.purpose;
+        keyboard.open(keyboard_options(model.keyboard));
+    }
+    hui::ps5::KeyboardOutcome outcome;
+    if (keyboard.poll(outcome))
+    {
+        model.keyboard_result = {asked, outcome.accepted, std::move(outcome.text)};
+        model.keyboard_result_ready = true;
+    }
+    model.keyboard_open = keyboard.active();
+}
+
+// The light bar follows the artwork (and the beat); off hands it back to the system.
+void drive_lightbar(hui::ps5::Pad &pad, hui::afterglow::LightbarLimiter &limiter,
+                    const hui::afterglow::Presentation &model, std::int64_t now, bool &lit)
+{
+    if (!model.preferences.lightbar)
+    {
+        if (lit)
+            pad.reset_light_bar();
+        limiter.forget();
+        lit = false;
+        return;
+    }
+    const auto color = hui::afterglow::lightbar_color(
+        {model.artwork_color, model.playing, model.preferences.lightbar_beat, model.beat});
+    if (!limiter.due(color, now))
+        return;
+    pad.set_light_bar(color.r, color.g, color.b);
+    limiter.wrote(color, now);
+    lit = true;
+}
+
+// Dev requests: read from the install folder, answered in the title's storage.
+constexpr const char *kDevRoot = "/download0/hui/dev";
+constexpr const char *kDevRequest = "/app0/dev/request.txt";
+struct DevChannel
+{
+    std::string token, handled;
+    std::int64_t next_poll_us = 0;
+    // A screenshot waits for the end of the frame it pictures.
+    std::string screenshot, screenshot_id;
+    // Screenshot files this run wrote, oldest first (kMaxDevScreenshots kept).
+    std::vector<std::string> screenshots;
+};
+
+void open_dev_channel(DevChannel &dev, const std::string &token)
+{
+    dev.token = token;
+    if (token.empty())
+        return;
+    hui::save::ensure_directory("/download0/hui");
+    hui::save::ensure_directory(kDevRoot);
+    hui::save::read_file(std::string(kDevRoot) + "/handled.txt", &dev.handled, 128);
+    hui::sys::log("[Afterglow] dev requests on (%s)", kDevRequest);
+}
+
+// The request waiting now, once per id; polled about once a second.
+std::optional<hui::afterglow::DevRequest> poll_dev(DevChannel &dev, std::int64_t now)
+{
+    if (dev.token.empty() || now < dev.next_poll_us)
+        return std::nullopt;
+    dev.next_poll_us = now + 1000000;
+    std::string text;
+    if (!hui::save::read_file(kDevRequest, &text, 512))
+        return std::nullopt;
+    auto request = hui::afterglow::parse_dev_request(text, dev.token);
+    if (!request || request->id == dev.handled)
+        return std::nullopt;
+    dev.handled = request->id;
+    // Unrecorded, the request could run again after a restart (a quit would
+    // loop), so it is refused instead.
+    const auto error = hui::save::write_atomic(std::string(kDevRoot) + "/handled.txt", dev.handled);
+    if (!error.empty())
+    {
+        hui::sys::log("[Afterglow] dev request %s refused: handled.txt not saved (%s)",
+                      request->id.c_str(), error.c_str());
+        hui::save::write_atomic(std::string(kDevRoot) + "/result.txt",
+                                request->id + " error handled.txt not saved\n");
+        return std::nullopt;
+    }
+    return request;
+}
+
+void dev_answer(hui::afterglow::Presentation &model, const std::string &id,
+                const std::string &result)
+{
+    hui::save::write_atomic(std::string(kDevRoot) + "/result.txt", id + " " + result + "\n");
+    model.dev_status = id + " " + result;
+    hui::sys::log("[Afterglow] dev request %s %s", id.c_str(), result.c_str());
+}
+
+std::string dev_status_text(const hui::afterglow::Presentation &model,
+                            const hui::ps5::Display &display, const std::string &id)
+{
+    hui::afterglow::DevStatus status;
+    status.id = id;
+    status.version = hui::afterglow::kVersion;
+    status.fps = model.fps;
+    status.connected = model.connected;
+    status.playing = model.playing;
+    status.width = display.width();
+    status.height = display.height();
+    status.refresh_hz = model.accepted_refresh_hz;
+    status.display_mode = model.preferences.display_mode;
+    status.page = model.page;
+    return hui::afterglow::dev_status_json(status);
+}
+
+// The frame drawn once more into an off-screen target and read back as a BMP.
+bool save_screenshot(hui::gfx::Renderer &renderer, const std::string &path, int width, int height)
+{
+    hui::gfx::Canvas canvas;
+    if (!canvas.create(width, height, 1))
+        return false;
+    canvas.bind();
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    renderer.present(canvas.framebuffer(), width, height);
+    glBindFramebuffer(GL_FRAMEBUFFER, canvas.framebuffer());
+    std::vector<std::uint8_t> pixels(static_cast<std::size_t>(width) * height * 4);
+    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    canvas.destroy();
+    const auto bmp = hui::afterglow::encode_bmp(width, height, pixels.data());
+    return !bmp.empty() &&
+           hui::save::write_atomic(
+               path, std::string_view(reinterpret_cast<const char *>(bmp.data()), bmp.size()))
+               .empty();
+}
+
+// Acts on one dev request. A screenshot is taken later, at the end of the frame.
+void handle_dev_request(DevChannel &dev, const hui::afterglow::DevRequest &request,
+                        hui::afterglow::Presentation &model, const hui::ps5::Display &display)
+{
+    using Verb = hui::afterglow::DevRequest::Verb;
+    switch (request.verb)
+    {
+    case Verb::quit:
+        dev_answer(model, request.id, "ok quitting");
+        model.exit_requested = true;
+        break;
+    case Verb::status:
+    {
+        const bool saved = hui::save::write_atomic(std::string(kDevRoot) + "/status.json",
+                                                   dev_status_text(model, display, request.id))
+                               .empty();
+        dev_answer(model, request.id, saved ? "ok status.json" : "error status not saved");
+        break;
+    }
+    case Verb::screenshot:
+        dev.screenshot = request.argument;
+        dev.screenshot_id = request.id;
+        break;
+    }
+}
+
+void take_dev_screenshot(DevChannel &dev, hui::gfx::Renderer &renderer,
+                         hui::afterglow::Presentation &model, const hui::ps5::Display &display)
+{
+    if (dev.screenshot.empty())
+        return;
+    const std::string name = dev.screenshot + ".bmp";
+    const bool saved = save_screenshot(renderer, std::string(kDevRoot) + "/" + name,
+                                       display.width(), display.height());
+    dev_answer(model, dev.screenshot_id, saved ? "ok " + name : "error screenshot not saved");
+    if (saved)
+        for (const auto &stale : hui::afterglow::keep_dev_screenshot(dev.screenshots, name))
+            std::remove((std::string(kDevRoot) + "/" + stale).c_str());
+    dev.screenshot.clear();
+}
+
+// ha_* lines (home_assistant.hpp); ha_group lines make the file larger than the rest.
+hui::afterglow::HomeConfig read_home_config()
+{
+    std::string text;
+    if (!hui::save::read_file("/app0/afterglow.conf", &text, 16384))
+        return {};
+    return hui::afterglow::home_wire::parse_config(text);
+}
+void start_home(hui::afterglow::HomeAssistant &home, hui::afterglow::Presentation &model)
+{
+    const auto config = read_home_config();
+    model.home.configured = config.configured();
+    if (model.home.configured && !home.start(config))
+    {
+        model.home.link = hui::afterglow::HomeLink::offline;
+        model.home.status = "ha_host must be a numeric IPv4 address";
+    }
+}
+// New states in, presses out; the worker never blocks the frame.
+void sync_home(hui::afterglow::HomeAssistant &home, hui::afterglow::Presentation &model)
+{
+    if (model.home.configured && home.revision() != model.home.revision)
+        model.home = home.snapshot();
+    for (const auto &command : model.home_commands)
+        home.send(command);
+    model.home_commands.clear();
+}
 } // namespace
 
 int main()
 {
     using namespace hui;
-    sys::log("[HUI] entry");
-    sys::log("[HUI] storage dir=%d", save::ensure_directory(kDataRoot) ? 1 : 0);
-
-    // The display opens at the saved resolution (1080p if that fails).
-    const Settings saved = app::Shell::load_settings(kDataRoot);
-    int resolution = ps5::Display::supports_display_modes() ? saved.resolution : 0;
+    sys::log("[Afterglow] starting %s", afterglow::kVersion);
+    auto &model = afterglow::presentation();
+    std::string saved;
+    // No local preferences (a fresh install): restore them from the account.
+    const bool restore_preferences =
+        !save::read_file("/download0/hui/afterglow.prefs", &saved, 1u << 20);
+    if (!restore_preferences)
+    {
+        const auto decoded = save::decode(save::Kind::prefs, saved);
+        if (decoded.ok && decoded.version == 1)
+            model.preferences = afterglow::Preferences::decode(decoded.payload);
+    }
+    model.requested_refresh_hz = model.preferences.fps == 120 ? 120 : 60;
     ps5::Display display;
-    if (!open_display(display, &resolution))
+    if (!display.open(1920, 1080, model.requested_refresh_hz))
     {
-        sys::log("[HUI] fatal: display open failed");
-        sys::park();
+        sys::log("[Afterglow] display initialization failed");
+        sys::quit();
+        return 1;
     }
-
     gfx::Renderer renderer;
-    gfx::Font regular;
-    gfx::Font semibold;
-    gfx::Font display_font;
-    gfx::Font mono;
-    gfx::Font pixel;
-    gfx::Font hand;
+    gfx::Font regular, semibold, display_face, mono;
     ui::Fonts fonts;
-    if (!renderer.init() ||
-        !load_font(renderer, "inter-regular.huifont", &regular, &fonts.regular) ||
-        !load_font(renderer, "inter-semibold.huifont", &semibold, &fonts.semibold) ||
-        !load_font(renderer, "montserrat-medium.huifont", &display_font, &fonts.display) ||
-        !load_font(renderer, "dejavu-sans-mono.huifont", &mono, &fonts.mono) ||
-        !load_font(renderer, "press-start-2p.huifont", &pixel, &fonts.pixel) ||
-        !load_font(renderer, "patrick-hand.huifont", &hand, &fonts.hand))
+    if (!renderer.init() || !font(renderer, "archivo-regular.huifont", regular, fonts.regular) ||
+        !font(renderer, "archivo-semibold.huifont", semibold, fonts.semibold) ||
+        !font(renderer, "archivo-display.huifont", display_face, fonts.display) ||
+        !font(renderer, "dejavu-sans-mono.huifont", mono, fonts.mono))
     {
-        sys::log("[HUI] fatal: renderer init failed");
-        sys::park();
+        sys::log("[Afterglow] renderer or fonts failed");
+        renderer.release();
+        display.close();
+        sys::quit();
+        return 1;
     }
-    demo::Catalog catalog;
-    const std::int64_t art_start = sys::monotonic_us();
-    if (!catalog.build_covers(renderer, fonts))
-        sys::log("[HUI] cover art failed; designs draw without it");
-    sys::log("[HUI] cover art %zu covers in %lld ms", catalog.size(),
-             static_cast<long long>((sys::monotonic_us() - art_start) / 1000));
-
-    ps5::Pad pad;
-    pad.open();
-    InputTracker tracker;
-    audio::Mixer mixer;
-    // The music stream attaches to the mixer before the audio thread starts.
-    audio::MusicPlayer music;
-    const int tracks = music.init(mixer, std::string(kAssets) + "/audio/music",
-                                  static_cast<std::uint64_t>(sys::monotonic_us()));
-    sys::log("[HUI] music songs=%d", tracks);
-    ps5::AudioOut audio_out;
-    audio_out.start(mixer);
-    audio::SoundBank sounds;
-    const auto bank = sounds.load(std::string(kAssets) + "/audio/sfx");
-    sys::log("[HUI] sounds files=%d rejected=%d", bank.files, bank.rejected);
-    for (const std::string &error : bank.errors)
-        sys::log("[HUI] sound rejected %s", error.c_str());
-
-    app::Shell shell(fonts, catalog, kDataRoot, renderer.glass_texture());
-    const std::string version = read_content_version("/app0/sce_sys/param.json");
-    shell.set_version(version);
-    sys::log("[HUI] version %s designs=%zu", version.empty() ? "unknown" : version.c_str(),
-             shell.concept_count());
-
-    // A tour request turns this launch into an unattended validation run:
-    // every design is shown with scripted input, pictures and a report are
-    // written to kDevRoot, and the app closes itself a while later.
-    std::unique_ptr<app::Tour> tour;
-    save::ensure_directory(kDevRoot);
-    const std::string handled_path = std::string(kDevRoot) + "/handled.txt";
-    const std::string report_path = std::string(kDevRoot) + "/tour/report.txt";
-    bool quit_requested = false;
-    const auto poll_request = [&]()
+    // 1280 x 720 keeps projectM's per-frame passes cheap; the kit scales it to the display.
+    auto milkdrop = std::make_unique<afterglow::Milkdrop>();
+    const Config config = read_config();
+    // Heap allocation avoids putting the bounded audio queue on the title's small entry stack.
+    auto client = std::make_unique<afterglow::Client>();
+    auto analyzer = std::make_unique<afterglow::Analyzer>();
+    auto follow_analyzer = std::make_unique<afterglow::Analyzer>();
+    ps5::AudioOut output;
+    // A signed-in token (afterglow.auth) wins over afterglow.conf's ma_token.
+    afterglow::StoredAuth stored_auth =
+        afterglow::account_wire::load_auth(afterglow::account_wire::kAuthPath);
+    afterglow::Credentials credentials = afterglow::account_wire::effective_credentials(
+        stored_auth, config.host, static_cast<std::uint16_t>(config.ma_port), config.ma_token);
+    model.account = afterglow::account_wire::account_state(credentials, stored_auth);
+    const std::string account_device = "ps5-" + config.client_id;
+    std::string audio_host = config.host.empty() ? credentials.host : config.host;
+    model.configured = !audio_host.empty();
+    model.quality = afterglow::PresetQuality::decode(model.preferences.quality);
+    model.preferences.quality = model.quality.encode();
+    milkdrop->configure(model.preferences);
+    if (!milkdrop->init(1280, 720, "/app0/assets/presets"))
+        milkdrop->release();
+    model.presets = milkdrop->names();
+    afterglow::PreferenceStore preference_store;
+    preference_store.start("/download0/hui/afterglow.prefs");
+    auto companion = std::make_unique<afterglow::Companion>();
+    companion->restore_pending_favorites(model.preferences.favorite_pending);
+    companion->set_account_device(account_device);
+    model.companion_configured = !credentials.token.empty();
+    if (!model.companion_configured)
+        model.preferences.follow = false;
+    client->set_output_enabled(!model.preferences.follow);
+    if (model.companion_configured)
+        companion->start(credentials.host.c_str(), credentials.port, credentials.token.c_str());
+    auto home = std::make_unique<afterglow::HomeAssistant>();
+    start_home(*home, model);
+    auto artwork = std::make_unique<afterglow::Artwork>();
+    artwork->start();
+    // Sheet rows with artwork ask for 160-pixel covers; GL stays on this thread.
+    afterglow::ThumbnailOptions thumb_options;
+    thumb_options.origin = "http://" + credentials.host + ":" + std::to_string(credentials.port);
+    auto thumbnails = std::make_unique<afterglow::ThumbnailCache>(
+        afterglow::fetch_image, afterglow::decode_image, thumb_options);
+    if (model.companion_configured)
+        thumbnails->start();
+    model.thumbnail = [&](const std::string &url) { return thumbnails->texture(url); };
+    const auto thumb_upload = [&](int w, int h, const std::uint8_t *rgba)
+    { return renderer.batch().create_texture(w, h, rgba); };
+    const auto thumb_release = [](std::uint32_t texture) { glDeleteTextures(1, &texture); };
+    std::string applied_preferences, applied_player = "\x01", artwork_url;
+    std::uint64_t artwork_generation = 0, favorite_revision = 0;
+    bool favorites_received = false;
+    std::vector<std::string> synced_favorites = model.preferences.favorites;
+    float visual_elapsed = 0, analysis_gain = 1, scan_frame_elapsed = 0;
+    int scan_phase = 0;
+    std::size_t scan_index = 0;
+    std::uint64_t scan_signal_samples = 0;
+    bool configured_scan = false;
+    int configured_refresh = 0;
+    model.audio_ok = output.start(*client, *analyzer);
+    bool client_started = false;
+    if (model.configured && model.audio_ok)
+        client_started = client->start(audio_host.c_str(), static_cast<std::uint16_t>(config.port),
+                                       config.client_id.c_str(), config.name.c_str());
+    afterglow::Account account;
+    afterglow::PreferenceMirror mirror(restore_preferences);
+    // LG checks the token's expiry 8 s after launch, off the start-up path.
+    std::int64_t renew_at = sys::monotonic_us() + 8000000;
+    // Sign-in, log-out and renewal swap the token without restarting the app:
+    // a fresh Companion is simpler to reason about than resetting a live one.
+    const auto restart_companion = [&](const afterglow::Credentials &next)
     {
-        std::string request;
-        if (!save::read_file(kRequestPath, &request, 256))
-            return;
-        char verb[16] = {};
-        char argument[64] = {};
-        char token[64] = {};
-        if (std::sscanf(request.c_str(), "%15s %63s %63s", verb, argument, token) != 3)
-            return;
-        std::string handled;
-        save::read_file(handled_path, &handled, 128);
-        if (handled == token)
-            return; // this request was honoured by an earlier launch (or frame)
-        save::write_atomic(handled_path, token);
-        if (std::strcmp(verb, "quit") == 0)
+        const auto pending = companion->pending_favorites();
+        companion->stop();
+        companion->join();
+        companion = std::make_unique<afterglow::Companion>();
+        companion->restore_pending_favorites(pending);
+        companion->set_account_device(account_device);
+        companion->set_relay_enabled(model.preferences.follow);
+        const bool moved = next.host != credentials.host || next.port != credentials.port;
+        credentials = next;
+        model.companion_configured = !credentials.token.empty();
+        if (!model.companion_configured)
+            model.preferences.follow = false;
+        else
+            companion->start(credentials.host.c_str(), credentials.port, credentials.token.c_str());
+        client->set_output_enabled(!model.preferences.follow);
+        model.companion = {};
+        applied_player = "\x01";
+        favorites_received = false;
+        mirror.reset();
+        if (moved || !model.companion_configured)
         {
-            quit_requested = true;
+            thumbnails->stop();
+            thumbnails->join();
+            thumbnails->clear(thumb_release);
+            thumb_options.origin =
+                "http://" + credentials.host + ":" + std::to_string(credentials.port);
+            thumbnails = std::make_unique<afterglow::ThumbnailCache>(
+                afterglow::fetch_image, afterglow::decode_image, thumb_options);
+            if (model.companion_configured)
+                thumbnails->start();
         }
-        else if (std::strcmp(verb, "tour") == 0 && !tour)
+        else if (model.companion_configured)
+            thumbnails->start(); // first sign-in to the configured host; no-op when running
+        // Without a host in afterglow.conf, Sendspin follows the signed-in server.
+        const bool audio_moved = config.host.empty() && client_started &&
+                                 !credentials.host.empty() && credentials.host != audio_host;
+        if (audio_moved)
         {
-            save::ensure_directory(std::string(kDevRoot) + "/tour");
-            std::remove(report_path.c_str()); // a new report must not be taken for an old one
-            const bool all = std::strcmp(argument, "all") == 0;
-            tour = std::make_unique<app::Tour>(shell, all ? std::string() : std::string(argument));
-            sys::log("[HUI] tour requested: %s token=%s", argument, token);
+            client->stop();
+            client->join();
+            client_started = false;
+        }
+        if (!client_started && model.audio_ok && !credentials.host.empty())
+        {
+            model.configured = true;
+            audio_host = config.host.empty() ? credentials.host : config.host;
+            client_started =
+                client->start(audio_host.c_str(), static_cast<std::uint16_t>(config.port),
+                              config.client_id.c_str(), config.name.c_str());
         }
     };
-    poll_request();
-    double collect_wait = -1.0; // seconds a finished tour has waited to be collected
-
-    std::int64_t previous = sys::monotonic_us();
-    std::uint64_t frames = 0;
-    FrameStats stats;
-    // The FPS readout averages over half a second so the number is readable.
-    double fps_seconds = 0.0;
-    int fps_frames = 0;
-    PadSample samples[64];
-    gfx::Canvas capture;
-    std::int64_t last_frame_start = sys::monotonic_us();
-    for (;;)
+    const auto pump_account = [&](std::int64_t now)
     {
-        const std::int64_t now = sys::monotonic_us();
-        // Animation time is start-to-start (one full frame), not the gap
-        // between the previous swap returning and this frame beginning.
-        float dt = frames == 0 ? 1.0f / 60.0f : static_cast<float>(now - last_frame_start) / 1e6f;
-        last_frame_start = now;
-        if (dt > 0.05f)
-            dt = 0.05f; // a hitch must not teleport the animations
-        const std::size_t count = pad.read(samples);
-        InputFrame input = tracker.update(std::span<const PadSample>(samples, count),
-                                          static_cast<std::uint64_t>(now));
-        if (tour)
-            input = tour->step(dt);
-
-        shell.update(input, dt);
-        if (shell.take_settings_changed())
+        handle_account_command(model, account, credentials, stored_auth, config);
+        afterglow::AccountResult result;
+        if (account.take_result(result))
         {
-            const Settings &settings = shell.settings();
-            mixer.set_bus_gain(audio::Bus::music, Settings::gain(settings.music_volume));
-            mixer.set_bus_gain(audio::Bus::sfx, Settings::gain(settings.sfx_volume));
-            mixer.set_bus_gain(audio::Bus::ui, Settings::gain(settings.ui_volume));
-            InputSettings input_settings = tracker.settings();
-            input_settings.swap_confirm = settings.swap_confirm;
-            tracker.set_settings(input_settings);
+            model.account.busy = false;
+            sys::log("[Afterglow] account: %s", result.message.c_str());
+            if (result.job == afterglow::AccountJob::log_out || (result.ok && result.token_changed))
+            {
+                stored_auth = result.auth;
+                restart_companion(afterglow::account_wire::effective_credentials(
+                    stored_auth, config.host, static_cast<std::uint16_t>(config.ma_port),
+                    config.ma_token));
+            }
+            const auto status =
+                result.job == afterglow::AccountJob::renew ? model.account.status : result.message;
+            const auto sync = model.account.sync_status;
+            model.account = afterglow::account_wire::account_state(credentials, stored_auth);
+            model.account.status = status;
+            model.account.sync_status = sync;
         }
-        const app::Feedback &feedback = shell.feedback();
-        for (const audio::CueEvent &event : feedback.cues)
+        if (renew_at && now >= renew_at && !account.busy())
         {
-            sounds.play(mixer, event.set == audio::SoundSet::count ? shell.sound_set() : event.set,
-                        event);
-            if (event.cue == audio::Cue::complete || event.cue == audio::Cue::welcome)
-                music.duck();
+            renew_at = 0;
+            if (credentials.source == afterglow::AccountState::Source::signed_in)
+                account.renew(stored_auth);
         }
-        if (shell.settings().haptics && feedback.rumble_strength > 0.0f)
-            pad.rumble(feedback.rumble_strength, feedback.rumble_seconds);
-        pad.tick(dt);
-        if (shell.settings().light_bar)
+        if (credentials.source == afterglow::AccountState::Source::signed_in &&
+            model.companion.token_rejected)
+            model.account.status =
+                "Music Assistant no longer accepts this PS5's token. Sign in again.";
+    };
+    ps5::Pad pad;
+    pad.open();
+    afterglow::LightbarLimiter lightbar_limiter;
+    bool lightbar_lit = true;
+    const auto ime = ps5::make_ime_backend(pad.user());
+    ps5::Keyboard keyboard(*ime);
+    afterglow::KeyboardPurpose keyboard_purpose = afterglow::KeyboardPurpose::none;
+    DevChannel dev;
+    open_dev_channel(dev, config.dev_token);
+    InputTracker tracker;
+    demo::Catalog catalog;
+    Settings settings;
+    app::Telemetry telemetry;
+    app::Context context{fonts, catalog, telemetry, settings};
+    auto screen = concepts::make_afterglow(context);
+    app::Frame frame;
+    app::Feedback feedback;
+    std::array<PadSample, 64> samples{};
+    std::uint64_t frames = 0;
+    auto previous = sys::monotonic_us();
+    auto next_status = previous;
+    float fps_time = 0;
+    int fps_count = 0;
+    while (!model.exit_requested)
+    {
+        const auto now = sys::monotonic_us();
+        const float elapsed = static_cast<float>(now - previous) / 1000000;
+        const float dt = std::clamp(elapsed, 0.001f, 0.05f);
+        previous = now;
+        if (now >= next_status)
         {
-            const gfx::Color accent = shell.accent();
-            pad.set_light_bar(static_cast<std::uint8_t>(accent.r * 255.0f),
-                              static_cast<std::uint8_t>(accent.g * 255.0f),
-                              static_cast<std::uint8_t>(accent.b * 255.0f));
+            const auto state = client->snapshot();
+            model.companion = companion->snapshot();
+            if (model.companion.favorites_ready &&
+                (!favorites_received || model.companion.favorite_revision != favorite_revision))
+            {
+                favorites_received = true;
+                favorite_revision = model.companion.favorite_revision;
+                model.preferences.favorites = model.companion.favorites;
+                synced_favorites = model.preferences.favorites;
+            }
+            model.connected = state.connected;
+            model.playing = state.playing;
+            if (model.configured)
+                model.status = state.status;
+            model.title = state.title;
+            model.artist = state.artist;
+            model.album = state.album;
+            model.group = state.group;
+            model.volume = state.volume;
+            model.buffered_ms = state.buffered_ms;
+            model.underruns = state.underruns;
+            model.late_frames = state.late_frames;
+            model.reconnects = state.reconnects;
+            model.received_packets = state.received_packets;
+            model.output_errors = output.errors();
+            if (model.preferences.follow && model.companion_configured)
+            {
+                model.connected = model.companion.connected;
+                model.status = model.companion.status;
+                model.playing = model.companion.playing;
+                model.title = model.companion.track.title;
+                model.artist = model.companion.track.artist;
+                model.album = model.companion.track.album;
+                model.group = "Following " + model.companion.player_name;
+                model.volume = model.companion.volume;
+            }
+            const std::string next_art = model.preferences.follow || !applied_player.empty()
+                                             ? model.companion.track.artwork
+                                             : "";
+            if (next_art != artwork_url)
+            {
+                artwork_url = next_art;
+                if (model.artwork_texture)
+                    glDeleteTextures(1, &model.artwork_texture);
+                model.artwork_texture = 0;
+                model.artwork_color = afterglow::Presentation{}.artwork_color;
+                model.artwork_secondary = afterglow::Presentation{}.artwork_secondary;
+            }
+            artwork_generation = artwork->request(next_art);
+            model.save_status = preference_store.status();
+            mirror_account(model, *companion, mirror, config);
+            model.night_hours = afterglow::night_hour(afterglow::local_hour());
+            next_status = now + 100000;
         }
-        music.pump(dt);
-
-        shell.compose(renderer);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+        analyzer->set_beat_sensitivity(model.preferences.beat_sensitivity);
+        follow_analyzer->set_beat_sensitivity(model.preferences.beat_sensitivity);
+        model.spectrum = analyzer->update(dt);
+        std::vector<float> pcm = model.preferences.follow
+                                     ? companion->take_pcm(model.preferences.trim_ms)
+                                     : analyzer->fresh_pcm();
+        if (model.preferences.follow && !pcm.empty())
+        {
+            std::vector<std::int16_t> samples(pcm.size());
+            for (std::size_t i = 0; i < pcm.size(); ++i)
+                samples[i] = static_cast<std::int16_t>(std::clamp(pcm[i], -1.0f, 1.0f) * 32767);
+            // A dedicated analyser is used below; the audio producer owns analyzer.
+            follow_analyzer->push(samples.data(), static_cast<int>(samples.size() / 2));
+        }
+        if (model.preferences.follow)
+            model.spectrum = follow_analyzer->update(dt);
+        model.beat = model.preferences.follow ? follow_analyzer->beat() : analyzer->beat();
+        if (model.preferences.auto_level && !pcm.empty())
+        {
+            float peak = 0;
+            for (float sample : pcm)
+                peak = std::max(peak, std::abs(sample));
+            const float target = peak > 0.005f ? std::clamp(0.65f / peak, 0.5f, 4.0f) : 1.0f;
+            analysis_gain += (target - analysis_gain) * std::min(1.0f, dt * 2);
+            for (float &sample : pcm)
+                sample = std::clamp(sample * analysis_gain, -1.0f, 1.0f);
+        }
+        if (!model.scanning)
+            milkdrop->feed(pcm.data(), pcm.size() / 2);
+        afterglow::ArtworkResult image;
+        if (artwork->take_result(image) && image.generation == artwork_generation)
+        {
+            if (model.artwork_texture)
+                glDeleteTextures(1, &model.artwork_texture);
+            model.artwork_texture = 0;
+            model.artwork_color = image.accent;
+            model.artwork_secondary = image.secondary;
+            if (!image.rgba.empty())
+                model.artwork_texture =
+                    renderer.batch().create_texture(image.width, image.height, image.rgba.data());
+        }
+        milkdrop->set_album_colours(model.artwork_color, model.artwork_secondary);
+        thumbnails->pump(thumb_upload, thumb_release);
+        const auto count = pad.read(samples);
+        auto input = tracker.update(std::span<const PadSample>(samples.data(), count),
+                                    static_cast<std::uint64_t>(now));
+        pump_keyboard(keyboard, model, keyboard_purpose);
+        if (model.keyboard_open)
+        {
+            // The system keyboard owns the controller: the screen sees nothing held.
+            InputFrame blocked;
+            blocked.connected = input.connected;
+            blocked.focus_lost = true;
+            input = blocked;
+        }
+        drive_lightbar(pad, lightbar_limiter, model, now, lightbar_lit);
+        if (const auto request = poll_dev(dev, now))
+            handle_dev_request(dev, *request, model, display);
+        feedback.clear();
+        screen->update(input, dt, feedback);
+        sync_home(*home, model);
+        if (model.browse_pending)
+        {
+            companion->browse(model.browse_request);
+            model.browse_pending = false;
+        }
+        if (model.queue_offset_request >= 0 ||
+            model.queue_offset_request == afterglow::kQueueOffsetDefault)
+        {
+            companion->set_queue_offset(model.queue_offset_request);
+            model.queue_offset_request = -1;
+        }
+        if (model.companion_action_pending)
+        {
+            companion->action(model.companion_action);
+            model.companion_action_pending = false;
+        }
+        pump_account(now);
+        const auto command = [&](afterglow::Command value)
+        {
+            if (model.preferences.follow)
+                companion->command(value);
+            else
+                client->command(value);
+        };
+        switch (model.command)
+        {
+        case afterglow::UiCommand::toggle:
+            command(afterglow::Command::toggle);
+            break;
+        case afterglow::UiCommand::previous:
+            command(afterglow::Command::previous);
+            break;
+        case afterglow::UiCommand::next:
+            command(afterglow::Command::next);
+            break;
+        case afterglow::UiCommand::volume_up:
+            command(afterglow::Command::volume_up);
+            break;
+        case afterglow::UiCommand::volume_down:
+            command(afterglow::Command::volume_down);
+            break;
+        case afterglow::UiCommand::preset_previous:
+            milkdrop->previous();
+            break;
+        case afterglow::UiCommand::preset_next:
+            milkdrop->next();
+            break;
+        case afterglow::UiCommand::preset_select:
+            milkdrop->select(model.selected_preset);
+            break;
+        case afterglow::UiCommand::none:
+            break;
+        }
+        model.command = afterglow::UiCommand::none;
+        if (model.preferences.favorites != synced_favorites)
+        {
+            for (const auto &name : model.preferences.favorites)
+                if (std::find(synced_favorites.begin(), synced_favorites.end(), name) ==
+                    synced_favorites.end())
+                    companion->set_favorite(name, true);
+            for (const auto &name : synced_favorites)
+                if (!model.preferences.favorite(name))
+                    companion->set_favorite(name, false);
+            synced_favorites = model.preferences.favorites;
+        }
+        model.preferences.favorite_pending = companion->pending_favorites();
+        if (!model.scanning && scan_phase != 0)
+        {
+            model.quality.cancel();
+            model.preferences.quality = model.quality.encode();
+            model.preferences.scan_cursor = static_cast<int>(scan_index);
+            model.scan_status = "Preset scan paused";
+            scan_phase = 0;
+        }
+        if (model.scanning && scan_phase == 0)
+        {
+            if (model.presets.empty())
+                model.scanning = false;
+            else
+            {
+                scan_index = static_cast<std::size_t>(model.preferences.scan_cursor);
+                while (scan_index < model.presets.size() &&
+                       !model.quality.eligible(model.presets[scan_index], 30, false))
+                    ++scan_index;
+                if (scan_index >= model.presets.size())
+                {
+                    model.preferences.scan_cursor = 0;
+                    model.scanning = false;
+                    model.scan_status = "Preset scan complete";
+                }
+                else
+                {
+                    model.quality.begin(model.presets[scan_index]);
+                    model.preferences.quality = model.quality.encode();
+                    model.preferences.scan_cursor = static_cast<int>(scan_index + 1);
+                    model.scan_status = "Saving scan checkpoint";
+                    scan_phase = 1;
+                }
+            }
+        }
+        else if (model.scanning && scan_phase == 1)
+        {
+            const auto saved_status = preference_store.status();
+            if (saved_status == "Preferences saved")
+            {
+                if (!milkdrop->select(scan_index))
+                {
+                    model.quality.quarantine(model.presets[scan_index]);
+                    model.preferences.quality = model.quality.encode();
+                    model.scanning = false;
+                    model.scan_status = "Preset failed; scan stopped";
+                    scan_phase = 0;
+                }
+                else
+                {
+                    model.scan_status = "Scanning " + std::to_string(scan_index + 1) + " / " +
+                                        std::to_string(model.presets.size());
+                    scan_signal_samples = 0;
+                    scan_phase = 2;
+                }
+            }
+            else if ((saved_status.starts_with("Preferences not saved") ||
+                      saved_status.find("unavailable") != std::string::npos))
+            {
+                model.scanning = false;
+                model.quality.cancel();
+                model.preferences.quality = model.quality.encode();
+                model.preferences.scan_cursor = static_cast<int>(scan_index);
+                scan_phase = 0;
+                model.scan_status = "Scan stopped: checkpoint could not be saved";
+            }
+        }
+        const std::string preferences = model.preferences.encode();
+        if (preferences != applied_preferences || configured_scan != model.scanning ||
+            configured_refresh != model.accepted_refresh_hz)
+        {
+            applied_preferences = preferences;
+            auto visual_preferences = model.preferences;
+            visual_preferences.fps = std::min(visual_preferences.fps, model.accepted_refresh_hz);
+            if (model.scanning)
+            {
+                visual_preferences.locked = true;
+                visual_preferences.fps = 60;
+            }
+            milkdrop->configure(visual_preferences);
+            configured_scan = model.scanning;
+            configured_refresh = model.accepted_refresh_hz;
+            milkdrop->set_scanning(model.scanning);
+            client->set_output_enabled(!model.preferences.follow);
+            companion->set_relay_enabled(model.preferences.follow);
+            preference_store.submit(preferences);
+        }
+        std::string desired_player =
+            model.preferences.follow ? model.preferences.player : config.ma_player_id;
+        if (!model.preferences.follow && desired_player.empty())
+            for (const auto &player : model.companion.players)
+                if (player.name == config.name)
+                {
+                    desired_player = player.id;
+                    break;
+                }
+        if (desired_player != applied_player)
+        {
+            applied_player = desired_player;
+            companion->select_player(desired_player);
+        }
+        visual_elapsed += elapsed;
+        scan_frame_elapsed = model.scanning && scan_phase == 2 ? scan_frame_elapsed + elapsed : 0;
+        const int visual_fps =
+            std::min(model.scanning ? 60 : model.preferences.fps, model.accepted_refresh_hz);
+        const float visual_period = 1.0f / static_cast<float>(visual_fps);
+        bool rendered_visual = false;
+        const float visual_interval = scan_frame_elapsed;
+        if (milkdrop->ready() && model.milkdrop_visible &&
+            (visual_elapsed + 0.0005f >= visual_period) &&
+            ((model.scanning ||
+              (!settings.reduced_motion && (!model.preferences.hold_idle || model.playing))) ||
+             model.preset != milkdrop->preset_name()))
+        {
+            if (model.scanning && scan_phase == 2)
+            {
+                // Repeatable visual-only excitation; never sent to audio output.
+                std::array<float, 1600> signal{};
+                for (std::size_t i = 0; i < signal.size() / 2; ++i)
+                {
+                    const double phase = static_cast<double>(scan_signal_samples++);
+                    const float value = static_cast<float>(
+                        std::sin(phase * 0.0288) * (0.35 + 0.2 * std::sin(phase * 0.00026)) +
+                        0.1 * std::sin(phase * 0.0576));
+                    signal[i * 2] = signal[i * 2 + 1] = value;
+                }
+                milkdrop->feed(signal.data(), signal.size() / 2);
+            }
+            milkdrop->render();
+            rendered_visual = true;
+            scan_frame_elapsed = 0;
+            if (model.scanning && scan_phase == 2 && milkdrop->failed())
+            {
+                model.quality.quarantine(model.presets[scan_index]);
+                model.preferences.quality = model.quality.encode();
+                model.scanning = false;
+                scan_phase = 0;
+                model.scan_status = "Preset failed; scan stopped";
+            }
+            visual_elapsed = std::fmod(std::max(visual_elapsed, visual_period), visual_period);
+        }
+        model.milkdrop_texture = milkdrop->ready() ? milkdrop->texture() : 0;
+        model.preset = milkdrop->preset_name();
+        model.preset_count = milkdrop->preset_count();
+        frame.reset();
+        screen->draw(frame);
+        renderer.begin();
+        renderer.backdrop(frame.backdrop);
+        renderer.draw(frame.scene);
+        renderer.draw(frame.overlay);
         renderer.present(0, display.width(), display.height());
-        if (tour && !tour->capture().empty())
-        {
-            // The picture is the same frame drawn once more into a small
-            // off-screen target: reading the display surface back is slow, and
-            // a quarter-size picture is enough to compare with the PC render.
-            if (capture.texture() == 0)
-                capture.create(kCaptureWidth, kCaptureHeight, 1);
-            capture.bind();
-            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT);
-            renderer.present(capture.framebuffer(), kCaptureWidth, kCaptureHeight);
-            glBindFramebuffer(GL_FRAMEBUFFER, capture.framebuffer());
-            const std::string path = std::string(kDevRoot) + "/tour/" + tour->capture() + ".bmp";
-            const bool ok = save_picture(path, kCaptureWidth, kCaptureHeight);
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            sys::log("[HUI] tour picture %s ok=%d", tour->capture().c_str(), ok ? 1 : 0);
-            tour->capture_done();
-            last_frame_start = sys::monotonic_us(); // saving is slow; the frame was not
-        }
+        take_dev_screenshot(dev, renderer, model, display);
         if (!display.swap())
+            break;
+        model.accepted_refresh_hz = display.refresh_hz();
+        model.refresh_confirmed = display.refresh_confirmed();
+        if (frames++ == 0)
         {
-            sys::log("[HUI] fatal: swap failed frame=%llu error=%s",
-                     static_cast<unsigned long long>(frames),
-                     ps5::egl_error_name(display.last_error()));
-            sys::park();
+            sys::log("[Afterglow] display requested=%dHz accepted=%dHz confirmed=%d",
+                     model.requested_refresh_hz, model.accepted_refresh_hz,
+                     model.refresh_confirmed);
+            sys::hide_splash_screen();
         }
-        ++frames;
-        const std::int64_t presented = sys::monotonic_us();
-        const float frame_ms = static_cast<float>(presented - previous) / 1000.0f;
-        app::Telemetry &telemetry = shell.telemetry();
-        if (frames == 1)
+        if (model.scanning && scan_phase == 2 && rendered_visual &&
+            model.quality.observe(visual_interval))
         {
-            sys::log("[HUI] first-swap ok shapes=%zu draws=%zu", renderer.last_instances(),
-                     renderer.last_draw_calls());
-            const bool hidden = sys::hide_splash_screen();
-            sys::log("[HUI] ready splash_hidden=%d", hidden ? 1 : 0);
-            log_heap(frames);
-        }
-        else
-        {
-            stats.add(static_cast<double>(frame_ms));
-            telemetry.push(frame_ms);
-            if (tour)
-                tour->record_frame(frame_ms, renderer.last_draw_calls(), renderer.last_instances());
-        }
-        previous = presented;
-        telemetry.draw_calls = renderer.last_draw_calls();
-        telemetry.instances = renderer.last_instances();
-        telemetry.voices = mixer.active_voices();
-        fps_seconds += static_cast<double>(frame_ms) / 1000.0;
-        ++fps_frames;
-        if (fps_seconds >= 0.5)
-        {
-            telemetry.fps = static_cast<float>(fps_frames / fps_seconds);
-            telemetry.average_ms = static_cast<float>(fps_seconds * 1000.0 / fps_frames);
-            fps_seconds = 0.0;
-            fps_frames = 0;
-        }
-
-        if (tour && tour->finished())
-        {
-            std::string report;
-            for (const std::string &line : tour->report())
+            model.preferences.quality = model.quality.encode();
+            scan_phase = 0;
+            if (model.preferences.scan_cursor >= static_cast<int>(model.presets.size()))
             {
-                sys::log("[HUI] %s", line.c_str());
-                report += line + "\n";
-            }
-            save::write_atomic(report_path, report);
-            sys::log("[HUI] tour finished designs=%zu", tour->report().size());
-            // The storage is unmounted when the title closes, so the app stays
-            // up for a while: the PC copies the evidence, then the app closes.
-            tour.reset();
-            collect_wait = 0.0;
-        }
-        if (collect_wait >= 0.0)
-            collect_wait += static_cast<double>(frame_ms) / 1000.0;
-        if (frames % 60 == 0)
-        {
-            poll_request();
-            if (quit_requested || collect_wait > kCollectSeconds)
-            {
-                sys::log("[HUI] closing: %s",
-                         quit_requested ? "quit requested" : "tour evidence window over");
-                pad.close();
-                sys::quit();
+                model.preferences.scan_cursor = 0;
+                model.scanning = false;
+                model.scan_status = "Preset scan complete";
             }
         }
-        if (stats.count() == 600)
+        fps_time += elapsed;
+        ++fps_count;
+        if (fps_time >= 1)
         {
-            char summary[160];
-            stats.format(summary, sizeof(summary));
-            sys::log("[HUI] %s draws=%zu shapes=%zu", summary, renderer.last_draw_calls(),
-                     renderer.last_instances());
-            sys::log("[HUI] audio grains=%llu errors=%llu voices=%d music=%s underruns=%llu",
-                     static_cast<unsigned long long>(audio_out.grains()),
-                     static_cast<unsigned long long>(audio_out.errors()), mixer.active_voices(),
-                     music.current().c_str(),
-                     static_cast<unsigned long long>(mixer.stream_underruns()));
-            stats.reset();
-            if (frames % 3600 < 600)
-                log_heap(frames);
+            model.fps = static_cast<float>(fps_count) / fps_time;
+            fps_count = 0;
+            fps_time = 0;
+        }
+        if (frames % 600 == 0)
+        {
+            sys::log("[Afterglow] connected=%d playing=%d buffer=%.0fms underruns=%llu late=%llu "
+                     "reconnects=%llu output_errors=%llu fps=%.1f",
+                     model.connected ? 1 : 0, model.playing ? 1 : 0, model.buffered_ms,
+                     static_cast<unsigned long long>(model.underruns),
+                     static_cast<unsigned long long>(model.late_frames),
+                     static_cast<unsigned long long>(model.reconnects),
+                     static_cast<unsigned long long>(model.output_errors), model.fps);
+            std::size_t live = 0, peak = 0, blocks = 0, failures = 0;
+            hui_heap_stats(&live, &peak, &blocks, &failures);
+            sys::log("[Afterglow] heap live=%zu peak=%zu blocks=%zu failures=%zu", live, peak,
+                     blocks, failures);
         }
     }
+    model.quality.cancel();
+    model.preferences.quality = model.quality.encode();
+    model.preferences.favorite_pending = companion->pending_favorites();
+    preference_store.submit(model.preferences.encode());
+    preference_store.stop();
+    account.stop();
+    keyboard.abort();
+    companion->stop();
+    home->stop();
+    artwork->stop();
+    thumbnails->stop();
+    model.thumbnail = nullptr;
+    thumbnails->clear(thumb_release);
+    milkdrop->release();
+    if (model.artwork_texture)
+        glDeleteTextures(1, &model.artwork_texture);
+    client->stop();
+    output.stop();
+    client->join();
+    companion->join();
+    account.join();
+    home->join();
+    artwork->join();
+    thumbnails->join();
+    preference_store.join();
+    pad.reset_light_bar();
+    pad.close();
+    renderer.release();
+    display.close();
+    sys::quit();
+    return 0;
 }
