@@ -1341,6 +1341,7 @@ void Panel::rebuild_browse()
 void Panel::rebuild()
 {
     ++rebuilds_;
+    built_browse_ = presentation().companion.browse_revision;
     if (browse_page())
     {
         rebuild_browse();
@@ -2425,7 +2426,8 @@ void Panel::update(const InputFrame &input, float dt, ui::Feedback &feedback, bo
     if (sideways)
         held_steps_ = input.nav_repeat ? held_steps_ + 1 : 0;
     refresh_ -= dt;
-    if (refresh_ <= 0 || input.pressed != 0 || playlists_moved())
+    const bool arrived = presentation().companion.browse_revision != built_browse_;
+    if (refresh_ <= 0 || input.pressed != 0 || arrived || playlists_moved())
     {
         rebuild();
         refresh_ = 0.5f;

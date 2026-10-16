@@ -130,6 +130,19 @@ TEST_F(AfterglowPanel, MovingTheFocusBuildsNoRows)
     EXPECT_GT(panel_.rebuilds(), refreshed) << "a button acts on the rows as they are now";
 }
 
+TEST_F(AfterglowPanel, ABrowseAnswerShowsAtOnce)
+{
+    auto &s = presentation();
+    live();
+    panel_.open(Page::browse);
+    s.browse_pending = false;
+    input(idle());
+    deliver({item("Blue Hour", "8", "album")});
+    input(idle());
+    ASSERT_FALSE(panel_.rows().empty());
+    EXPECT_EQ(panel_.rows()[0].item.title, "Blue Hour") << "not half a second later";
+}
+
 TEST_F(AfterglowPanel, QueueOpensPlayersFromPlayingOnAndReturns)
 {
     presentation().companion.connected = true;

@@ -209,6 +209,8 @@ class Panel
     int sleep_minutes_ = 30;
     float refresh_ = 0;
     int rebuilds_ = 0;
+    // The Browse answer the rows were built from: a new one shows at once.
+    std::uint64_t built_browse_ = 0;
     // Keyboard round trip and the sign-in fields collected so far.
     KeyboardPurpose keyboard_wait_ = KeyboardPurpose::none;
     std::string sign_in_host_, sign_in_username_;
