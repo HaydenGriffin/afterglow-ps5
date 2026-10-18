@@ -8,5 +8,5 @@ namespace hui::afterglow
 {
 // The release version. sce_sys/param.json's contentVersion carries the same
 // number as NN.NNN.NNN (1.6.0 is "01.006.000"); a unit test keeps them equal.
-inline constexpr const char *kVersion = "1.6.0";
+inline constexpr const char *kVersion = "1.7.0";
 } // namespace hui::afterglow

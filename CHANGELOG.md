@@ -4,9 +4,9 @@ Afterglow for PS5. Builds before 1.6.0 were private builds for one console; they
 the version where one was set. "Checked on hardware" means on one PS5 on firmware 7.20; anything else was
 checked on a PC only (unit tests, mock servers and the off-screen preview).
 
-# Unreleased
+# 1.7.0 — Visual style Off (18 October 2026)
 
-Built and tested on a PC only.
+Built and tested on a PC only; not yet checked on a console.
 
 - **Visual style Off** (user request). Display's visual style gains **Off** after MilkDrop, Halo and Spectrum: no
   visuals, just the music on a black screen. With Visuals only nothing is drawn but the hints, which fade; with

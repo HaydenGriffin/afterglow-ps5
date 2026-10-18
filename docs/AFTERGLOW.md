@@ -3,7 +3,7 @@
 An unofficial Music Assistant TV companion, built on BlackBearReloaded's
 [ps5-homebrew-ui](https://github.com/blackbearreloaded/ps5-homebrew-ui).
 This is a foreground playback client, not a Music Assistant server fork.
-Version 1.6.0 shares the LG Afterglow poster interface and core music
+Version 1.7.0 shares the LG Afterglow poster interface and core music
 controls. It ran on a PS5 on firmware 7.20 on 16 October 2026; what was
 checked there, and what was not, is under
 [Checked on hardware](#checked-on-hardware). Setting it up:
