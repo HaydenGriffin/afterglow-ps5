@@ -24,6 +24,9 @@ struct OverlayLook
 inline constexpr OverlayLook kLineLookDefault{2, 0, 1};
 inline constexpr OverlayLook kStageLookDefault{1, 0, 1};
 
+// Visual styles: MilkDrop, halo, spectrum, or off (the music on a blank screen).
+inline constexpr int kVisualMilkDrop = 0, kVisualOff = 3, kVisualStyleCount = 4;
+
 // What the preferences file keeps. Each is enforced when writing as well as
 // when reading, so a value never grows past what the next start can read.
 constexpr std::size_t kMaxFavorites = 1000, kMaxFavoriteName = 512;
@@ -43,8 +46,8 @@ struct Preferences
     int lyrics_offset_ms = 0;
     // MilkDrop keeps playing behind the Album and Lyrics posters.
     bool poster_visuals = true;
-    // MilkDrop, halo or spectrum.
-    int visual_style = 0;
+    // MilkDrop, halo, spectrum or off (kVisualOff).
+    int visual_style = kVisualMilkDrop;
     bool reduce_motion = false;
     // Visuals only, visuals with track, album poster, synchronized lyrics.
     int display_mode = 1;

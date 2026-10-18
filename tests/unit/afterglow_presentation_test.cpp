@@ -191,7 +191,7 @@ TEST_F(AfterglowScreen, PresetControlsOnlyOperateInMilkdropMode)
     screen->update(input, 0.02f, feedback);
     EXPECT_EQ(state.command, hui::afterglow::UiCommand::preset_previous);
     // The visual style is a Display setting now; Triangle belongs to the lyrics.
-    for (int style = 0; style < 3; ++style)
+    for (int style = 0; style < hui::afterglow::kVisualStyleCount; ++style)
     {
         state.command = hui::afterglow::UiCommand::none;
         state.preferences.visual_style = style;

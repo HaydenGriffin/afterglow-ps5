@@ -377,7 +377,9 @@ then the music favourite, start radio (not for audiobooks, episodes or
 radio), Go to a line and [Scan to save](#scan-to-save). Display holds the four
 modes, the lyrics layer,
 **MilkDrop behind album and lyrics**, the track card, visual style (MilkDrop,
-halo, spectrum), **Reduce motion** and **Word-by-word lyrics**.
+halo, spectrum, or **Off**: no visuals, the music on a black screen; with
+Visuals only nothing is drawn but the fading hints), **Reduce motion** and
+**Word-by-word lyrics**.
 
 Presses are combined rather than dropped (LG 1.4.3/1.5.1): while one command
 waits for Music Assistant, further volume steps and seeks add up into one

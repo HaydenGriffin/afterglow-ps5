@@ -58,7 +58,8 @@ constexpr ResultGroup kResultGroups[] = {
 constexpr const char *kModes[] = {"Visuals only", "Visuals + track", "Album", "Lyrics"};
 constexpr const char *kLayers[] = {"Off", "One line", "Stage"};
 constexpr const char *kTrackCards[] = {"Always", "At track changes", "Hidden"};
-constexpr const char *kVisualStyles[] = {"MilkDrop", "Halo", "Spectrum"};
+constexpr const char *kVisualStyles[] = {"MilkDrop", "Halo", "Spectrum", "Off"};
+static_assert(std::size(kVisualStyles) == kVisualStyleCount);
 constexpr const char *kRepeatModes[] = {"off", "all", "one"};
 constexpr const char *kRepeatLabels[] = {"Off", "All", "One"};
 // Companion keeps a window of 50 upcoming songs; Earlier / Later move it.
@@ -1068,7 +1069,8 @@ std::vector<SheetRow> Panel::sheet_rows() const
         rows.row("MilkDrop behind album and lyrics", poster_visuals, on_off(p.poster_visuals));
         rows.row("Track card", track_card, kTrackCards[std::clamp(p.track_info, 0, 2)]).adjustable =
             true;
-        rows.row("Visual style", visual_style, kVisualStyles[std::clamp(p.visual_style, 0, 2)])
+        rows.row("Visual style", visual_style,
+                 kVisualStyles[std::clamp(p.visual_style, 0, kVisualStyleCount - 1)])
             .adjustable = true;
         rows.row("Reduce motion", reduce_motion, on_off(p.reduce_motion));
         rows.row("Word-by-word lyrics", karaoke, on_off(p.karaoke));
@@ -2058,7 +2060,8 @@ void Panel::confirm(const SheetRow &row)
         p.track_info = (std::clamp(p.track_info, 0, 2) + 1) % 3;
         break;
     case visual_style:
-        p.visual_style = (std::clamp(p.visual_style, 0, 2) + 1) % 3;
+        p.visual_style =
+            (std::clamp(p.visual_style, 0, kVisualStyleCount - 1) + 1) % kVisualStyleCount;
         break;
     case reduce_motion:
         p.reduce_motion = !p.reduce_motion;
@@ -2289,7 +2292,9 @@ void Panel::adjust(const SheetRow &row, int direction, ui::Feedback &feedback)
         p.track_info = (std::clamp(p.track_info, 0, 2) + direction + 3) % 3;
         break;
     case visual_style:
-        p.visual_style = (std::clamp(p.visual_style, 0, 2) + direction + 3) % 3;
+        p.visual_style =
+            (std::clamp(p.visual_style, 0, kVisualStyleCount - 1) + direction + kVisualStyleCount) %
+            kVisualStyleCount;
         break;
     case overlay_position:
     case overlay_background:

@@ -373,7 +373,9 @@ class Afterglow final : public app::Concept
         const afterglow::Scene scene{list, fonts, state, clock_, view_};
 
         const bool idle = idle_.showing() && !sheet_open_;
-        const bool visuals = (mode < 2 || p.poster_visuals) && !sheet_open_ && !idle;
+        // Visual style Off leaves the ink: the music on a blank screen.
+        const bool visuals = (mode < 2 || p.poster_visuals) && !sheet_open_ && !idle &&
+                             p.visual_style != afterglow::kVisualOff;
         if (visuals || state.scanning)
         {
             // Album colour is applied inside the preset (Milkdrop recolours its slots).

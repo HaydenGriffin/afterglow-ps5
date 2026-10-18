@@ -611,7 +611,7 @@ int main(int argc, char **argv)
         };
         look("AFTERGLOW_LINE_LOOK", model.preferences.line_look);
         look("AFTERGLOW_STAGE_LOOK", model.preferences.stage_look);
-        // AFTERGLOW_VISUAL=1|2: halo or spectrum instead of MilkDrop.
+        // AFTERGLOW_VISUAL=1|2|3: halo, spectrum or off instead of MilkDrop.
         if (const char *visual = std::getenv("AFTERGLOW_VISUAL"))
             model.preferences.visual_style = std::atoi(visual);
         model.companion.players = {{"preview-room", "Listening room"},

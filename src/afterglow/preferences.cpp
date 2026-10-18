@@ -163,7 +163,7 @@ Preferences Preferences::decode(std::string_view text)
         if (key == "poster_visuals")
             p.poster_visuals = n == 1;
         if (key == "visual_style")
-            p.visual_style = std::clamp(n, 0, 2);
+            p.visual_style = std::clamp(n, 0, kVisualStyleCount - 1);
         if (key == "reduce_motion")
             p.reduce_motion = n == 1;
         if (key == "display_mode")

@@ -92,6 +92,8 @@ TEST(AfterglowPreferences, LyricsLayerIsOptionalAndTimingOffsetIsBounded)
     EXPECT_EQ(Preferences::decode("display_mode=99\n").display_mode, 3);
     EXPECT_EQ(Preferences::decode("lyrics_layer=7\n").lyrics_layer, 2);
     EXPECT_EQ(Preferences::decode("visual_style=-3\n").visual_style, 0);
+    EXPECT_EQ(Preferences::decode("visual_style=3\n").visual_style, hui::afterglow::kVisualOff);
+    EXPECT_EQ(Preferences::decode("visual_style=9\n").visual_style, hui::afterglow::kVisualOff);
     // LG's range: up to 10 s earlier or later.
     EXPECT_EQ(Preferences::decode("lyrics_offset_ms=-9900\n").lyrics_offset_ms, -9900);
     EXPECT_EQ(Preferences::decode("lyrics_offset_ms=-99999\n").lyrics_offset_ms, -10000);
