@@ -94,6 +94,12 @@ TEST(AfterglowPreferences, LyricsLayerIsOptionalAndTimingOffsetIsBounded)
     EXPECT_EQ(Preferences::decode("visual_style=-3\n").visual_style, 0);
     EXPECT_EQ(Preferences::decode("visual_style=3\n").visual_style, hui::afterglow::kVisualOff);
     EXPECT_EQ(Preferences::decode("visual_style=9\n").visual_style, hui::afterglow::kVisualOff);
+    Preferences off;
+    off.visual_style = hui::afterglow::kVisualOff;
+    EXPECT_EQ(Preferences::decode(off.encode()).visual_style, hui::afterglow::kVisualOff);
+    EXPECT_EQ(Preferences{}.with_synced(off.encode_synced()).visual_style,
+              hui::afterglow::kVisualOff)
+        << "Off survives the account mirror";
     // LG's range: up to 10 s earlier or later.
     EXPECT_EQ(Preferences::decode("lyrics_offset_ms=-9900\n").lyrics_offset_ms, -9900);
     EXPECT_EQ(Preferences::decode("lyrics_offset_ms=-99999\n").lyrics_offset_ms, -10000);

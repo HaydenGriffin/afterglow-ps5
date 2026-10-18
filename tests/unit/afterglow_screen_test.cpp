@@ -243,6 +243,31 @@ int glyphs(const hui::app::Frame &frame, float low = 0, float high = 2)
     return count;
 }
 
+TEST_F(AfterglowMain, VisualStyleOffLeavesVisualsOnlyTrueBlack)
+{
+    playing_song();
+    auto &s = presentation();
+    s.milkdrop_texture = 7;
+    s.preferences.display_mode = 0;
+    s.preferences.visual_style = hui::afterglow::kVisualOff;
+    for (int i = 0; i < 40; ++i)
+        step(idle(), 0.25f); // past the hints' fade
+    EXPECT_FALSE(s.milkdrop_visible);
+    hui::app::Frame frame;
+    screen_->draw(frame);
+    ASSERT_FALSE(frame.scene.instances().empty());
+    for (const auto &instance : frame.scene.instances())
+    {
+        if (instance.color_top[3] <= 0)
+            continue;
+        EXPECT_NE(static_cast<hui::gfx::Shape>(static_cast<int>(instance.params[3])),
+                  hui::gfx::Shape::image)
+            << "no stale MilkDrop frame";
+        EXPECT_EQ(instance.color_top[0] + instance.color_top[1] + instance.color_top[2], 0.0f)
+            << "black, not the ink's grey";
+    }
+}
+
 TEST_F(AfterglowMain, KaraokeDimsTheUnsungWordsOfTheLyricPoster)
 {
     playing_song();

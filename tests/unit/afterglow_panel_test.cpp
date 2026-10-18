@@ -257,6 +257,9 @@ TEST_F(AfterglowPanel, DisplayTicksSetModeAndLyricsLayer)
     down(1);
     input(nav(Direction::left)); // MilkDrop wraps back to Off
     EXPECT_EQ(p.visual_style, hui::afterglow::kVisualOff);
+    input(nav(Direction::right)); // and Off on to MilkDrop
+    EXPECT_EQ(p.visual_style, 0);
+    input(nav(Direction::left));
     down(1);
     cross();
     EXPECT_TRUE(p.reduce_motion);

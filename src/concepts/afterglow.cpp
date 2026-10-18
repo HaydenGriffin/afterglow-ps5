@@ -369,13 +369,14 @@ class Afterglow final : public app::Concept
         auto &list = frame.scene;
         const auto &fonts = context_.fonts;
         const int mode = p.display_mode;
-        list.rounded_rect({0, 0, 1920, 1080}, 0, kInk);
+        const bool idle = idle_.showing() && !sheet_open_;
+        // Visual style Off is the music on a blank screen: true black, so an
+        // OLED's pixels are off rather than lit at the ink's grey.
+        const bool blank = p.visual_style == afterglow::kVisualOff && !sheet_open_ && !idle;
+        list.rounded_rect({0, 0, 1920, 1080}, 0, blank ? Color::rgb(0x000000) : kInk);
         const afterglow::Scene scene{list, fonts, state, clock_, view_};
 
-        const bool idle = idle_.showing() && !sheet_open_;
-        // Visual style Off leaves the ink: the music on a blank screen.
-        const bool visuals = (mode < 2 || p.poster_visuals) && !sheet_open_ && !idle &&
-                             p.visual_style != afterglow::kVisualOff;
+        const bool visuals = (mode < 2 || p.poster_visuals) && !sheet_open_ && !idle && !blank;
         if (visuals || state.scanning)
         {
             // Album colour is applied inside the preset (Milkdrop recolours its slots).
@@ -409,7 +410,7 @@ class Afterglow final : public app::Concept
         else if (sheet_open_ && !panel_.covers_screen())
             afterglow::draw_slab(scene, 1);
         else if (!sheet_open_ && mode >= 2)
-            afterglow::draw_poster(scene, mode == 3, p.poster_visuals ? 0.86f : 1.0f);
+            afterglow::draw_poster(scene, mode == 3, p.poster_visuals && !blank ? 0.86f : 1.0f);
         else if (!sheet_open_)
         {
             afterglow::draw_track_card(scene);
