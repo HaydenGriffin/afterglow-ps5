@@ -8,7 +8,7 @@ checked on a PC only (unit tests, mock servers and the off-screen preview).
 
 Built and tested on a PC only.
 
-- **Visual style Off.** Display's visual style gains **Off** after MilkDrop, Halo and Spectrum: no visuals, just the
+- **Visual style Off** (user request). Display's visual style gains **Off** after MilkDrop, Halo and Spectrum: no visuals, just the
   music on a black screen. With Visuals only nothing is drawn but the hints, which fade; with Visuals + track the
   track card sits on black; behind Album and Lyrics the posters stand on black. MilkDrop does not render while Off.
 
