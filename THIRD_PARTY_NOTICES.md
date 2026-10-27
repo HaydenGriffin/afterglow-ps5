@@ -140,7 +140,10 @@ The PS5 build statically links the
 [ps5-opengl](https://github.com/blackbearreloaded/ps5-opengl) SDK
 (GPL-3.0-or-later), which contains Mesa (MIT) and OpenGNM PSBC components under
 their own licenses. The SDK is fetched or selected at build time and is not
-stored in this repository. Its license texts (`LICENSE`, `THIRD_PARTY_NOTICES.md`
+stored in this repository. Its original repository is no longer public; the
+source of release 1.0.2 (upstream commit `a519561`) and the SDK built from it
+are kept at [J7mbo/ps5-opengl](https://github.com/J7mbo/ps5-opengl), which the
+build downloads from. Its license texts (`LICENSE`, `THIRD_PARTY_NOTICES.md`
 and `LICENSES/`, including Mesa's per-file licences) ship inside the SDK archive,
 and `tools/build.sh` copies them into the app folder's `licenses/ps5-opengl/`.
 
