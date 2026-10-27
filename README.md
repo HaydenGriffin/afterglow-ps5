@@ -175,7 +175,8 @@ Afterglow is free and open source. If it made your setup better, you can
 - [ps5-homebrew-ui](https://github.com/blackbearreloaded/ps5-homebrew-ui) by BlackBearReloaded (GPL-3.0-or-later),
   the kit, build and packaging Afterglow is built on, with
   [ps5-native-app-boilerplate](https://github.com/blackbearreloaded/ps5-native-app-boilerplate) and
-  [ps5-opengl](https://github.com/blackbearreloaded/ps5-opengl).
+  [ps5-opengl](https://github.com/blackbearreloaded/ps5-opengl) (no longer public; its source is kept at
+  [J7mbo/ps5-opengl](https://github.com/J7mbo/ps5-opengl)).
 - The [PS5 Payload SDK](https://github.com/ps5-payload-dev/sdk) by John Törnblom (ps5-payload-dev).
 - [projectM](https://github.com/projectM-visualizer/projectm) (LGPL-2.1-or-later), the MilkDrop renderer.
 - [butterchurn-presets](https://github.com/jberg/butterchurn-presets) and the MilkDrop preset authors.
