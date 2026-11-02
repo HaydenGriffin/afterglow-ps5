@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <ctime>
 
-
 namespace hui::afterglow
 {
 namespace js = json_slice;
