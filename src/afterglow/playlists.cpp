@@ -4,14 +4,9 @@
 
 #include "afterglow/playlists.hpp"
 #include "afterglow/json_slice.hpp"
+#include "afterglow/night.hpp"
 #include <algorithm>
 #include <ctime>
-
-#ifdef __PROSPERO__
-// As night.cpp: the kernel applies the console's time zone setting.
-extern "C" int sceKernelConvertUtcToLocaltime(time_t utc, time_t *local, void *zone,
-                                              int *dst_seconds);
-#endif
 
 namespace hui::afterglow
 {
@@ -45,18 +40,7 @@ LocalTime local_time()
     timespec now{};
     if (clock_gettime(CLOCK_REALTIME, &now) != 0)
         return {};
-#ifdef __PROSPERO__
-    time_t local = 0;
-    int zone[2] = {}, dst = 0;
-    if (sceKernelConvertUtcToLocaltime(now.tv_sec, &local, zone, &dst) != 0)
-        local = now.tv_sec;
-    return local_time_at(now.tv_sec, local);
-#else
-    std::tm parts{};
-    if (localtime_r(&now.tv_sec, &parts) == nullptr)
-        return local_time_at(now.tv_sec, now.tv_sec);
-    return local_time_at(now.tv_sec, now.tv_sec + parts.tm_gmtoff);
-#endif
+    return local_time_at(now.tv_sec, now.tv_sec + local_offset(now.tv_sec));
 }
 
 namespace playlist_wire

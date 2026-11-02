@@ -15,4 +15,7 @@ constexpr bool night_hour(int hour)
 // the kernel to convert UTC to local time (its libc time zone data is not
 // relied on); host builds use localtime_r.
 int local_hour();
+// Seconds east of UTC at utc_seconds, as the console's time zone setting says (0 when it can't be
+// read). Shared with playlists.cpp's dates.
+long long local_offset(long long utc_seconds);
 } // namespace hui::afterglow
