@@ -4,6 +4,14 @@ Afterglow for PS5. Builds before 1.6.0 were private builds for one console; they
 the version where one was set. "Checked on hardware" means on one PS5 on firmware 7.20; anything else was
 checked on a PC only (unit tests, mock servers and the off-screen preview).
 
+# Unreleased
+
+- **Local time on the console.** The kernel call that turns UTC into local time was declared with buffers smaller
+  than it writes, and on a console every local time came out as midnight on 1 January 1970: the night register
+  thought it was always night, and saved playlists were dated 1 Jan. It now gets buffers larger than it writes, and
+  an offset no time zone has is ignored (UTC instead). Found by Lamplight for PS5, which shares the call, on system
+  software 7.20; the fix there was checked on that console.
+
 # 1.7.0 — Visual style Off (18 October 2026)
 
 Built and tested on a PC only; not yet checked on a console.
