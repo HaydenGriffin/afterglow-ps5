@@ -18,6 +18,7 @@ time: most of it is the preset scan running on its own.
 13. [Keeping it running](#13-keeping-it-running)
 14. [Lyrics and privacy](#14-lyrics-and-privacy)
 15. [When something goes wrong](#15-when-something-goes-wrong)
+16. [Music over games](#16-music-over-games)
 
 ---
 
@@ -260,3 +261,47 @@ There is no analytics or telemetry.
   `/mnt/sandbox/PPSA99481_000/download0/hui/dev/app.log`. It helps with a bug report; it names your server's
   LAN address and the presets and lyrics lookups of the session, but never your user name, password or tokens.
   Look it over before you share it.
+
+---
+
+## 16. Music over games
+
+Afterglow can keep playing over a game, with the app closed, through the console's own music player. It
+has been run on **one PS5 on system software 7.20** only. How it works is in
+[MUSIC_OVER_GAMES.md](MUSIC_OVER_GAMES.md).
+
+You need:
+
+- **A USB drive, exFAT or FAT32,** with about 500 MB free, plugged in. Afterglow only adds to its
+  `Music/Afterglow Live` folder, but a drive of its own is kinder to anything else on it, and to the
+  drive: it is written to all the time music plays.
+- **An ELF loader on port 9021,** which your jailbreak's autoloader usually starts.
+
+To set it up:
+
+1. In Afterglow, open **Settings**, then **Music over games**, and turn it on. It carries on after you
+   close Afterglow, and starts again next time you open Afterglow if it is not running.
+2. Wait for the toast that says **Music over games is ready**. The first time takes about half a minute,
+   writing the files.
+3. In Music Assistant, play something on the new speaker, **Afterglow over games**.
+4. Press the PS button, then open **Music**, your USB drive, **Afterglow Live**, and play the first row.
+   If the folder is not there yet, open another folder first and come back.
+5. On the Music card, set **Repeat to All** and leave Shuffle off. Without Repeat the player stops after
+   the 32nd file.
+
+After about 15 seconds the music starts, and the Music card shows the song. Next, Previous and Pause on
+the card work Music Assistant, and a toast names each new song. You may need to turn your game's music
+down in its own settings; the console has no way to balance the two.
+
+Things to expect:
+
+- **It is about 15 seconds behind** other speakers, and a skip takes about as long to be heard. Pause and
+  resume on the card are immediate.
+- **Remote Play stops the player,** and so does playing other music on the console.
+- **There is a short break between songs,** even on gapless albums.
+- **A skip from a phone or the app** plays straight away and gets a toast, but the card keeps the old name
+  until that song's file ends. Next on the card has no such wait.
+- **After a reboot,** go back to step 4, after opening Afterglow once (or adding the payload to your
+  autoloader, with the server in `/data/afterglow-music/music.conf`).
+
+To stop it, turn it off in Settings, then stop the music on the card.

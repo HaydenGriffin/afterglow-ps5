@@ -49,6 +49,8 @@ struct Preferences
     // MilkDrop, halo, spectrum or off (kVisualOff).
     int visual_style = kVisualMilkDrop;
     bool reduce_motion = false;
+    // Keep the Music over games payload running. This console's, so not mirrored to the account.
+    bool over_games = false;
     // Visuals only, visuals with track, album poster, synchronized lyrics.
     int display_mode = 1;
     // 120 fps requests a 120 Hz display mode on next launch; 60 remains the default.

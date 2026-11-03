@@ -32,9 +32,9 @@ bool AudioQueue::push(const std::uint8_t *message, std::size_t bytes)
     std::size_t write = write_.load(std::memory_order_relaxed);
     const std::size_t read = read_.load(std::memory_order_acquire);
     const std::size_t free = (read + kPacketCount - write - 1) % kPacketCount;
-    if (needed > free || frames > kBufferBytes / 4 ||
+    if (needed > free || frames > kQueueBytes / 4 ||
         queued_frames_.load() + static_cast<std::int64_t>(frames) >
-            static_cast<std::int64_t>(kBufferBytes / 4))
+            static_cast<std::int64_t>(kQueueBytes / 4))
     {
         ++overflows_;
         return false;

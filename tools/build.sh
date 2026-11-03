@@ -309,6 +309,8 @@ for notice in LICENSE THIRD_PARTY_NOTICES.md LICENSES; do
     }
     cp -R "$opengl_release/$notice" "$app/licenses/ps5-opengl/"
 done
+# Music over games: the app hands this to the console's ELF loader.
+bash "$root/tools/build-music-payload.sh" "$app/payload/afterglow-music.elf"
 # Directory listing returns nothing under /app0 on the console, so each
 # audio folder carries an index of its files (read by save::list_files).
 for dir in "$app/assets/audio/music" "$app"/assets/audio/sfx/*/; do

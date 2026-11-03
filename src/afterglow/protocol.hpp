@@ -15,9 +15,23 @@ namespace hui::afterglow
 {
 constexpr int kSampleRate = 48000;
 constexpr std::size_t kPacketFrames = 4800;
-constexpr std::size_t kPacketCount = 128;
-// Advertise 2.5s, leaving packet-slot headroom for the server's 20ms chunks.
-constexpr std::size_t kBufferBytes = 480000;
+// Advertise 2.5s, leaving packet-slot headroom for the server's 20ms chunks. A build that
+// renders well behind real time (the USB stream prototype) may ask for more.
+#ifndef AFTERGLOW_PACKET_COUNT
+#define AFTERGLOW_PACKET_COUNT 128
+#endif
+#ifndef AFTERGLOW_BUFFER_BYTES
+#define AFTERGLOW_BUFFER_BYTES 480000
+#endif
+// What the queue really holds. The server fills whatever is advertised, so a consumer that can
+// stall needs room beyond it, or every stall drops audio. Defaults to the advertised size.
+#ifndef AFTERGLOW_QUEUE_BYTES
+#define AFTERGLOW_QUEUE_BYTES AFTERGLOW_BUFFER_BYTES
+#endif
+constexpr std::size_t kPacketCount = AFTERGLOW_PACKET_COUNT;
+constexpr std::size_t kBufferBytes = AFTERGLOW_BUFFER_BYTES;
+constexpr std::size_t kQueueBytes = AFTERGLOW_QUEUE_BYTES;
+static_assert(kQueueBytes >= kBufferBytes);
 
 class AudioQueue
 {

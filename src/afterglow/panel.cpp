@@ -209,6 +209,9 @@ enum Row : int
     open_setup,
     setup_again,
     setup_row,
+    open_over_games,
+    over_games_toggle,
+    over_games_status,
     playback_speed,
     open_chapters,
 };
@@ -397,6 +400,35 @@ std::string account_summary(const AccountState &a)
     }
 }
 
+bool over_games_on(OverGamesPhase phase)
+{
+    return phase != OverGamesPhase::off;
+}
+
+std::string over_games_status_text(const OverGamesView &view)
+{
+    switch (view.phase)
+    {
+    case OverGamesPhase::off:
+        return "Off";
+    case OverGamesPhase::starting:
+        return "Starting";
+    case OverGamesPhase::no_loader:
+        return "No ELF loader on port 9021";
+    case OverGamesPhase::no_payload:
+        return "Missing from this install";
+    case OverGamesPhase::no_drive:
+        return "Plug in a USB drive";
+    case OverGamesPhase::ready:
+        return "Play Afterglow Live in Music";
+    case OverGamesPhase::waiting:
+        return "Waiting for music";
+    case OverGamesPhase::playing:
+        return view.song;
+    }
+    return "";
+}
+
 // Builds a page's rows: one call per row, the tag says what it does.
 struct Rows
 {
@@ -498,6 +530,7 @@ const char *select_label(const SheetRow &row)
     case setup_again:
         return "Check again";
     case setup_row:
+    case over_games_status:
         return nullptr;
     default:
         break;
@@ -577,10 +610,11 @@ bool Panel::browse_page() const
 const char *Panel::page_name() const
 {
     constexpr const char *kNames[] = {
-        "browse",  "collection", "item_actions",  "queue",        "queue_actions", "details",
-        "display", "settings",   "source",        "visuals",      "presets",       "lyrics_timing",
-        "status",  "search",     "artist",        "players",      "sync",          "account",
-        "home",    "setup",      "lyrics_choice", "lyrics_lines", "chapters",      "playlist"};
+        "browse",        "collection",    "item_actions", "queue",    "queue_actions",
+        "details",       "display",       "settings",     "source",   "visuals",
+        "presets",       "lyrics_timing", "status",       "search",   "artist",
+        "players",       "sync",          "account",      "home",     "setup",
+        "lyrics_choice", "lyrics_lines",  "chapters",     "playlist", "over_games"};
     const auto index = static_cast<std::size_t>(page_);
     return index < std::size(kNames) ? kNames[index] : "";
 }
@@ -627,6 +661,8 @@ std::string Panel::title() const
         return "Home";
     case Page::setup:
         return "Check my setup";
+    case Page::over_games:
+        return "Music over games";
     case Page::lyrics_choice:
         return "Choose lyrics";
     case Page::lyrics_lines:
@@ -702,6 +738,13 @@ std::string Panel::note() const
         return home_.note();
     case Page::setup:
         return setup_note(s.setup_rows);
+    case Page::over_games:
+        return "Plays through the console’s Music app, so it carries on over a game, with "
+               "Afterglow "
+               "closed. Plug in a USB drive and pick Afterglow over games as the speaker in Music "
+               "Assistant. Then press PS, open Music, USB Disk, Afterglow Live, and play the first "
+               "row. Sound follows about 15 seconds behind other speakers. The card’s buttons "
+               "work, and it shows each song.";
     case Page::lyrics_choice:
         return lyrics_choice_note(s);
     case Page::lyrics_lines:
@@ -1093,6 +1136,13 @@ std::vector<SheetRow> Panel::sheet_rows() const
         rows.row("Status", open_status, s.connected ? "Connected" : "Offline").item.chevron = true;
         rows.row("Check my setup", open_setup, setup_summary(s.setup_rows, s.setup_has_run))
             .item.chevron = true;
+        rows.row("Music over games", open_over_games,
+                 over_games_on(s.over_games.phase) ? "On" : "Off")
+            .item.chevron = true;
+        break;
+    case Page::over_games:
+        rows.row("Music over games", over_games_toggle, on_off(over_games_on(s.over_games.phase)));
+        rows.row("Status", over_games_status, over_games_status_text(s.over_games));
         break;
     case Page::setup:
         // A failed or busy check says so in semibold, its next step beneath.
@@ -1455,6 +1505,7 @@ bool Panel::back()
     case Page::sync:
     case Page::account:
     case Page::setup:
+    case Page::over_games:
         navigate(Page::settings, parent_focus_);
         return true;
     default:
@@ -1922,6 +1973,14 @@ void Panel::confirm(const SheetRow &row)
     case open_setup:
         open_child(Page::setup);
         s.setup_requested = true;
+        break;
+    case open_over_games:
+        open_child(Page::over_games);
+        break;
+    case over_games_toggle:
+        s.over_games_toggled = true;
+        break;
+    case over_games_status:
         break;
     case setup_again:
         s.setup_requested = true;
