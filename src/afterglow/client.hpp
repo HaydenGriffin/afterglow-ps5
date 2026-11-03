@@ -16,6 +16,8 @@ namespace hui::afterglow
 enum class Command
 {
     toggle,
+    play,
+    pause,
     next,
     previous,
     volume_up,
@@ -28,7 +30,21 @@ struct Snapshot
     double buffered_ms = 0, clock_rtt_ms = 0;
     std::uint64_t underruns = 0, late_frames = 0, reconnects = 0, received_packets = 0,
                   overflows = 0;
+    // The current track's length and how far in it is, from the server; 0 if it does not say.
+    std::int64_t track_ms = 0, elapsed_ms = 0;
     std::string status = "Not connected", title, artist, album, group;
+};
+
+struct OutputState
+{
+    std::uint64_t epoch = 1;
+    // Active includes clock synchronization; muted includes local output disable.
+    bool active = false, muted = false, stopping = true;
+};
+struct RenderStamp
+{
+    OutputState state;
+    std::int64_t presentation_local_us = -1;
 };
 
 class Client
@@ -40,14 +56,29 @@ class Client
     Client &operator=(const Client &) = delete;
     // Numeric IPv4 only: avoids unbounded DNS and keeps teardown predictable.
     bool start(const char *host, std::uint16_t port, const char *client_id, const char *name);
-    void stop(); // Signal only; safe from the UI thread.
+    void stop(); // Invalidate output and signal shutdown; safe from the UI thread.
     void join(); // Call after stopping the audio output, during app teardown.
     void render(std::int16_t *output, int frames);
+    // One audio consumer owns render/render_at. State changes and each bounded
+    // render share a short-held mutex, independent of network IO and metadata.
+    // The stamp describes the PCM and state atomically at render time. An
+    // external feeder must check the epoch again before submitting, then flush
+    // its own FIFO on changes; this API cannot recall already submitted audio.
+    // Intended time is when the sink will present frame zero, on the same
+    // monotonic clock as sys::monotonic_us(). Server offset/static delay are
+    // applied here. Valid calls require 1..1024 frames and a nonnegative time.
+    // Invalid arguments leave output untouched and return an inactive stamp
+    // with presentation_local_us=-1. Inactive valid calls render silence and
+    // acknowledge queue clears. Mute consumes on schedule without clearing.
+    RenderStamp render_at(std::int16_t *output, int frames, std::int64_t intended_local_us);
+    OutputState output_state() const;
     Snapshot snapshot() const;
     void command(Command value);
-    void set_output_enabled(bool enabled)
+    void set_output_enabled(bool enabled);
+    // What this speaker tells the server its volume is when it connects. Call before start().
+    void set_start_volume(int volume)
     {
-        output_enabled_.store(enabled);
+        volume_ = volume;
     }
 
   private:
@@ -65,7 +96,12 @@ class Client
     bool send_state();
     void set_status(const char *value);
     bool fail(const char *stage, int error = 0, int detail = 0);
+    OutputState output_state_locked() const;
+    RenderStamp render_at_locked(std::int16_t *output, int frames, std::int64_t intended_local_us);
     AudioQueue audio_;
+    // Never acquire mutex_ or perform socket IO while holding output_mutex_.
+    mutable std::mutex output_mutex_;
+    std::uint64_t output_epoch_ = 1;
     mutable std::mutex mutex_;
     Snapshot state_;
     std::string host_, id_, name_;

@@ -61,6 +61,7 @@ std::string Preferences::encode() const
     number("poster_visuals", poster_visuals);
     number("visual_style", visual_style);
     number("reduce_motion", reduce_motion);
+    number("over_games", over_games);
     number("display_mode", display_mode);
     number("lyrics_offset_ms", lyrics_offset_ms);
     number("trim_ms", trim_ms);
@@ -166,6 +167,8 @@ Preferences Preferences::decode(std::string_view text)
             p.visual_style = std::clamp(n, 0, kVisualStyleCount - 1);
         if (key == "reduce_motion")
             p.reduce_motion = n == 1;
+        if (key == "over_games")
+            p.over_games = n == 1;
         if (key == "display_mode")
             p.display_mode = std::clamp(n, 0, 3);
         if (key == "lyrics_offset_ms")

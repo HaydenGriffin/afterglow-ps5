@@ -13,6 +13,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <netinet/in.h>
 #include <poll.h>
 #include <sys/ioctl.h>
@@ -141,11 +142,18 @@ bool Client::start(const char *host, std::uint16_t port, const char *client_id, 
     port_ = port;
     id_ = client_id;
     name_ = name;
-    stopping_ = false;
+    {
+        std::lock_guard<std::mutex> lock(output_mutex_);
+        active_ = false;
+        synchronized_ = false;
+        audio_.clear();
+        stopping_ = false;
+        ++output_epoch_;
+    }
     pthread_attr_t attributes;
     if (pthread_attr_init(&attributes) != 0)
     {
-        stopping_ = true;
+        stop();
         return false;
     }
     const int stack_result = pthread_attr_setstacksize(&attributes, 1024 * 1024);
@@ -155,14 +163,22 @@ bool Client::start(const char *host, std::uint16_t port, const char *client_id, 
     thread_started_ = result == 0;
     if (!thread_started_)
     {
-        stopping_ = true;
+        stop();
         set_status("Network thread could not start");
     }
     return thread_started_;
 }
 void Client::stop()
 {
-    stopping_ = true;
+    std::lock_guard<std::mutex> lock(output_mutex_);
+    if (!stopping_)
+    {
+        stopping_ = true;
+        active_ = false;
+        synchronized_ = false;
+        audio_.clear();
+        ++output_epoch_;
+    }
 }
 void Client::join()
 {
@@ -206,11 +222,62 @@ Snapshot Client::snapshot() const
 }
 void Client::render(std::int16_t *output, int frames)
 {
-    audio_.render(output, frames,
-                  sys::monotonic_us() + clock_offset_.load() +
-                      static_cast<std::int64_t>(delay_ms_.load()) * 1000,
-                  volume_.load(), muted_.load() || !output_enabled_.load(),
-                  active_.load() && synchronized_.load());
+    if (!output || frames <= 0)
+        return;
+    // Foreground output is submitted immediately after rendering. Time spent
+    // waiting for a state change must not make that submission use stale PCM.
+    std::lock_guard<std::mutex> lock(output_mutex_);
+    const auto now = sys::monotonic_us();
+    for (int offset = 0; offset < frames;)
+    {
+        const int count = std::min(1024, frames - offset);
+        render_at_locked(output + static_cast<std::size_t>(offset) * 2, count,
+                         now + static_cast<std::int64_t>(offset) * 1000000 / kSampleRate);
+        offset += count;
+    }
+}
+OutputState Client::output_state_locked() const
+{
+    return {output_epoch_, active_.load() && synchronized_.load() && !stopping_.load(),
+            muted_.load() || !output_enabled_.load(), stopping_.load()};
+}
+OutputState Client::output_state() const
+{
+    std::lock_guard<std::mutex> lock(output_mutex_);
+    return output_state_locked();
+}
+RenderStamp Client::render_at(std::int16_t *output, int frames, std::int64_t intended_local_us)
+{
+    std::lock_guard<std::mutex> lock(output_mutex_);
+    return render_at_locked(output, frames, intended_local_us);
+}
+RenderStamp Client::render_at_locked(std::int16_t *output, int frames,
+                                     std::int64_t intended_local_us)
+{
+    RenderStamp stamp{output_state_locked(), -1};
+    const auto offset = clock_offset_.load();
+    const auto delay = static_cast<std::int64_t>(delay_ms_.load()) * 1000;
+    // Leave headroom for queue timestamp arithmetic, including the final frame.
+    constexpr auto limit = std::numeric_limits<std::int64_t>::max() / 4;
+    if (!output || frames <= 0 || frames > 1024 || intended_local_us < 0 ||
+        intended_local_us > limit || offset < -limit || offset > limit)
+    {
+        stamp.state.active = false;
+        return stamp;
+    }
+    stamp.presentation_local_us = intended_local_us;
+    audio_.render(output, frames, intended_local_us + offset + delay, volume_.load(),
+                  stamp.state.muted, stamp.state.active);
+    return stamp;
+}
+void Client::set_output_enabled(bool enabled)
+{
+    std::lock_guard<std::mutex> lock(output_mutex_);
+    if (output_enabled_ != enabled)
+    {
+        output_enabled_ = enabled;
+        ++output_epoch_;
+    }
 }
 void Client::command(Command value)
 {
@@ -614,9 +681,17 @@ bool Client::text_message(std::string_view text)
         if (!synchronized_ || rtt <= best_rtt_ + 1000 || t4 - best_at_ > 30000000)
         {
             const auto offset = ((t2 - t1) + (t3 - t4)) / 2;
-            const auto old = clock_offset_.load();
-            clock_offset_ = synchronized_ ? old + (offset - old) / 8 : offset;
-            synchronized_ = true;
+            {
+                std::lock_guard<std::mutex> lock(output_mutex_);
+                if (!stopping_)
+                {
+                    const auto old = clock_offset_.load();
+                    clock_offset_ = synchronized_ ? old + (offset - old) / 8 : offset;
+                    if (!synchronized_)
+                        ++output_epoch_;
+                    synchronized_ = true;
+                }
+            }
             best_rtt_ = rtt;
             best_at_ = t4;
             std::lock_guard<std::mutex> lock(mutex_);
@@ -631,9 +706,13 @@ bool Client::text_message(std::string_view text)
                      json.integer(json.get(player, "sample_rate")) == kSampleRate &&
                      json.integer(json.get(player, "channels")) == 2 &&
                      json.integer(json.get(player, "bit_depth")) == 16;
-        audio_.clear();
         format_error_ = !format_ok_;
-        active_ = format_ok_;
+        {
+            std::lock_guard<std::mutex> lock(output_mutex_);
+            audio_.clear();
+            active_ = format_ok_ && !stopping_;
+            ++output_epoch_;
+        }
         std::lock_guard<std::mutex> lock(mutex_);
         state_.playing = format_ok_;
         state_.status = format_ok_ ? "Streaming PCM · 48 kHz" : "Unsupported audio format";
@@ -643,10 +722,15 @@ bool Client::text_message(std::string_view text)
         const int roles = json.get(payload, "roles");
         if (roles < 0 || json.has_string(roles, "player"))
         {
-            audio_.clear();
+            {
+                std::lock_guard<std::mutex> lock(output_mutex_);
+                audio_.clear();
+                if (type == "stream/end")
+                    active_ = false;
+                ++output_epoch_;
+            }
             if (type == "stream/end")
             {
-                active_ = false;
                 format_ok_ = false;
                 format_error_ = false;
                 std::lock_guard<std::mutex> lock(mutex_);
@@ -659,14 +743,38 @@ bool Client::text_message(std::string_view text)
     {
         const int player = json.get(payload, "player");
         const auto command = json.string(json.get(player, "command"));
-        if (command == "volume")
-            volume_ = static_cast<int>(std::clamp<std::int64_t>(
-                json.integer(json.get(player, "volume"), volume_), 0, 100));
-        else if (command == "mute")
-            muted_ = json.boolean(json.get(player, "mute"), muted_);
-        else if (command == "set_static_delay")
-            delay_ms_ = static_cast<int>(std::clamp<std::int64_t>(
-                json.integer(json.get(player, "static_delay_ms"), delay_ms_), 0, 5000));
+        {
+            std::lock_guard<std::mutex> lock(output_mutex_);
+            if (command == "volume")
+            {
+                const auto value = static_cast<int>(std::clamp<std::int64_t>(
+                    json.integer(json.get(player, "volume"), volume_), 0, 100));
+                if (volume_ != value)
+                {
+                    volume_ = value;
+                    ++output_epoch_;
+                }
+            }
+            else if (command == "mute")
+            {
+                const bool value = json.boolean(json.get(player, "mute"), muted_);
+                if (muted_ != value)
+                {
+                    muted_ = value;
+                    ++output_epoch_;
+                }
+            }
+            else if (command == "set_static_delay")
+            {
+                const auto value = static_cast<int>(std::clamp<std::int64_t>(
+                    json.integer(json.get(player, "static_delay_ms"), delay_ms_), 0, 5000));
+                if (delay_ms_ != value)
+                {
+                    delay_ms_ = value;
+                    ++output_epoch_;
+                }
+            }
+        }
         return send_state();
     }
     else if (type == "server/state")
@@ -681,6 +789,12 @@ bool Client::text_message(std::string_view text)
             state_.artist = json.string(artist);
         if (album >= 0)
             state_.album = json.string(album);
+        const int progress = json.get(metadata, "progress");
+        if (progress >= 0)
+        {
+            state_.track_ms = json.integer(json.get(progress, "track_duration"), 0);
+            state_.elapsed_ms = json.integer(json.get(progress, "track_progress"), 0);
+        }
     }
     else if (type == "group/update")
     {
@@ -709,8 +823,13 @@ void Client::run()
         server_hello_ = false;
         format_ok_ = false;
         format_error_ = false;
-        synchronized_ = false;
-        active_ = false;
+        {
+            std::lock_guard<std::mutex> lock(output_mutex_);
+            synchronized_ = false;
+            active_ = false;
+            audio_.clear();
+            ++output_epoch_;
+        }
         incoming_.clear();
         fragment_.clear();
         fragment_opcode_ = 0;
@@ -790,6 +909,12 @@ void Client::run()
                     case Command::toggle:
                         cmd = state_.playing ? "pause" : "play";
                         break;
+                    case Command::play:
+                        cmd = "play";
+                        break;
+                    case Command::pause:
+                        cmd = "pause";
+                        break;
                     case Command::next:
                         cmd = "next";
                         break;
@@ -837,9 +962,13 @@ void Client::run()
             else if (ready < 0 && errno != EINTR)
                 connected = fail("receive-poll", errno, ready);
         }
-        active_ = false;
-        synchronized_ = false;
-        audio_.clear();
+        {
+            std::lock_guard<std::mutex> lock(output_mutex_);
+            active_ = false;
+            synchronized_ = false;
+            audio_.clear();
+            ++output_epoch_;
+        }
         if (socket_ >= 0)
         {
             shutdown(socket_, SHUT_RDWR);

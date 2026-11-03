@@ -4,8 +4,18 @@ Afterglow for PS5. Builds before 1.6.0 were private builds for one console; they
 the version where one was set. "Checked on hardware" means on one PS5 on firmware 7.20; anything else was
 checked on a PC only (unit tests, mock servers and the off-screen preview).
 
-# Unreleased
+# 1.8.0 — Music over games (3 November 2026)
 
+- **Music over games.** Afterglow can now play Music Assistant over a game, with the app closed, through the
+  console's own USB music player. Turn it on under **Settings, Music over games**, plug in a USB drive, pick the new
+  speaker **Afterglow over games** in Music Assistant, and play **Afterglow Live** from the console's Music app with
+  Repeat set to All. The Music card shows each song's title, artist and length, Next, Previous and Pause on the card
+  work Music Assistant, and a toast names each new song. The press in the Music app is needed once after a reboot:
+  a payload cannot start the player. It is about 15 seconds behind other speakers, there is a short break between
+  songs, and a skip from a phone or the app only reaches the card at the end of the song's file. How it works, and
+  what was measured to get there, is in [docs/MUSIC_OVER_GAMES.md](docs/MUSIC_OVER_GAMES.md). Writing a FLAC file
+  ahead of the player comes from [librespot-ps5](https://github.com/stupiditytries/librespot-ps5). Checked on hardware
+  on system software 7.20 only; it needs an ELF loader on port 9021.
 - **Local time on the console.** The kernel call that turns UTC into local time was declared with buffers smaller
   than it writes, and on a console every local time came out as midnight on 1 January 1970: the night register
   thought it was always night, and saved playlists were dated 1 Jan. It now gets buffers larger than it writes, and

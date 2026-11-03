@@ -67,6 +67,24 @@ struct AccountState
     std::string sync_status;
 };
 
+// What Settings says about the Music over games payload (music_over_games.hpp).
+enum class OverGamesPhase
+{
+    off,
+    starting,
+    no_loader,  // nothing answers on the console's ELF loader port
+    no_payload, // the payload is missing from the app's folder
+    no_drive,   // running, with no USB drive to write to
+    ready,      // running, waiting for a press in the Music app
+    waiting,    // the player is on the files, with no music coming
+    playing
+};
+struct OverGamesView
+{
+    OverGamesPhase phase = OverGamesPhase::off;
+    std::string song;
+};
+
 enum class UiCommand
 {
     none,
@@ -189,6 +207,9 @@ struct Presentation
     // Check my setup (setup_check.hpp): the UI asks, main.cpp runs it and
     // fills the rows; setup_offer adds "Something not right?" to an empty screen.
     bool setup_requested = false, setup_has_run = false, setup_offer = false;
+    // Music over games: the UI asks for a change, main.cpp talks to the payload.
+    OverGamesView over_games;
+    bool over_games_toggled = false;
     std::vector<SetupRow> setup_rows;
     // Kept timings, chosen lyrics and Go to a line (song_lyrics.hpp).
     SongLyricsState song_lyrics;

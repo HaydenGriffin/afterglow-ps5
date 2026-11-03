@@ -68,6 +68,8 @@ class Panel
         chapters, // Details → Chapters: an audiobook's or episode's chapters
         // Added by the playlists round (panel_playlists.cpp):
         playlist, // Add to a playlist: New playlist and the playlists a song can go into
+        // Added with Music over games (music_over_games.hpp):
+        over_games, // On or off, how it is doing, and how to start it
     };
 
     Panel();

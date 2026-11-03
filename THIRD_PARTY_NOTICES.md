@@ -11,6 +11,7 @@ in the app folder's `licenses/` directory.
 | In the app folder | What it is | Licence | Texts in `licenses/` |
 | --- | --- | --- | --- |
 | `eboot.bin` | Afterglow and the ps5-homebrew-ui kit | GPL-3.0-or-later | `LICENSE` |
+| `payload/afterglow-music.elf` | Music over games, part of Afterglow, with code from librespot-ps5 (see below) and the PS5 Payload SDK's C and C++ libraries | GPL-3.0-or-later | `LICENSE` |
 | `eboot.bin` (linked in) | [projectM](https://github.com/projectM-visualizer/projectm) and its bundled dependencies | LGPL-2.1-or-later; MIT, public domain and others (below) | `projectm/` |
 | `eboot.bin` (linked in) | [ps5-opengl](https://github.com/blackbearreloaded/ps5-opengl) 1.0.2 with Mesa and OpenGNM PSBC | GPL-3.0-or-later; Mesa mostly MIT, per file; OpenGNM MIT | `ps5-opengl/` |
 | `eboot.bin` (linked in) | [jsmn](https://github.com/zserge/jsmn) | MIT | `jsmn/` |
@@ -217,6 +218,14 @@ product's name, artwork or trademark is used.
 No proprietary runtime module, encryption key, or game file is included.
 
 ## Afterglow's dependencies
+
+### librespot-ps5 (Music over games)
+
+`payload/flac_writer.hpp` is ported from `connect/src/flac.rs` of
+[stupiditytries/librespot-ps5](https://github.com/stupiditytries/librespot-ps5) v0.1.0
+(GPL-3.0-or-later), changed to Afterglow's 48 kHz, and the idea of writing a FLAC file ahead of the
+console's USB music player comes from the same project. Its toast format and notes on the player
+informed `payload/now_playing.hpp`. No other part of it is bundled.
 
 ### jsmn
 

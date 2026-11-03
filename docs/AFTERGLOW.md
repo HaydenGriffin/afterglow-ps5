@@ -3,7 +3,7 @@
 An unofficial Music Assistant TV companion, built on BlackBearReloaded's
 [ps5-homebrew-ui](https://github.com/blackbearreloaded/ps5-homebrew-ui).
 This is a foreground playback client, not a Music Assistant server fork.
-Version 1.7.0 shares the LG Afterglow poster interface and core music
+Version 1.8.0 shares the LG Afterglow poster interface and core music
 controls. It ran on a PS5 on firmware 7.20 on 16 October 2026; what was
 checked there, and what was not, is under
 [Checked on hardware](#checked-on-hardware). Setting it up:
@@ -195,9 +195,10 @@ Browse pages hold 60 items (recent: 30; album/playlist songs: 200; search: 20
 per kind) and **More** pages on to an offset of 2000. Home Assistant's ingress
 URL is not the Sendspin or Music Assistant API endpoint.
 
-**Background music while playing games is out of scope** (owner decision).
-Afterglow is a foreground app; opening a normal homebrew title does not give
-it Spotify's system music integration.
+**Music over games** is a separate payload the app starts: a speaker of its own,
+heard through the console's USB music player, with each song named on the Music
+card. See [MUSIC_OVER_GAMES.md](MUSIC_OVER_GAMES.md). The app itself is a foreground
+app, and its own sound stops when it leaves the foreground.
 
 ## Build locally
 

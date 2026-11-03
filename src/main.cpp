@@ -16,6 +16,7 @@
 #include "afterglow/preset_change.hpp"
 #include "afterglow/night.hpp"
 #include "afterglow/online_lyrics.hpp"
+#include "afterglow/music_over_games.hpp"
 #include "afterglow/presentation.hpp"
 #include "afterglow/https.hpp"
 #include "afterglow/lrclib.hpp"
@@ -565,6 +566,10 @@ int main()
     model.presets = milkdrop->names();
     afterglow::PreferenceStore preference_store;
     preference_store.start("/download0/hui/afterglow.prefs");
+    afterglow::MusicOverGames over_games;
+    over_games.start();
+    if (model.preferences.over_games && !audio_host.empty())
+        over_games.want_on(audio_host, config.port);
     auto companion = std::make_unique<afterglow::Companion>();
     companion->restore_pending_favorites(model.preferences.favorite_pending);
     companion->set_account_device(account_device);
@@ -772,6 +777,18 @@ int main()
                 model, lyrics_lookup, online_lyrics, [&] { companion->retry_lyrics(); },
                 now / 1000);
             pump_setup_check(model, setup_check, credentials, config);
+            model.over_games = over_games.view();
+            if (model.over_games_toggled)
+            {
+                model.over_games_toggled = false;
+                const bool on = model.over_games.phase == afterglow::OverGamesPhase::off;
+                model.preferences.over_games = on;
+                if (on)
+                    over_games.want_on(audio_host, config.port);
+                else
+                    over_games.want_off();
+                model.over_games = over_games.view();
+            }
             if (model.companion.favorites_ready &&
                 (!favorites_received || model.companion.favorite_revision != favorite_revision))
             {
